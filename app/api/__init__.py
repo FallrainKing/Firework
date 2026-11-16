@@ -44,9 +44,10 @@ def ingest_http_error(exc: Exception) -> HTTPException:
 def require_rag_stack(request: Request) -> None:
     """Raise 503 unless the embedder and vector store both started.
 
-    The lifespan deliberately keeps the app running when the RAG stack
-    cannot initialize (e.g. qdrant unreachable); routes that need it say so
-    with a clear message instead of crashing with an opaque error.
+    Startup retries and aborts when the RAG stack cannot initialize (see
+    ``app.main``), so this is a belt-and-braces guard: if the stack ever
+    ends up missing at runtime, routes that need it say so with a clear
+    message instead of crashing with an opaque error.
     """
     state = request.app.state
     if getattr(state, "embedder", None) is None or getattr(state, "store", None) is None:

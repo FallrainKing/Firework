@@ -1,0 +1,10 @@
+# Never sent to the docker builder as build context — data/ alone carries
+# the multi-GB hf model cache and qdrant storage; .env holds API keys.
+.git
+.env
+.venv
+__pycache__/
+data/
+backups/
+.superpowers/
+.pytest_cache/

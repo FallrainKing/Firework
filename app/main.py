@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,35 +22,67 @@ logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
 
+# Bounded startup retry for the RAG stack (qdrant being unreachable at boot
+# is normally a race with the container starting). 10 attempts × 10s covers
+# ~100s of qdrant slowness; after that we raise so the container's restart
+# policy (unless-stopped) takes over instead of the app limping along in a
+# permanently degraded, 503-everywhere state.
+RAG_STARTUP_ATTEMPTS = 10
+RAG_STARTUP_BACKOFF_S = 10.0
+
+
+async def _init_rag_stack(settings: Settings) -> tuple[Embedder, VectorStore]:
+    """Build the embedder + vector store, retrying connection failures.
+
+    The (heavy) embedder is built once and kept across attempts, so qdrant
+    retries do not reload the model. ``QdrantClient``/``VectorStore`` are
+    rebuilt per attempt — a failed client may hold a dead connection pool.
+    Retries exhausted → ``RuntimeError`` (see module note above).
+    """
+    embedder: Embedder | None = None
+    last_error: Exception | None = None
+    for attempt in range(1, RAG_STARTUP_ATTEMPTS + 1):
+        try:
+            if embedder is None:
+                embedder = Embedder()
+            store = VectorStore(QdrantClient(settings.qdrant_url))
+            store.ensure_collection(embedder.dimension)
+            return embedder, store
+        except Exception as exc:  # noqa: BLE001 — retried, then re-raised below
+            last_error = exc
+            logger.warning(
+                "RAG stack init attempt %d/%d failed: %s",
+                attempt,
+                RAG_STARTUP_ATTEMPTS,
+                exc,
+            )
+            if attempt < RAG_STARTUP_ATTEMPTS:
+                await asyncio.sleep(RAG_STARTUP_BACKOFF_S)
+    raise RuntimeError(
+        f"RAG stack failed to initialize after {RAG_STARTUP_ATTEMPTS} attempts "
+        f"(qdrant at {settings.qdrant_url!r} unreachable?); aborting startup so "
+        "the container restart policy can recover"
+    ) from last_error
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize settings/db/gateway/embedder/store onto ``app.state``.
-
-    The RAG stack failing to initialize — most commonly qdrant being
-    unreachable — must not keep the whole application from starting: the
-    db and gateway are set up regardless, the broken pieces stay ``None``
-    and the routes that need them answer 503 (see
-    ``app.api.require_rag_stack``) while health/listing keep working.
-    """
+    """Initialize settings/db/gateway/embedder/store onto ``app.state``."""
     settings = Settings.from_env()
     app.state.settings = settings
     db = get_conn(settings)
     app.state.db = db
     app.state.gateway = LLMGateway(settings)
 
-    embedder = None
-    store = None
-    try:
-        embedder = Embedder()
-        store = VectorStore(QdrantClient(settings.qdrant_url))
-        store.ensure_collection(embedder.dimension)
-    except Exception:
-        logger.exception(
-            "RAG stack unavailable; /api/qa and the ingest routes will answer 503"
-        )
-        embedder = None
-        store = None
+    # Startup sweep: jobs a previous (crashed/restarted) process left
+    # pending/running can never finish in this process — mark them failed
+    # so pollers see the truth instead of a job "running" forever.
+    db.execute(
+        "UPDATE import_jobs SET status='failed' WHERE status IN ('pending','running')"
+    )
+    db.commit()
+
+    embedder, store = await _init_rag_stack(settings)
     app.state.embedder = embedder
     app.state.store = store
 

@@ -15,6 +15,7 @@ connection. The job closes that connection when it finishes.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import sqlite3
@@ -81,8 +82,11 @@ async def import_folder(
                     pdf.stem, embedder=embedder, store=store, db=db
                 )
                 if duplicate is None:
+                    # disk reads go through to_thread too: a slow/large file
+                    # must not stall the loop the progress API runs on
+                    data = await asyncio.to_thread(pdf.read_bytes)
                     await ingest_from_upload(
-                        pdf.read_bytes(),
+                        data,
                         pdf.name,
                         gateway=gateway,
                         db=db,

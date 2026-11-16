@@ -14,6 +14,7 @@ from an arXiv feed resolve to the same existing row.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import sqlite3
 
@@ -61,7 +62,11 @@ async def find_duplicate(
             if normalize_title(row["title"] or "") == key:
                 return _paper_dict(db, row["id"])
 
-    hits = store.search(embedder.embed([title])[0], top_k=1)
+    # embedding the query title is CPU-bound — keep it off the event loop
+    # (this runs on async request/import paths); the sqlite reads and the
+    # qdrant search stay on the caller's thread/connection semantics
+    vector = await asyncio.to_thread(embedder.embed, [title])
+    hits = store.search(vector[0], top_k=1)
     if hits and hits[0].score >= threshold:
         return _paper_dict(db, hits[0].paper_id)
     return None

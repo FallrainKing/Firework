@@ -22,6 +22,7 @@ the library (see :func:`app.ingest.dedup.find_duplicate`).
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -33,7 +34,7 @@ from typing import TYPE_CHECKING
 
 import httpx
 
-from ..rag.chunker import chunk_sections
+from ..rag.chunker import Chunk, chunk_sections
 from ..rag.embedder import Embedder
 from ..rag.pdf_parser import extract_pages, split_sections
 from ..rag.vector_store import ChunkPoint, VectorStore
@@ -54,6 +55,22 @@ ARXIV_PDF_MAX_BYTES = 50 * 1024 * 1024
 _FIRST_PAGE_CHARS = 1500
 _FALLBACK_ABSTRACT_CHARS = 500
 
+
+class PdfTooLargeError(RuntimeError):
+    """The arXiv PDF download exceeded the 50MB cap (a known-bad input)."""
+
+
+def _parse_and_embed(
+    pdf_path: Path, embedder: Embedder
+) -> tuple[list[Chunk], list[list[float]]]:
+    """Parse + chunk + embed one PDF. Pure CPU work: touches no sqlite
+    connection and no vector store, so it is safe to run on a worker
+    thread (see :func:`ingest_paper`)."""
+    chunks = chunk_sections(split_sections(extract_pages(pdf_path)))
+    # one batch call for the whole paper, never per-chunk
+    vectors = embedder.embed([chunk.text for chunk in chunks])
+    return chunks, vectors
+
 _METADATA_PROMPT = (
     "You are given the beginning of a research paper. Extract its "
     "bibliographic metadata. Reply with ONLY a strict JSON object of the "
@@ -65,8 +82,8 @@ _METADATA_PROMPT = (
 async def download_arxiv_pdf(arxiv_id: str) -> bytes:
     """Download ``https://arxiv.org/pdf/{id}`` as bytes (streamed, size-capped).
 
-    Raises ``RuntimeError`` when the response body exceeds the 50MB limit,
-    and ``httpx.HTTPStatusError`` for non-2xx responses.
+    Raises ``PdfTooLargeError`` when the response body exceeds the 50MB
+    limit, and ``httpx.HTTPStatusError`` for non-2xx responses.
     """
     url = ARXIV_PDF_URL.format(id=arxiv_id)
     parts: list[bytes] = []
@@ -77,7 +94,7 @@ async def download_arxiv_pdf(arxiv_id: str) -> bytes:
             async for chunk in response.aiter_bytes():
                 total += len(chunk)
                 if total > ARXIV_PDF_MAX_BYTES:
-                    raise RuntimeError(
+                    raise PdfTooLargeError(
                         f"arXiv PDF {arxiv_id!r} exceeds the "
                         f"{ARXIV_PDF_MAX_BYTES // (1024 * 1024)}MB limit"
                     )
@@ -125,9 +142,12 @@ async def ingest_paper(
     (``store.delete_paper``, before the transaction, so a stale tail chunk
     can never survive a re-ingest), then the new chunks are written.
     """
-    chunks = chunk_sections(split_sections(extract_pages(pdf_path)))
-    # one batch call for the whole paper, never per-chunk
-    vectors = embedder.embed([chunk.text for chunk in chunks])
+    # parsing + chunking + embedding is CPU-bound and can take seconds per
+    # paper — offload it so the event loop keeps serving requests during a
+    # long ingest. The offloaded work touches no sqlite connection and no
+    # vector store; the transaction below stays on the event loop's thread
+    # with unchanged semantics.
+    chunks, vectors = await asyncio.to_thread(_parse_and_embed, pdf_path, embedder)
 
     existing_id = _find_existing_paper(db, arxiv_id, title)
     if existing_id is not None:
@@ -277,7 +297,8 @@ async def ingest_from_upload(
         tmp.write(pdf_bytes)
         tmp_path = Path(tmp.name)
     try:
-        pages = extract_pages(tmp_path)
+        # PDF text extraction is CPU-bound — off the event loop
+        pages = await asyncio.to_thread(extract_pages, tmp_path)
         first_page_text = pages[0].text if pages else ""
         title, authors, abstract = await _extract_metadata(
             gateway, first_page_text, filename

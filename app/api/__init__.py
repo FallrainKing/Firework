@@ -13,6 +13,7 @@ import httpx
 import pymupdf
 from fastapi import HTTPException, Request
 
+from ..ingest.pipeline import PdfTooLargeError
 from ..llm.gateway import LLMHTTPStatusError
 from ..rag.vector_store import VectorStoreError
 
@@ -22,6 +23,7 @@ KNOWN_INGEST_ERRORS: tuple[type[BaseException], ...] = (
     ValueError,  # covers json.JSONDecodeError + arXiv-id extraction failures
     pymupdf.FileDataError,  # bad/scanned PDF bytes (RuntimeError subclass)
     pymupdf.EmptyFileError,
+    PdfTooLargeError,  # arXiv download over the 50MB cap → 400, not 500
     VectorStoreError,
     LLMHTTPStatusError,  # provider rejected the request (HTTP 4xx)
     httpx.HTTPError,  # upstream (arXiv) request failures

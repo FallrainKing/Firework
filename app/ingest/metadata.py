@@ -36,27 +36,32 @@ class PaperMeta:
 
 
 # New-style ids (2401.00001, 2401.00001v2) and old-style ones (hep-th/9901001).
-_ABS_PATH_RE = re.compile(r"abs/([^?#]+)")
-_NEW_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?$")
-_OLD_ID_RE = re.compile(r"([a-z-]+(?:\.[a-z]{2})?/\d{7})(v\d+)?$")
-_VERSION_RE = re.compile(r"v\d+$")
+# Both abs-page and pdf links are common inputs for the ingest pipeline.
+_ABS_PATH_RE = re.compile(r"(?:abs|pdf)/([^?#]+)")
+# The subject-class part of old-style ids is canonically uppercase (cs.CL),
+# so the id body is matched case-insensitively but kept verbatim.
+_NEW_ID_RE = re.compile(r"(\d{4}\.\d{4,5})(v\d+)?$", re.IGNORECASE)
+_OLD_ID_RE = re.compile(r"([A-Za-z-]+(?:\.[A-Za-z]{2})?/\d{7})(v\d+)?$", re.IGNORECASE)
+_VERSION_RE = re.compile(r"v\d+$", re.IGNORECASE)
 
 
 def extract_arxiv_id(value: str) -> str:
     """Reduce any accepted input form to a bare, version-less arXiv id.
 
     Accepted forms: ``2401.00001``, ``2401.00001v2``, ``arXiv:2401.00001v2``,
-    ``http(s)://arxiv.org/abs/2401.00001v2`` (query strings tolerated), and
-    old-style ids like ``hep-th/9901001`` (bare or inside an abs URL).
-    Raises ``ValueError`` when no id can be extracted.
+    ``http(s)://arxiv.org/{abs,pdf}/2401.00001v2`` (query strings tolerated),
+    and old-style ids like ``hep-th/9901001`` or ``cs.CL/0309001`` (bare or
+    inside an abs/pdf URL). The id's own casing is preserved (only the
+    version suffix is stripped); raises ``ValueError`` when no id can be
+    extracted.
     """
     text = value.strip()
-    abs_match = _ABS_PATH_RE.search(text)
-    if abs_match:
-        text = abs_match.group(1)
+    path_match = _ABS_PATH_RE.search(text)
+    if path_match:
+        text = path_match.group(1)
     elif ":" in text:
         text = text.rsplit(":", 1)[-1]
-    text = text.strip().lower()
+    text = text.strip()
     match = _NEW_ID_RE.match(text) or _OLD_ID_RE.match(text)
     if not match:
         raise ValueError(f"could not extract an arXiv id from {value!r}")

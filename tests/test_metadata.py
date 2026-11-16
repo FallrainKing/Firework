@@ -98,7 +98,7 @@ def test_fetch_arxiv_metadata(monkeypatch):
 
     # old-style ids survive too (the archive prefix must not be cut by "/")
     assert extract_arxiv_id("hep-th/9901001v2") == "hep-th/9901001"
-    assert extract_arxiv_id("https://arxiv.org/abs/cs.CL/0309001") == "cs.cl/0309001"
+    assert extract_arxiv_id("https://arxiv.org/abs/cs.CL/0309001") == "cs.CL/0309001"
 
     # garbage input is rejected, not silently mangled
     with pytest.raises(ValueError):
@@ -107,3 +107,15 @@ def test_fetch_arxiv_metadata(monkeypatch):
     # a feed without an <entry> is an explicit error
     with pytest.raises(ValueError):
         metadata.parse_arxiv_atom(EMPTY_ATOM, "2401.00001")
+
+
+def test_extract_arxiv_id_case_and_pdf_urls():
+    # F1: the id body keeps its own casing — the subject-class part of
+    # old-style ids is canonically uppercase (cs.CL), it must not be lowercased
+    assert extract_arxiv_id("cs.CL/0309001v2") == "cs.CL/0309001"
+    assert extract_arxiv_id("arXiv:hep-th/9901001v2") == "hep-th/9901001"
+
+    # F2: pdf links (the natural input for a PDF ingest pipeline) are accepted
+    assert extract_arxiv_id("https://arxiv.org/pdf/2401.00001v2") == "2401.00001"
+    assert extract_arxiv_id("http://arxiv.org/pdf/hep-th/9901001v2") == "hep-th/9901001"
+    assert extract_arxiv_id("https://arxiv.org/pdf/2401.00001v2?fmt=pdf") == "2401.00001"

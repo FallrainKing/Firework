@@ -8,10 +8,6 @@ def _long_section(text: str, title: str = "1 Introduction", page: int = 1) -> Se
     return Section(title=title, page=page, text=text)
 
 
-def _long_section(text: str, title: str = "1 Introduction", page: int = 1) -> Section:
-    return Section(title=title, page=page, text=text)
-
-
 def test_chunk_overlap():
     # contract: exact Chunk dataclass shape
     c = Chunk(section="2 Method", page=2, text="hello")

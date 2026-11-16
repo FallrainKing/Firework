@@ -10,10 +10,13 @@ import asyncio
 import json
 from pathlib import Path
 
+import pytest
+
 import app.ingest.pipeline as pipeline
 from app.ingest.metadata import PaperMeta
-from app.ingest.pipeline import ingest_arxiv, ingest_paper
-from app.rag.vector_store import ChunkPoint
+from app.ingest.pipeline import ingest_arxiv, ingest_from_upload, ingest_paper
+from app.rag.pdf_parser import extract_pages
+from app.rag.vector_store import ChunkPoint, VectorStore, VectorStoreError
 
 AUTHORS = ["Author One", "Author Two"]
 ABSTRACT = "A tiny synthetic paper generated with PyMuPDF."
@@ -158,3 +161,161 @@ def test_reingest_replaces_old_chunks(sample_pdf, ingest_stack):
     assert all(hit.chunk_index < n_chunks for hit in hits), (
         "orphan tail points from the previous ingest must be gone"
     )
+
+
+class _FakeGateway:
+    """Deterministic LLM stand-in: returns a canned reply or raises."""
+
+    def __init__(self, text: str | None = None, error: Exception | None = None):
+        self._text = text
+        self._error = error
+        self.calls = 0
+
+    async def chat(self, messages, tier="fast", **kwargs):
+        self.calls += 1
+        assert tier == "fast", "metadata extraction must use the fast tier"
+        if self._error is not None:
+            raise self._error
+        return {
+            "text": self._text,
+            "thinking": "",
+            "provider": "fake",
+            "model": "fake",
+            "usage": {"input": 1, "output": 1},
+        }
+
+
+def _upload(pdf_bytes, filename, gateway, stack):
+    db, store, data_dir, embedder = stack
+    return asyncio.run(
+        ingest_from_upload(
+            pdf_bytes,
+            filename,
+            gateway=gateway,
+            db=db,
+            embedder=embedder,
+            store=store,
+            data_dir=data_dir,
+        )
+    )
+
+
+def test_upload_good_json_metadata(sample_pdf, ingest_stack):
+    db, store, data_dir, embedder = ingest_stack
+    gateway = _FakeGateway(
+        text='{"title": "Sample Research Paper",'
+        ' "authors": ["Author One", "Author Two"],'
+        ' "abstract": "LLM-extracted abstract."}'
+    )
+
+    paper_id = _upload(
+        Path(sample_pdf).read_bytes(), "uploaded.pdf", gateway, ingest_stack
+    )
+
+    assert gateway.calls == 1  # exactly one fast-tier call
+    row = _row(db, paper_id)
+    assert row["title"] == "Sample Research Paper"
+    assert json.loads(row["authors"]) == ["Author One", "Author Two"]
+    assert row["abstract"] == "LLM-extracted abstract."
+    assert row["source"] == "upload"
+    assert _chunk_count(db, paper_id) > 0
+
+
+def _assert_filename_fallback(db, paper_id, sample_pdf):
+    row = _row(db, paper_id)
+    assert row["title"] == "my paper"  # filename minus extension
+    assert json.loads(row["authors"]) == []
+    expected_abstract = extract_pages(sample_pdf)[0].text[:500].strip()
+    assert row["abstract"] == expected_abstract
+    assert _chunk_count(db, paper_id) > 0  # paper still fully ingested
+
+
+def test_upload_bad_json_falls_back_to_filename(sample_pdf, ingest_stack):
+    db, store, data_dir, embedder = ingest_stack
+    gateway = _FakeGateway(text="Sorry, I cannot produce JSON.")
+
+    paper_id = _upload(
+        Path(sample_pdf).read_bytes(), "my paper.pdf", gateway, ingest_stack
+    )
+
+    assert gateway.calls == 1  # the gateway was tried before falling back
+    _assert_filename_fallback(db, paper_id, sample_pdf)
+
+
+def test_upload_gateway_error_falls_back_to_filename(sample_pdf, ingest_stack):
+    db, store, data_dir, embedder = ingest_stack
+    gateway = _FakeGateway(error=RuntimeError("LLM down"))
+
+    paper_id = _upload(
+        Path(sample_pdf).read_bytes(), "my paper.pdf", gateway, ingest_stack
+    )
+
+    assert gateway.calls == 1
+    _assert_filename_fallback(db, paper_id, sample_pdf)
+
+
+class _UpsertFails(VectorStore):
+    """Real store, but every upsert_chunks call fails."""
+
+    def upsert_chunks(self, points):
+        raise VectorStoreError("simulated qdrant failure")
+
+
+def test_vector_failure_rolls_back_everything(sample_pdf, ingest_stack):
+    db, store, data_dir, embedder = ingest_stack
+    failing_store = _UpsertFails(store._client, collection="chunks")
+    papers_dir = data_dir / "papers"
+
+    # --- fresh ingest: nothing at all may survive the failure ---
+    with pytest.raises(VectorStoreError):
+        asyncio.run(
+            ingest_paper(
+                sample_pdf,
+                source="upload",
+                arxiv_id=None,
+                title="Fresh Paper",
+                authors=[],
+                abstract="",
+                categories=[],
+                db=db,
+                embedder=embedder,
+                store=failing_store,
+                data_dir=data_dir,
+            )
+        )
+    assert db.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 0
+    assert db.execute("SELECT COUNT(*) FROM chunks_meta").fetchone()[0] == 0
+    assert list(papers_dir.glob("*")) == []  # no PDF, no .tmp leftover
+
+    # --- re-ingest: the previous ingest must survive untouched ---
+    paper_id = _ingest(sample_pdf, ingest_stack)
+    row_before = dict(_row(db, paper_id))
+    chunks_before = _chunk_count(db, paper_id)
+    pdf_before = (papers_dir / f"{paper_id}.pdf").read_bytes()
+
+    with pytest.raises(VectorStoreError):
+        asyncio.run(
+            ingest_paper(
+                sample_pdf,
+                source="upload",
+                arxiv_id=None,
+                title="Sample Research Paper",  # same normalized title
+                authors=[],
+                abstract="changed abstract",
+                categories=[],
+                db=db,
+                embedder=embedder,
+                store=failing_store,
+                data_dir=data_dir,
+            )
+        )
+
+    # SQLite rolled back to the pre-re-ingest state
+    assert dict(_row(db, paper_id)) == row_before
+    assert _chunk_count(db, paper_id) == chunks_before
+    assert db.execute("SELECT COUNT(*) FROM papers").fetchone()[0] == 1
+    # the previously ingested PDF is still there, byte-identical, and no
+    # staged .tmp was left behind (F3: the old copy is never overwritten
+    # before the transaction commits)
+    assert (papers_dir / f"{paper_id}.pdf").read_bytes() == pdf_before
+    assert list(papers_dir.glob("*.tmp")) == []

@@ -7,7 +7,9 @@ One paper travels: PDF file → pages → sections → chunks → (batch) embedd
 Transaction semantics: the SQLite writes (papers + chunks_meta) and the
 Qdrant upsert happen such that the SQLite transaction is only committed
 after the vector upsert succeeded; a vector failure rolls SQLite back so no
-half-ingested state survives (the already-copied PDF file is removed too).
+half-ingested state survives (the staged PDF copy is removed too — the PDF
+is only renamed into its final path after the commit, so a failed run never
+overwrites a previously ingested copy).
 The one deliberate exception is the *pre-transaction* deletion of a previous
 ingest's vectors (``store.delete_paper``): if the run then fails, the old
 points are gone while SQLite still describes them — accepted because a
@@ -134,8 +136,8 @@ async def ingest_paper(
     papers_dir = Path(data_dir) / "papers"
     papers_dir.mkdir(parents=True, exist_ok=True)
 
-    copied: Path | None = None
-    copied_preexisted = False
+    staged: Path | None = None
+    final_pdf: Path | None = None
     try:
         if existing_id is None:
             cursor = db.execute(
@@ -168,12 +170,15 @@ async def ingest_paper(
                 ),
             )
 
-        # the id is only known after the INSERT, so the copy happens here
-        copied = papers_dir / f"{paper_id}.pdf"
-        copied_preexisted = copied.exists()
-        shutil.copyfile(pdf_path, copied)
+        # the id is only known after the INSERT, so the copy happens here —
+        # staged as a .tmp sibling and only renamed into place after the
+        # commit, so a failed run (fresh or re-ingest) never leaves a new
+        # PDF at the paper's final path while SQLite describes the old one
+        final_pdf = papers_dir / f"{paper_id}.pdf"
+        staged = papers_dir / f"{paper_id}.pdf.tmp"
+        shutil.copyfile(pdf_path, staged)
         db.execute(
-            "UPDATE papers SET pdf_path=? WHERE id=?", (str(copied), paper_id)
+            "UPDATE papers SET pdf_path=? WHERE id=?", (str(final_pdf), paper_id)
         )
 
         for index, chunk in enumerate(chunks):
@@ -198,13 +203,16 @@ async def ingest_paper(
             ]
         )
         db.commit()
+        # everything succeeded — atomic same-dir rename puts the PDF in place
+        staged.replace(final_pdf)
+        staged = None
         return paper_id
     except Exception:
         db.rollback()
-        # only remove the PDF this run created: on a re-ingest rollback the
-        # previous ingest's copy must survive untouched
-        if copied is not None and not copied_preexisted:
-            copied.unlink(missing_ok=True)
+        # remove only the staged copy; a previously ingested PDF at the
+        # final path (re-ingest) is never touched by a failed run
+        if staged is not None:
+            staged.unlink(missing_ok=True)
         raise
 
 

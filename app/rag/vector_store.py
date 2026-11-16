@@ -102,6 +102,47 @@ class VectorStore:
         except Exception as exc:  # noqa: BLE001 — we re-raise as our own type
             raise _wrap(exc)
 
+    def delete_paper(self, paper_id: int) -> int:
+        """Delete every point of one paper; return how many were removed.
+
+        Scrolls all point ids matching the ``paper_id`` payload field (Qdrant
+        server-side filter, paged) and removes them in one batch. Deleting an
+        unknown paper — or one whose collection doesn't exist yet — is not an
+        error and returns 0, so re-ingest callers can call this
+        unconditionally before writing the fresh chunk set (stale tail chunks
+        from a previous, larger ingest would otherwise survive as orphans).
+        """
+        from qdrant_client.models import PointIdsList
+
+        paper_filter = Filter(
+            must=[FieldCondition(key="paper_id", match=MatchValue(value=paper_id))]
+        )
+        try:
+            if not self._client.collection_exists(self._collection):
+                return 0
+            ids: list[str] = []
+            offset = None
+            while True:
+                records, offset = self._client.scroll(
+                    collection_name=self._collection,
+                    scroll_filter=paper_filter,
+                    limit=256,
+                    offset=offset,
+                    with_payload=False,
+                    with_vectors=False,
+                )
+                ids.extend(point.id for point in records)
+                if offset is None:
+                    break
+            if ids:
+                self._client.delete(
+                    collection_name=self._collection,
+                    points_selector=PointIdsList(points=ids),
+                )
+            return len(ids)
+        except Exception as exc:  # noqa: BLE001
+            raise _wrap(exc)
+
     def upsert_chunks(self, points: list[ChunkPoint]) -> None:
         """Insert/overwrite the given chunks (payload: paper_id/chunk_index/text/page/section)."""
         if not points:

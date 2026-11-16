@@ -53,6 +53,33 @@ def test_filter_by_paper():
     assert isinstance(hit.score, float)
 
 
+def test_delete_paper():
+    # Task 4 review carry-over: re-ingesting a paper needs to drop all of its
+    # old points (including stale tail chunks) before writing the new set.
+    store = VectorStore(QdrantClient(":memory:"), collection="chunks")
+    store.ensure_collection(8)
+    store.upsert_chunks(
+        [
+            make_point(10, 0, "paper A chunk 0", fake_vector(1)),
+            make_point(10, 1, "paper A chunk 1", fake_vector(2)),
+            make_point(20, 0, "paper B chunk 0", fake_vector(3)),
+            make_point(20, 1, "paper B chunk 1", fake_vector(4)),
+        ]
+    )
+
+    deleted = store.delete_paper(10)
+
+    assert deleted == 2, "delete_paper reports the number of removed points"
+    assert store.search(fake_vector(1), top_k=8, paper_id=10) == []
+    # other papers untouched
+    hits = store.search(fake_vector(3), top_k=8, paper_id=20)
+    assert sorted(hit.chunk_index for hit in hits) == [0, 1]
+
+    # deleting an unknown (or already-deleted) paper is fine and returns 0
+    assert store.delete_paper(10) == 0
+    assert store.delete_paper(999) == 0
+
+
 def test_unreachable_qdrant_raises_clean_error():
     # URL points at a port nothing listens on → the store must translate the
     # low-level httpx/connect error into our own exception, not leak it.

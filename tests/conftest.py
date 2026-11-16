@@ -79,3 +79,31 @@ def sample_pdf() -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         _build_sample_pdf(path)
     return path
+
+
+@pytest.fixture(scope="session")
+def embedder():
+    """The real bge-m3 embedder, loaded once for the whole session."""
+    from app.rag.embedder import Embedder
+
+    return Embedder(model_name="BAAI/bge-m3")
+
+
+@pytest.fixture()
+def ingest_stack(tmp_path, embedder):
+    """Fresh SQLite db + :memory: Qdrant store + data_dir for one ingest test.
+
+    Returns ``(db, store, data_dir, embedder)``. The db lives inside
+    ``tmp_path`` so each test gets a clean papers/chunks_meta state, and the
+    store is an in-process Qdrant collection sized to bge-m3's dimension.
+    """
+    from qdrant_client import QdrantClient
+
+    from app.config import Settings
+    from app.db import get_conn
+    from app.rag.vector_store import VectorStore
+
+    db = get_conn(Settings(data_dir=tmp_path, qdrant_url="http://localhost:6333"))
+    store = VectorStore(QdrantClient(":memory:"), collection="chunks")
+    store.ensure_collection(embedder.dimension)
+    return db, store, tmp_path, embedder

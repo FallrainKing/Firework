@@ -1,9 +1,9 @@
 """LLM gateway: dual-protocol (openai/anthropic) chat with failover and usage accounting.
 
 - ``LLMGateway.chat()`` is the single entry point all other modules use.
-- Failover semantics: network errors and HTTP 5xx move on to the next
-  provider; HTTP 4xx is raised immediately (a configuration error must not
-  silently switch routes).
+- Failover semantics: network errors, HTTP 429/5xx, and non-JSON (e.g.
+  HTML) bodies move on to the next provider; other HTTP 4xx is raised
+  immediately (a configuration error must not silently switch routes).
 - Every successful call is recorded in the ``llm_usage`` table. Accounting
   failures are logged but never break the main flow.
 """
@@ -100,6 +100,17 @@ class LLMGateway:
             self.settings.llm_strong if tier == "strong" else self.settings.llm_fast
         )
         head = [p for p in providers if p.get("name") == preferred]
+        if preferred and not head:
+            # misconfigured preferred name is NOT fatal — chat proceeds with
+            # the configured providers, but say so instead of silently
+            # ignoring the setting
+            logger.warning(
+                "preferred %s-tier provider %r is not in LLM_PROVIDERS;"
+                " falling back to %s",
+                tier,
+                preferred,
+                [p.get("name") for p in providers],
+            )
         tail = [p for p in providers if p.get("name") != preferred]
         return head + tail
 
@@ -206,17 +217,28 @@ class LLMGateway:
     ) -> dict:
         name = str(provider.get("name", "?"))
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+            # follow_redirects: some providers answer POSTs with a 3xx to
+            # the real endpoint; httpx does NOT follow those by default
+            async with httpx.AsyncClient(
+                timeout=_TIMEOUT, follow_redirects=True
+            ) as client:
                 resp = await client.post(url, headers=headers, json=payload)
         except httpx.HTTPError as exc:
             raise _RetryableError(f"{name}: network error: {exc}") from exc
-        if resp.status_code >= 500:
+        # 429 (rate limit) is transient like a 5xx — worth the next provider
+        if resp.status_code == 429 or resp.status_code >= 500:
             raise _RetryableError(
                 f"{name}: HTTP {resp.status_code}: {resp.text}"
             )
         if resp.status_code >= 400:
             raise LLMHTTPStatusError(name, resp.status_code, resp.text)
-        return resp.json()
+        try:
+            return resp.json()
+        except ValueError as exc:  # json.JSONDecodeError — e.g. an HTML
+            # error page served with a 200 status: retry the next provider
+            raise _RetryableError(
+                f"{name}: malformed JSON response: {exc}"
+            ) from exc
 
     # -- reply normalization -----------------------------------------------
 

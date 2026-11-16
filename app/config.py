@@ -23,10 +23,18 @@ class Settings:
         providers_raw = os.getenv("LLM_PROVIDERS", "").strip()
         try:
             providers = json.loads(providers_raw) if providers_raw else []
-        except json.JSONDecodeError:
-            providers = []
+        except json.JSONDecodeError as exc:
+            # fail fast: a typo'd LLM_PROVIDERS silently degrading to "no
+            # providers" turns every chat into an opaque gateway failure
+            raise ValueError(
+                f"LLM_PROVIDERS is not valid JSON ({exc}); refusing to start"
+                " with an empty provider list"
+            ) from exc
         if not isinstance(providers, list):
-            providers = []
+            raise ValueError(
+                "LLM_PROVIDERS must be a JSON array of provider objects,"
+                f" got {type(providers).__name__}"
+            )
         return cls(
             data_dir=Path(os.getenv("DATA_DIR", "data")).expanduser(),
             qdrant_url=os.getenv("QDRANT_URL", "http://localhost:6333"),

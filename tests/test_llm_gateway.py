@@ -6,6 +6,7 @@ API calls are ever made. Async gateway code is driven with ``asyncio.run``
 """
 
 import asyncio
+import logging
 
 import httpx
 import pytest
@@ -34,12 +35,15 @@ OPENAI_PROVIDER = {
 class FakeResponse:
     """Minimal stand-in for an httpx.Response."""
 
-    def __init__(self, status_code=200, payload=None, text=""):
+    def __init__(self, status_code=200, payload=None, text="", malformed=False):
         self.status_code = status_code
         self._payload = payload if payload is not None else {}
         self.text = text
+        self._malformed = malformed
 
     def json(self):
+        if self._malformed:
+            raise ValueError(f"malformed body: {self.text[:80]}")
         return self._payload
 
 
@@ -162,6 +166,103 @@ def test_http_400_raises_without_failover(tmp_path, monkeypatch):
     assert excinfo.value.provider == "glm"
     # only the preferred provider was hit; failover must NOT have happened
     assert [c["url"] for c in calls] == ["https://api.example.com/v1/messages"]
+
+
+def test_429_fails_over_to_next_provider(tmp_path, monkeypatch):
+    # 429 is transient (rate limit): switch routes instead of surfacing.
+    second = dict(ANTHROPIC_PROVIDER, name="second", model="m2")
+    payload = {
+        "model": "m2",
+        "content": [{"type": "text", "text": "rescued from rate limit"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    calls = patch_post(
+        monkeypatch,
+        [FakeResponse(429, text="rate limited"), FakeResponse(200, payload)],
+    )
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
+    )
+
+    reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert reply["provider"] == "second"
+    assert reply["text"] == "rescued from rate limit"
+    assert len(calls) == 2  # 429 did NOT raise; the next provider answered
+
+
+def test_html_body_with_200_fails_over(tmp_path, monkeypatch):
+    # a 200 whose body is not JSON (e.g. an HTML error page from a broken
+    # gateway) is as retryable as a 5xx: move on to the next provider.
+    second = dict(ANTHROPIC_PROVIDER, name="second", model="m2")
+    payload = {
+        "model": "m2",
+        "content": [{"type": "text", "text": "rescued from html"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    calls = patch_post(
+        monkeypatch,
+        [
+            FakeResponse(200, text="<html>upstream error page</html>", malformed=True),
+            FakeResponse(200, payload),
+        ],
+    )
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
+    )
+
+    reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert reply["provider"] == "second"
+    assert reply["text"] == "rescued from html"
+    assert len(calls) == 2
+
+
+def test_post_follows_redirects(tmp_path, monkeypatch):
+    # httpx does NOT follow redirects by default; the gateway must opt in
+    # so a provider answering a POST with a 3xx resolves instead of erroring.
+    captured: dict = {}
+    real_client = httpx.AsyncClient
+
+    class CapturingClient(real_client):
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            super().__init__(**kwargs)
+
+    monkeypatch.setattr(httpx, "AsyncClient", CapturingClient)
+    payload = {
+        "model": "glm-5.3",
+        "content": [{"type": "text", "text": "ok"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    patch_post(monkeypatch, [FakeResponse(200, payload)])
+    gw = LLMGateway(make_settings(tmp_path, [ANTHROPIC_PROVIDER], fast="glm"))
+
+    reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert reply["text"] == "ok"
+    assert captured.get("follow_redirects") is True
+
+
+def test_unknown_preferred_provider_warns_and_continues(tmp_path, monkeypatch, caplog):
+    # a preferred name missing from LLM_PROVIDERS must not crash; it logs a
+    # warning and chats with the configured providers.
+    payload = {
+        "model": "glm-5.3",
+        "content": [{"type": "text", "text": "ok"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    patch_post(monkeypatch, [FakeResponse(200, payload)])
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER], fast="no-such-provider")
+    )
+
+    with caplog.at_level(logging.WARNING, logger="app.llm.gateway"):
+        reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert reply["provider"] == "glm"  # chat still succeeded
+    warnings = [r for r in caplog.records if "no-such-provider" in r.getMessage()]
+    assert warnings, "a misconfigured preferred provider must be logged"
 
 
 def test_text_before_thinking_takes_last_text(tmp_path, monkeypatch):

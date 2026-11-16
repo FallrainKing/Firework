@@ -77,7 +77,12 @@
 
   function formatTime(raw) {
     if (!raw) return "";
-    const date = new Date(raw);
+    /* SQLite CURRENT_TIMESTAMP 是无时区的 "YYYY-MM-DD HH:MM:SS"（UTC），
+     * 部分浏览器（如 Firefox）无法解析该格式且其它引擎按本地时区解释。
+     * 补 "T" 分隔符 + "Z" 统一按 UTC 解析；已带时区的 ISO 串原样通过。 */
+    const hasZone = /[Zz]$|[+-]\d{2}:?\d{2}$/.test(raw);
+    const normalized = hasZone ? raw : raw.replace(" ", "T") + "Z";
+    const date = new Date(normalized);
     if (Number.isNaN(date.getTime())) return String(raw);
     return date.toLocaleString("zh-CN", { hour12: false });
   }

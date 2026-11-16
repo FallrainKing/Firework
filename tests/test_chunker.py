@@ -57,3 +57,28 @@ def test_chunk_overlap():
     default_chunks = chunk_sections([_long_section(mid)])
     assert len(default_chunks) >= 2
     assert all(len(ch.text) <= 1500 for ch in default_chunks)
+
+
+def test_single_oversized_sentence_hard_capped():
+    # a 3000-char run with no spaces and no sentence delimiters is ONE
+    # sentence; it must be hard-split so no chunk exceeds max_chars
+    text = "x" * 3000
+    chunks = chunk_sections([_long_section(text)])
+    assert len(chunks) >= 2
+    assert all(len(ch.text) <= 1500 for ch in chunks)
+    # hard split, not dropped: the pieces reproduce the input exactly
+    assert "".join(ch.text for ch in chunks) == text
+
+
+def test_oversized_sentence_after_normal_prose_stays_capped():
+    # the oversized sentence follows ordinary sentences whose overlap tail
+    # would otherwise push the combined chunk past the cap
+    text = "A normal sentence opens the section. " + "y" * 2900
+    chunks = chunk_sections([_long_section(text)])
+    assert len(chunks) >= 2
+    assert all(len(ch.text) <= 1500 for ch in chunks)
+    assert chunks[0].text.startswith("A normal sentence opens the section.")
+    # nothing lost: prose sentence + all pieces are present across chunks
+    joined = "".join(ch.text for ch in chunks)
+    assert "A normal sentence opens the section." in joined
+    assert joined.count("y") == 2900

@@ -60,6 +60,12 @@ def _build_sample_pdf(path: Path) -> None:
         page2,
         [
             "The introduction keeps flowing here before the next heading.",
+            # body lines that merely look like numbered headings (citation
+            # year / wrapped-sentence starts): the section splitter must
+            # NOT treat these as headings (see test_pdf_parser.py)
+            "2023 A Survey of Embodied AI",
+            "3 The authors acknowledge...",
+            "10 All experiments use three seeds",
             "2 Method",
             "We split pages into sections with a numbered-heading regex.",
             "Then we chunk each section on sentence boundaries.",

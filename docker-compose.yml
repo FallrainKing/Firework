@@ -9,6 +9,9 @@ services:
       QDRANT_URL: http://qdrant:6333
     volumes:
       - ./data:/app/data
+      # bge-m3 HF cache: the model (~2.3GB) downloads on first app startup
+      # via HF_ENDPOINT=https://hf-mirror.com and persists here across rebuilds.
+      - ./data/hf:/root/.cache/huggingface
     ports:
       - "127.0.0.1:8600:8000"
       - "100.64.0.7:8600:8000"

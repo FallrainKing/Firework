@@ -9,23 +9,26 @@ WORKDIR /app
 # Dependency layer: copied (and installed) before the source so that code
 # changes do not bust the pip cache.
 COPY requirements.txt pyproject.toml ./
+
+# torch MUST be the CPU build: installed from the PyTorch CPU index FIRST
+# (with the fast local mirror for its pure-python deps) so that the later
+# `pip install -r requirements.txt` — which pulls in sentence-transformers,
+# itself depending on torch — sees torch>=2.5 already satisfied and never
+# drags in the multi-GB CUDA wheels from PyPI.
 RUN pip install --no-cache-dir \
+      --index-url https://download.pytorch.org/whl/cpu \
+      torch \
+ && pip install --no-cache-dir \
       -i https://pypi.tuna.tsinghua.edu.cn/simple \
       -r requirements.txt
 
 COPY app ./app
 
-# TODO(embedding task): pre-download the bge-m3 model at build time, e.g.
-#   RUN pip install --no-cache-dir sentence-transformers \
-#       && python -c "from sentence_transformers import SentenceTransformer; \
-#                      SentenceTransformer('BAAI/bge-m3')"
-# NOTE(torch): the CPU build is required (no GPU) — install it from the PyTorch
-#   CPU index BEFORE sentence-transformers so pip does not drag in the
-#   multi-GB CUDA wheels from PyPI:
-#   RUN pip install --no-cache-dir torch \
-#         --index-url https://download.pytorch.org/whl/cpu \
-#       && pip install --no-cache-dir sentence-transformers qdrant-client
-# (Deliberately not done in the P1 skeleton task to keep the image slim.)
+# The bge-m3 embedding model (~2.3GB) is deliberately NOT downloaded at build
+# time (slow, and a failed retry busts the whole layer). docker-compose.yml
+# mounts ./data/hf as the HF cache and the app downloads the model through
+# HF_ENDPOINT=https://hf-mirror.com on first startup (one-off, 5–15 min;
+# while it runs the container is not listening yet — /health retries cover it).
 
 EXPOSE 8000
 

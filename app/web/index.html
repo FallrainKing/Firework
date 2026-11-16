@@ -3,29 +3,62 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Research Assistant</title>
-  <style>
-    :root { color-scheme: light dark; }
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-      margin: 0; min-height: 100vh;
-      display: flex; align-items: center; justify-content: center;
-    }
-    main { text-align: center; padding: 2rem; }
-    h1 { font-size: 1.6rem; }
-    p { color: #666; }
-    .pill {
-      display: inline-block; padding: 0.25rem 0.75rem;
-      border: 1px solid #ccc; border-radius: 999px;
-      font-size: 0.85rem; color: #888;
-    }
-  </style>
+  <title>个人 AI 科研助手</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <main>
+  <header>
     <h1>个人 AI 科研助手</h1>
     <p>前沿雷达 · 论文精读 · AI 导师</p>
-    <span class="pill">P1 骨架占位页 — 功能建设中</span>
+  </header>
+
+  <div id="toast-area" aria-live="polite"></div>
+
+  <main class="layout">
+    <!-- 左栏（移动端为上半区）：论文列表 + 添加论文 -->
+    <div class="left-col">
+      <section class="panel" id="papers-panel">
+        <h2>论文列表 <button class="secondary" id="refresh-papers">刷新</button></h2>
+        <ul id="paper-list"></ul>
+        <p class="hint" id="papers-empty" hidden>暂无论文，请先在下方添加。</p>
+        <p class="hint">点击论文可将其选为问答上下文；再次点击取消选择。</p>
+      </section>
+
+      <section class="panel" id="upload-panel">
+        <h2>添加论文</h2>
+        <div class="row">
+          <input type="file" id="pdf-file" accept="application/pdf,.pdf" />
+          <button id="upload-btn">上传 PDF</button>
+        </div>
+        <div class="row">
+          <input type="url" id="arxiv-url" placeholder="arXiv 链接或 ID，如 https://arxiv.org/abs/2401.00001" />
+          <button id="arxiv-btn">导入 arXiv</button>
+        </div>
+        <div class="row">
+          <input type="text" id="import-path" placeholder="服务器上的文件夹路径（批量导入其中全部 PDF）" />
+          <button id="import-btn">批量导入</button>
+        </div>
+        <div class="progress-wrap" id="import-progress" hidden>
+          <div class="progress-bar"><div id="import-bar-fill"></div></div>
+          <div class="progress-text" id="import-status-text"></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- 右栏（移动端为下半区）：问答对话 -->
+    <div class="right-col">
+      <section class="panel" id="qa-panel">
+        <h2>问答</h2>
+        <div id="qa-context">当前上下文：全部论文</div>
+        <div id="chat-log" aria-live="polite"></div>
+        <form id="qa-form">
+          <textarea id="question" placeholder="例如：这篇论文讲了什么？"></textarea>
+          <button type="submit" id="ask-btn">提问</button>
+        </form>
+      </section>
+    </div>
   </main>
+
+  <script src="app.js"></script>
 </body>
 </html>

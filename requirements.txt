@@ -6,9 +6,12 @@ httpx>=0.28
 pydantic>=2.9
 pymupdf>=1.24
 python-multipart>=0.0.20  # multipart uploads (POST /api/papers/upload)
-# torch MUST be the CPU build: install with
+# torch MUST be the CPU build (a GPU-less host + the multi-GB CUDA wheels
+# from PyPI make the default build useless here). It is NOT listed as a
+# normal dependency on purpose: the Dockerfile installs it from the PyTorch
+# CPU index BEFORE `pip install -r requirements.txt`, so pip sees torch>=2.5
+# already satisfied and never pulls the CUDA wheels from PyPI. Local/venv
+# installs should do the same:
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
-# (installing it from PyPI would pull the multi-GB CUDA wheels)
-torch>=2.5
 sentence-transformers>=3.3
 qdrant-client>=1.12

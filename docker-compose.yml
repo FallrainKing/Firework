@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Container-internal overrides: paths/hosts differ from the host-side .env
+      DATA_DIR: /app/data
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "127.0.0.1:8600:8000"
+      - "100.64.0.7:8600:8000"
+    depends_on:
+      - qdrant
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - ./data/qdrant:/qdrant/storage
+
+  backup:
+    build: ./ops
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Shanghai
+      # Used when invoking /ops/backup.sh manually via docker exec; the
+      # nightly cron job falls back to the same defaults baked into the script.
+      QDRANT_URL: http://qdrant:6333
+    volumes:
+      - ./data:/data
+      - ./backups:/backups
+    depends_on:
+      - qdrant

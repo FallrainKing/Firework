@@ -1,0 +1,6 @@
+# Runtime dependencies for the app image (kept in sync with pyproject.toml).
+# Copied into the image before the source for Docker layer caching.
+fastapi>=0.115
+uvicorn[standard]>=0.32
+httpx>=0.28
+pydantic>=2.9

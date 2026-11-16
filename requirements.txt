@@ -4,3 +4,9 @@ fastapi>=0.115
 uvicorn[standard]>=0.32
 httpx>=0.28
 pydantic>=2.9
+# torch MUST be the CPU build: install with
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# (installing it from PyPI would pull the multi-GB CUDA wheels)
+torch>=2.5
+sentence-transformers>=3.3
+qdrant-client>=1.12

@@ -19,6 +19,12 @@ COPY app ./app
 #   RUN pip install --no-cache-dir sentence-transformers \
 #       && python -c "from sentence_transformers import SentenceTransformer; \
 #                      SentenceTransformer('BAAI/bge-m3')"
+# NOTE(torch): the CPU build is required (no GPU) — install it from the PyTorch
+#   CPU index BEFORE sentence-transformers so pip does not drag in the
+#   multi-GB CUDA wheels from PyPI:
+#   RUN pip install --no-cache-dir torch \
+#         --index-url https://download.pytorch.org/whl/cpu \
+#       && pip install --no-cache-dir sentence-transformers qdrant-client
 # (Deliberately not done in the P1 skeleton task to keep the image slim.)
 
 EXPOSE 8000

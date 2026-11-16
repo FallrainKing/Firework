@@ -5,6 +5,7 @@ uvicorn[standard]>=0.32
 httpx>=0.28
 pydantic>=2.9
 pymupdf>=1.24
+python-multipart>=0.0.20  # multipart uploads (POST /api/papers/upload)
 # torch MUST be the CPU build: install with
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 # (installing it from PyPI would pull the multi-GB CUDA wheels)

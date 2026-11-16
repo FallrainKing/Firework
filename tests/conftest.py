@@ -107,3 +107,87 @@ def ingest_stack(tmp_path, embedder):
     store = VectorStore(QdrantClient(":memory:"), collection="chunks")
     store.ensure_collection(embedder.dimension)
     return db, store, tmp_path, embedder
+
+
+# ---------------------------------------------------------------------------
+# Task 7: API test helpers
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+#: strict-JSON metadata reply the fake "fast" tier serves for sample.pdf,
+#: so uploads exercise the real LLM-metadata path of the ingest pipeline.
+GOOD_METADATA_JSON = _json.dumps(
+    {
+        "title": "Sample Research Paper",
+        "authors": ["Author One", "Author Two"],
+        "abstract": "A tiny synthetic paper generated with PyMuPDF.",
+    }
+)
+
+
+class FakeGateway:
+    """LLM gateway double with per-tier canned replies.
+
+    A tier without a configured reply raises, which (a) makes the upload
+    pipeline's metadata extractor fall back to filename-derived metadata —
+    what the batch-import tests rely on to get distinct titles per file —
+    and (b) makes any unexpected LLM call fail loudly in tests that must
+    not talk to a gateway at all.
+    """
+
+    def __init__(self, fast: str | None = None, strong: str | None = None):
+        self.fast = fast
+        self.strong = strong
+        self.calls: list[dict] = []
+
+    async def chat(
+        self, messages, tier="fast", max_tokens=4096, temperature=None
+    ):
+        self.calls.append(
+            {
+                "tier": tier,
+                "messages": messages,
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            }
+        )
+        reply = self.fast if tier == "fast" else self.strong
+        if reply is None:
+            raise RuntimeError(f"fake gateway: no reply configured for tier {tier!r}")
+        return {
+            "text": reply,
+            "thinking": "",
+            "provider": "fake",
+            "model": "fake",
+            "usage": {"input": 0, "output": 0},
+        }
+
+
+@pytest.fixture()
+def api_client(tmp_path, monkeypatch, embedder):
+    """Factory building a ``TestClient`` whose lifespan wires test doubles.
+
+    ``DATA_DIR`` points at ``tmp_path`` and ``QDRANT_URL`` at ``:memory:``,
+    so the real lifespan in ``app.main`` builds a genuine per-test stack
+    (sqlite + in-process qdrant). Only the two pieces that must not be real
+    are monkeypatched: ``Embedder`` (reuse the session bge-m3 instance
+    instead of loading a second copy) and ``LLMGateway`` (the caller's fake).
+
+    The returned client MUST be used as a context manager — otherwise the
+    lifespan never runs and background import jobs have no event loop.
+    """
+    from fastapi.testclient import TestClient
+
+    from app import main
+
+    def _make(gateway) -> TestClient:
+        monkeypatch.setenv("DATA_DIR", str(tmp_path))
+        monkeypatch.setenv("QDRANT_URL", ":memory:")
+        monkeypatch.setattr(
+            main, "Embedder", lambda model_name="BAAI/bge-m3": embedder
+        )
+        monkeypatch.setattr(main, "LLMGateway", lambda settings=None: gateway)
+        return TestClient(main.create_app())
+
+    return _make

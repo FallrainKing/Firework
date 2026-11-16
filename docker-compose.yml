@@ -28,9 +28,11 @@ services:
         condition: service_healthy
 
   qdrant:
-    # pinned to the version actually running (was :latest) so a floating
-    # tag can never change the storage format under a rebuilt deployment
-    image: qdrant/qdrant:1.20.2
+    # pinned by digest to the version actually running (server reports
+    # "qdrant 1.20.2"; was :latest) so a floating tag can never change the
+    # storage format under a rebuilt deployment. The local registry mirror
+    # only serves already-cached tags, hence the digest (not "1.20.2") form.
+    image: qdrant/qdrant@sha256:d277592721d2e3b73f9b797b53cf05e6a5bb2134f6d13fdbda4ca51782afbcac
     restart: unless-stopped
     volumes:
       - ./data/qdrant:/qdrant/storage

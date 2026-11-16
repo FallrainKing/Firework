@@ -7,6 +7,12 @@ services:
       # Container-internal overrides: paths/hosts differ from the host-side .env
       DATA_DIR: /app/data
       QDRANT_URL: http://qdrant:6333
+      # Host uid/gid owning ./data: docker auto-creates the volume dir as
+      # root; the container entrypoint chowns the mount point to this id on
+      # startup so the host user keeps write access (set HOST_UID in .env
+      # for a non-1000 host user).
+      HOST_UID: "${HOST_UID:-1000}"
+      HOST_GID: "${HOST_GID:-1000}"
     volumes:
       - ./data:/app/data
       # bge-m3 HF cache: the model (~2.3GB) downloads on first app startup

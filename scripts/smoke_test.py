@@ -137,9 +137,10 @@ def step_import_folder(client: httpx.Client) -> None:
     except PermissionError:
         fail(
             "step 4 批量导入",
-            f"{HOST_DATA_DIR} 不可写（docker 首次 up 时以 root 自动创建了该目录）。"
-            "修复：宿主机先 mkdir data 再 docker compose up；或对已存在的目录执行"
-            " `sg docker -c \"docker compose exec app chown $(id -u):$(id -g) /app/data\"`。",
+            f"{HOST_DATA_DIR} 不可写（其属主与当前用户不一致；容器入口脚本本应"
+            "在启动时将其 chown 为 HOST_UID）。若宿主用户 uid 非 1000，请在 .env"
+            " 设置 HOST_UID=<你的 uid> 后执行"
+            " `docker compose up -d --force-recreate app`。",
         )
     container_path = f"{CONTAINER_DATA_DIR}/{tmp_dir.name}"
     try:

@@ -22,6 +22,7 @@ RUN pip install --no-cache-dir \
       -i https://pypi.tuna.tsinghua.edu.cn/simple \
       -r requirements.txt
 
+COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY app ./app
 
 # The bge-m3 embedding model (~2.3GB) is deliberately NOT downloaded at build
@@ -32,4 +33,8 @@ COPY app ./app
 
 EXPOSE 8000
 
+# entrypoint: self-heal the /app/data mount ownership (docker auto-creates
+# ./data as root on the host, which would lock the host user out of it);
+# then hand off to the CMD below. See docker-entrypoint.sh.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

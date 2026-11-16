@@ -8,10 +8,11 @@ API calls are ever made. Async gateway code is driven with ``asyncio.run``
 import asyncio
 
 import httpx
+import pytest
 
 from app.config import Settings
 from app.db import get_conn
-from app.llm.gateway import LLMGateway
+from app.llm.gateway import LLMGateway, LLMHTTPStatusError
 
 ANTHROPIC_PROVIDER = {
     "name": "glm",
@@ -141,6 +142,45 @@ def test_failover_to_second_provider(tmp_path, monkeypatch):
     assert reply["provider"] == "second"
     assert reply["text"] == "rescued"
     assert len(calls) == 2  # first provider failed, second answered
+
+
+def test_http_400_raises_without_failover(tmp_path, monkeypatch):
+    # 4xx is a configuration error: it must surface, never silently switch routes.
+    second = dict(ANTHROPIC_PROVIDER, name="second", model="m2")
+    calls = patch_post(
+        monkeypatch,
+        [FakeResponse(400, text="invalid request")],
+    )
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
+    )
+
+    with pytest.raises(LLMHTTPStatusError) as excinfo:
+        asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert excinfo.value.status_code == 400
+    assert excinfo.value.provider == "glm"
+    # only the preferred provider was hit; failover must NOT have happened
+    assert [c["url"] for c in calls] == ["https://api.example.com/v1/messages"]
+
+
+def test_text_before_thinking_takes_last_text(tmp_path, monkeypatch):
+    payload = {
+        "model": "glm-5.3",
+        "content": [
+            {"type": "text", "text": "first"},
+            {"type": "thinking", "thinking": "hmm", "signature": "sig"},
+            {"type": "text", "text": "second"},
+        ],
+        "usage": {"input_tokens": 5, "output_tokens": 5},
+    }
+    patch_post(monkeypatch, [FakeResponse(200, payload)])
+    gw = LLMGateway(make_settings(tmp_path, [ANTHROPIC_PROVIDER], fast="glm"))
+
+    reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert reply["text"] == "second"  # LAST text block wins
+    assert reply["thinking"] == "hmm"
 
 
 def test_usage_recorded_in_db(tmp_path, monkeypatch):

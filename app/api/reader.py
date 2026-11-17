@@ -122,7 +122,7 @@ async def save_state(paper_id:int,body:Position,request:Request):
 @router.get('/papers/{paper_id}/translations')
 async def translations(paper_id:int,request:Request):
     paper(request.app.state.db,paper_id)
-    rows=request.app.state.db.execute('SELECT t.*,r.status,r.answer,r.error FROM reader_translations t JOIN agent_runs r ON r.id=t.run_id WHERE t.paper_id=? ORDER BY t.created_at DESC',(paper_id,)).fetchall()
+    rows=request.app.state.db.execute('SELECT t.*,r.status,r.answer,r.error FROM reader_translations t JOIN agent_runs r ON r.id=t.run_id WHERE t.paper_id=? AND t.deleted=0 ORDER BY t.created_at DESC',(paper_id,)).fetchall()
     return {'translations':[dict(r) for r in rows]}
 
 @router.post('/translations')
@@ -134,8 +134,20 @@ async def translate(body:Translation,request:Request):
     except ValueError as e:raise HTTPException(409,str(e))
     digest=str(body.page)+':'+hashlib.sha256(body.quote.strip().encode()).hexdigest()
     old=db.execute('SELECT t.*,r.status,r.answer FROM reader_translations t JOIN agent_runs r ON r.id=t.run_id WHERE t.paper_id=? AND t.file_version=? AND t.quote_hash=? AND t.language=?',(body.paper_id,body.file_version,digest,'zh-CN')).fetchone()
-    if old and old['status']!='failed':return {**dict(old),'cached':True}
+    if old and old['status']!='failed':
+        db.execute('UPDATE reader_translations SET deleted=0 WHERE id=?',(old['id'],));db.commit()
+        return {**dict(old),'deleted':0,'cached':True}
     run=await create_run(RunCreate(conversation_id=body.conversation_id,prompt='请把本次选中的原文准确翻译成简体中文，只输出译文，保留专业术语、数字与公式。',contexts=[context],purpose='translate'),request)
     ident=old['id'] if old else uuid.uuid4().hex
-    db.execute("INSERT INTO reader_translations(id,paper_id,conversation_id,page,file_version,quote,quote_hash,run_id) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(paper_id,file_version,quote_hash,language) DO UPDATE SET run_id=excluded.run_id,conversation_id=excluded.conversation_id",(ident,body.paper_id,body.conversation_id,body.page,body.file_version,body.quote,digest,run['id']));db.commit()
+    db.execute("INSERT INTO reader_translations(id,paper_id,conversation_id,page,file_version,quote,quote_hash,run_id) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(paper_id,file_version,quote_hash,language) DO UPDATE SET run_id=excluded.run_id,conversation_id=excluded.conversation_id,deleted=0",(ident,body.paper_id,body.conversation_id,body.page,body.file_version,body.quote,digest,run['id']));db.commit()
     return {'id':ident,'run_id':run['id'],'status':run['status'],'cached':False}
+
+class TranslationVisibility(BaseModel):
+    deleted:bool
+
+@router.patch('/translations/{ident}')
+async def translation_visibility(ident:str,body:TranslationVisibility,request:Request):
+    db=request.app.state.db
+    if not db.execute('SELECT 1 FROM reader_translations WHERE id=?',(ident,)).fetchone():raise HTTPException(404,'翻译记录不存在')
+    db.execute('UPDATE reader_translations SET deleted=? WHERE id=?',(body.deleted,ident));db.commit()
+    return {'id':ident,'deleted':body.deleted}

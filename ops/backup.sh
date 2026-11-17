@@ -70,7 +70,7 @@ if [ -d "${DATA_DIR}/agent/claude-config" ] && [ -d "${DATA_DIR}/agent/sessions"
 fi
 
 # Original PDFs and staged imports are needed alongside reader records.
-for folder in papers imports; do
+for folder in papers imports attachments; do
     if [ -d "${DATA_DIR}/$folder" ]; then
         tar -czf "${BACKUP_DIR}/${folder}-${DATE}.tar.gz" -C "$DATA_DIR" "$folder"
     fi
@@ -86,6 +86,7 @@ prune() {
         echo "backup.sh: pruned $f"
     done
 }
+prune 'attachments-*.tar.gz'
 prune 'papers-*.tar.gz'
 prune 'imports-*.tar.gz'
 prune 'agent-sessions-*.tar.gz'

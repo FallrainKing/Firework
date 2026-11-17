@@ -27,6 +27,7 @@ class RunCreate(BaseModel):
     skill: str | None = None
     conversation_id: int | None = None
     contexts: list[Context] = Field(default_factory=list,max_length=3)
+    attachment_ids: list[str] = Field(default_factory=list,max_length=3)
     purpose: str = Field('chat',pattern=r'^(chat|translate|explain)$')
     request_key: str = Field(default_factory=lambda: uuid.uuid4().hex, min_length=1, max_length=80)
 
@@ -40,6 +41,7 @@ def view(row) -> dict:
     for key in ('usage', 'tool_calls', 'metadata'):
         result[key] = json.loads(result.pop(key + '_json'))
     result['contexts']=json.loads(result.pop('context_json','[]'))
+    result['attachment_ids']=json.loads(result.pop('attachment_ids_json','[]'))
     result['cost_verified'] = False
     return result
 
@@ -115,7 +117,7 @@ async def create_run(body: RunCreate, request: Request):
     if prior:
         try: prior_contexts=[validate_context(state.settings,db,c.model_dump(),prior['conversation_id']) for c in body.contexts]
         except ValueError as e:raise HTTPException(409,str(e))
-        if json.loads(prior['context_json']) != prior_contexts or prior['purpose'] != body.purpose or prior['prompt'] != prompt or (body.skill is not None and prior['skill'] != body.skill) or (body.conversation_id is not None and prior['conversation_id'] != body.conversation_id):
+        if json.loads(prior['attachment_ids_json']) != body.attachment_ids or json.loads(prior['context_json']) != prior_contexts or prior['purpose'] != body.purpose or prior['prompt'] != prompt or (body.skill is not None and prior['skill'] != body.skill) or (body.conversation_id is not None and prior['conversation_id'] != body.conversation_id):
             raise HTTPException(409, 'Request key already used for different input')
         return view(prior)
     if db.execute("SELECT count(*) FROM agent_runs WHERE status IN ('queued','running')").fetchone()[0] >= 8:
@@ -133,6 +135,11 @@ async def create_run(body: RunCreate, request: Request):
             raise HTTPException(409, 'This conversation already has an active task')
     elif skill in ('paper_read','paper_review','paper_compare'):
         raise HTTPException(400, '请先通过任务模板创建关联论文的会话')
+    if body.attachment_ids:
+        from .workbench import image_rows
+        if conv_id is None:raise HTTPException(400,'图片需要关联论文会话')
+        for image in image_rows(db,body.attachment_ids,conv_id):
+            if not db.execute('SELECT 1 FROM conversation_papers WHERE conversation_id=? AND paper_id=?',(conv_id,image['paper_id'])).fetchone():raise HTTPException(400,'图片所属论文未关联当前会话')
     contexts=[]
     if body.contexts:
         if conv_id is None:raise HTTPException(400,'请先建立关联论文的会话')
@@ -144,7 +151,7 @@ async def create_run(body: RunCreate, request: Request):
             cursor = db.execute("INSERT INTO conversations(module,title,messages,skill,kind,native_session_id) VALUES ('agent',?,'[]',?,?,?)", (prompt[:80],skill,'discovery' if skill.startswith('search_') else 'chat',str(uuid.uuid4())))
             conv_id = cursor.lastrowid
         run_id = uuid.uuid4().hex
-        db.execute("INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status,skill_version,context_json,purpose) VALUES (?,?,?,?,?,'queued','0.3.0',?,?)", (run_id,body.request_key,conv_id,skill,prompt,json.dumps(contexts,ensure_ascii=False),body.purpose))
+        db.execute("INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status,skill_version,context_json,purpose,attachment_ids_json) VALUES (?,?,?,?,?,'queued','0.4.0',?,?,?)", (run_id,body.request_key,conv_id,skill,prompt,json.dumps(contexts,ensure_ascii=False),body.purpose,json.dumps(body.attachment_ids)))
         db.execute("UPDATE conversations SET draft_prompt='' WHERE id=?",(conv_id,))
         db.commit()
     except Exception:
@@ -177,7 +184,7 @@ async def execute_run(run_id: str, state):
             db.execute("UPDATE agent_runs SET status='running' WHERE id=?", (run_id,)); db.commit()
             try:
                 async with client() as c:
-                    response = await c.post('/run', json={'run_id':run_id,'skill':row['skill'],'prompt':row['prompt'],'history':history if not session['native_ready'] else [],'session_id':session['native_session_id'],'native_ready':bool(session['native_ready']),'paper_ids':paper_ids,'contexts':json.loads(row['context_json']),'import_request_id':import_row['id'] if import_row else None})
+                    response = await c.post('/run', json={'run_id':run_id,'skill':row['skill'],'prompt':row['prompt'],'history':history if not session['native_ready'] else [],'session_id':session['native_session_id'],'native_ready':bool(session['native_ready']),'paper_ids':paper_ids,'contexts':json.loads(row['context_json']),'attachment_ids':json.loads(row['attachment_ids_json']),'import_request_id':import_row['id'] if import_row else None})
                     response.raise_for_status()
                     result = response.json()
                 if result.get('status') not in ('succeeded','failed'):

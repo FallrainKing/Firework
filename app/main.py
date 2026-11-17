@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
-from .api import agent, sessions, library, reader, imports_v2
+from .api import agent, sessions, library, reader, imports_v2, workbench
 from .config import Settings
 from .db import get_conn
 from .llm.gateway import LLMGateway
@@ -89,8 +89,11 @@ async def lifespan(app: FastAPI):
 
     agent.init_agent_state(app)
     try:
+        scheduler=asyncio.create_task(workbench.schedule_loop(app))
         yield
     finally:
+        scheduler.cancel()
+        await asyncio.gather(scheduler,return_exceptions=True)
         await agent.close_agent_state(app)
         db.close()
 
@@ -110,6 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(reader.router)
     app.include_router(imports_v2.router)
     app.include_router(imports_v2.internal)
+    app.include_router(workbench.router)
 
     @app.get("/health")
     def health() -> dict:

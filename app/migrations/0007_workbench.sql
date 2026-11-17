@@ -1,0 +1,6 @@
+ALTER TABLE reader_translations ADD COLUMN deleted INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE agent_runs ADD COLUMN attachment_ids_json TEXT NOT NULL DEFAULT '[]';
+CREATE TABLE workspace_states(id TEXT PRIMARY KEY,state_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE reader_drafts(conversation_id INTEGER NOT NULL REFERENCES conversations(id),paper_id INTEGER NOT NULL REFERENCES papers(id),draft_json TEXT NOT NULL DEFAULT '{}',updated_at TEXT DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(conversation_id,paper_id));
+CREATE TABLE image_attachments(id TEXT PRIMARY KEY,conversation_id INTEGER NOT NULL REFERENCES conversations(id),paper_id INTEGER NOT NULL REFERENCES papers(id),filename TEXT NOT NULL,mime TEXT NOT NULL,size INTEGER NOT NULL,width INTEGER NOT NULL,height INTEGER NOT NULL,created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE research_schedules(id INTEGER PRIMARY KEY,title TEXT NOT NULL,conversation_id INTEGER NOT NULL REFERENCES conversations(id),prompt TEXT NOT NULL,interval_hours INTEGER NOT NULL DEFAULT 24 CHECK(interval_hours>=1),enabled INTEGER NOT NULL DEFAULT 0,next_at TEXT,last_run_id TEXT REFERENCES agent_runs(id),created_at TEXT DEFAULT CURRENT_TIMESTAMP);

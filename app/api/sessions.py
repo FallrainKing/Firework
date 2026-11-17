@@ -71,9 +71,10 @@ async def create_category(body:Name,request:Request):
     return {'id':cur.lastrowid,'name':body.name.strip()}
 
 @router.get('')
-async def list_sessions(request:Request,q:str=Query('',max_length=200),kind:str|None=None,category_id:int|None=None,archived:bool=False,limit:int=Query(100,ge=1,le=200)):
+async def list_sessions(request:Request,q:str=Query('',max_length=200),kind:str|None=None,paper_id:int|None=None,category_id:int|None=None,archived:bool=False,limit:int=Query(100,ge=1,le=200)):
     db=request.app.state.db
     sql="SELECT c.* FROM conversations c WHERE c.module='agent' AND c.archived=?";args=[int(archived)]
+    if paper_id is not None:sql+=' AND EXISTS(SELECT 1 FROM conversation_papers cp WHERE cp.conversation_id=c.id AND cp.paper_id=?)';args.append(paper_id)
     if kind:sql+=' AND c.kind=?';args.append(kind)
     if category_id is not None:
         sql+=' AND '+('c.category_id IS NULL' if category_id==0 else 'c.category_id=?')

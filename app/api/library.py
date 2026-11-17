@@ -23,7 +23,8 @@ def card(db,row):
     d['summary']=d['brief_summary'] or (d['abstract'] or '')[:320]
     d['collections']=[dict(r) for r in db.execute('SELECT c.id,c.name FROM paper_collections c JOIN paper_collection_items x ON x.collection_id=c.id WHERE x.paper_id=? ORDER BY c.id',(d['id'],))]
     d['thumbnail_url']=f"/api/library/papers/{d['id']}/thumbnail" if d['pdf_path'] else None
-    d['image_caption']='原始 PDF 首页预览'
+    d['image_caption']='原始 PDF 首页预览' if d['pdf_path'] else '书目信息 · 全文待补充'
+    d['has_pdf']=bool(d['pdf_path'])
     d.pop('pdf_path',None)
     return d
 

@@ -1,5 +1,6 @@
-"""Small read-only stdio MCP server. stdout is JSON-RPC only."""
+"""Scoped stdio MCP server. stdout is JSON-RPC only."""
 from __future__ import annotations
+import asyncio
 import json
 import os
 from pathlib import Path
@@ -11,6 +12,8 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+
 SCHEMA = {"type": "object", "properties": {"query": {"type": "string", "maxLength": 200}}, "required": ["query"], "additionalProperties": False}
 _last_arxiv_request = 0.0
 
@@ -18,7 +21,35 @@ TOOLS = [
     {"name": "library_search", "description": "Search the user's saved paper titles, abstracts and original text. Empty query lists papers. Read only. Page numbers from legacy chunks are unverified.", "inputSchema": SCHEMA},
     {"name": "arxiv_search", "description": "Search real arXiv papers by short English keywords. Returns titles, IDs, abstracts and source URLs. No PDF download or model call.", "inputSchema": SCHEMA},
     {"name":"paper_read", "description":"Read indexed original text for a paper associated with this task session. Returns bounded chunks and explicit coverage; not a full-paper or figure reading guarantee.", "inputSchema":{"type":"object","properties":{"paper_id":{"type":"integer","minimum":1},"start_chunk":{"type":"integer","minimum":0}},"required":["paper_id"],"additionalProperties":False}},
+
+    {"name":"paper_page","description":"Read a physical PDF page with accurate page number and file version for a paper linked to this session.","inputSchema":{"type":"object","properties":{"paper_id":{"type":"integer","minimum":1},"page":{"type":"integer","minimum":1}},"required":["paper_id","page"],"additionalProperties":False}},
+    {"name":"paper_search","description":"Search public academic metadata on arxiv or crossref. Returns real source records for a user to import.","inputSchema":{"type":"object","properties":{"query":{"type":"string","maxLength":200},"source":{"type":"string","enum":["arxiv","crossref"]}},"required":["query","source"],"additionalProperties":False}},
+    {"name":"paper_import","description":"Execute only the import request ID bound to this Agent task. No arbitrary file path or network access.","inputSchema":{"type":"object","properties":{"request_id":{"type":"string","pattern":"^[a-f0-9]{32}$"}},"required":["request_id"],"additionalProperties":False}},
 ]
+
+def paper_page(paper_id,page,db_path):
+    from app.reader_store import read_page
+    from app.config import Settings
+    if paper_id not in json.loads(os.environ.get('RESEARCH_PAPER_IDS','[]')):raise ValueError('Paper is not linked to this session')
+    with sqlite3.connect(Path(db_path).resolve().as_uri()+'?mode=ro',uri=True) as db:
+        db.row_factory=sqlite3.Row;row=db.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
+        if row is None:raise ValueError('Paper not found')
+        result=read_page(Settings(data_dir=Path(db_path).parent,qdrant_url='unused'),row,page)
+    result['truncated']=len(result['text'])>14000;result['text']=result['text'][:14000]
+    return result
+
+def paper_search(query,source):
+    if source=='arxiv':return arxiv_search(query)
+    if source=='crossref':
+        from app.paper_sources import crossref_search
+        return asyncio.run(crossref_search(query))
+    raise ValueError('Unknown academic source')
+
+def paper_import(request_id):
+    if request_id!=os.environ.get('RESEARCH_IMPORT_ID') or not request_id:raise ValueError('Import request not authorized for this task')
+    token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
+    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/imports/'+request_id+'/execute',data=b'{}',headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID']})
+    with urllib.request.urlopen(req,timeout=100) as response:return json.load(response)
 
 def paper_read(paper_id: int, start_chunk: int, db_path: str) -> dict:
     allowed=json.loads(os.environ.get('RESEARCH_PAPER_IDS','[]'))
@@ -84,7 +115,7 @@ def arxiv_search(query: str) -> dict:
         url = (item.findtext(atom + 'id') or '').strip().replace('http://', 'https://', 1)
         if not url.startswith('https://arxiv.org/abs/'):
             raise ValueError('arXiv returned an invalid entry')
-        papers.append({'title': ' '.join((item.findtext(atom + 'title') or '').split()), 'url': url, 'arxiv_id': url.split('/abs/', 1)[1], 'abstract': ' '.join((item.findtext(atom + 'summary') or '').split())[:1200], 'published': item.findtext(atom + 'published')})
+        papers.append({'title': ' '.join((item.findtext(atom + 'title') or '').split()), 'url': url, 'arxiv_id': url.split('/abs/', 1)[1], 'abstract': ' '.join((item.findtext(atom + 'summary') or '').split())[:1200], 'published': item.findtext(atom + 'published'), 'authors':[(a.findtext(atom+'name') or '').strip() for a in item.findall(atom+'author')]})
     return {'source': 'arxiv', 'query': query, 'papers': papers, 'result_limit': 2}
 
 def serve() -> None:
@@ -96,11 +127,12 @@ def serve() -> None:
                 continue
             method = req.get('method')
             if method == 'initialize':
-                result = {'protocolVersion': '2025-06-18', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'research-readonly', 'version': '0.1.0'}}
+                result = {'protocolVersion': '2025-06-18', 'capabilities': {'tools': {}}, 'serverInfo': {'name': 'research-scoped', 'version': '0.3.0'}}
             elif method == 'ping':
                 result = {}
             elif method == 'tools/list':
-                result = {'tools': TOOLS}
+                allowed=json.loads(os.environ.get('RESEARCH_ALLOWED_TOOLS','[]'))
+                result = {'tools': [t for t in TOOLS if t['name'] in allowed]}
             elif method == 'tools/call':
                 params = req.get('params', {})
                 name = params.get('name')
@@ -114,14 +146,21 @@ def serve() -> None:
                     raise ValueError('tool call limit reached; finish with existing results')
                 started = time.monotonic()
                 try:
-                    payload = library_search(query, os.environ['RESEARCH_DB_PATH']) if name == 'library_search' else arxiv_search(query) if name == 'arxiv_search' else paper_read(params.get('arguments',{}).get('paper_id'),params.get('arguments',{}).get('start_chunk',0),os.environ['RESEARCH_DB_PATH']) if name=='paper_read' else None
+                    arguments=params.get('arguments',{})
+                    if name=='library_search':payload=library_search(query,os.environ['RESEARCH_DB_PATH'])
+                    elif name=='arxiv_search':payload=arxiv_search(query)
+                    elif name=='paper_read':payload=paper_read(arguments.get('paper_id'),arguments.get('start_chunk',0),os.environ['RESEARCH_DB_PATH'])
+                    elif name=='paper_page':payload=paper_page(arguments.get('paper_id'),arguments.get('page'),os.environ['RESEARCH_DB_PATH'])
+                    elif name=='paper_search':payload=paper_search(query,arguments.get('source'))
+                    elif name=='paper_import':payload=paper_import(arguments.get('request_id'))
+                    else:payload=None
                     if payload is None:
                         raise ValueError('unknown tool')
                     record = {'tool': name, 'query': query, 'ok': True, 'result': payload}
                     result = {'content': [{'type': 'text', 'text': json.dumps(payload, ensure_ascii=False)}], 'isError': False}
                 except Exception as exc:
                     record = {'tool': name, 'query': query, 'ok': False, 'error': type(exc).__name__}
-                    result = {'content': [{'type': 'text', 'text': 'Search failed (' + type(exc).__name__ + '). Report the failure; do not invent results.'}], 'isError': True}
+                    result = {'content': [{'type': 'text', 'text': 'Tool failed (' + type(exc).__name__ + '). Report the failure; do not invent results.'}], 'isError': True}
                 record['duration_ms'] = round((time.monotonic() - started) * 1000)
                 log = os.environ.get('RESEARCH_TOOL_LOG')
                 if log:

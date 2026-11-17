@@ -23,6 +23,7 @@ mkdir -p "$BACKUP_DIR"
 # --- 1) SQLite online backup (safe while the app is writing) ---
 if [ -f "$DB" ]; then
     sqlite3 "$DB" ".backup '${BACKUP_DIR}/app-${DATE}.db'"
+    chmod 600 "${BACKUP_DIR}/app-${DATE}.db"
     echo "backup.sh: sqlite -> ${BACKUP_DIR}/app-${DATE}.db"
 else
     echo "backup.sh: no database at $DB, skipping sqlite backup" >&2
@@ -41,6 +42,7 @@ if curl -fsS "$QDRANT_URL/readyz" >/dev/null 2>&1; then
         if [ -n "$snap" ] && [ "$snap" != "null" ]; then
             curl -fsS -o "${BACKUP_DIR}/qdrant-${coll}-${DATE}.snap" \
                 "$QDRANT_URL/collections/$coll/snapshots/${snap}"
+            chmod 600 "${BACKUP_DIR}/qdrant-${coll}-${DATE}.snap"
             echo "backup.sh: qdrant/$coll -> qdrant-${coll}-${DATE}.snap"
         fi
 
@@ -67,6 +69,13 @@ if [ -d "${DATA_DIR}/agent/claude-config" ] && [ -d "${DATA_DIR}/agent/sessions"
     echo "backup.sh: native agent sessions archived"
 fi
 
+# Original PDFs and staged imports are needed alongside reader records.
+for folder in papers imports; do
+    if [ -d "${DATA_DIR}/$folder" ]; then
+        tar -czf "${BACKUP_DIR}/${folder}-${DATE}.tar.gz" -C "$DATA_DIR" "$folder"
+    fi
+done
+
 # --- 3) Retention (local): keep newest $KEEP of each kind, prune by mtime ---
 # NOTE: the glob must stay OUTSIDE the quotes: `"$BACKUP_DIR"/$1` lets the
 # shell expand the pattern; quoting it makes ls see a literal name, list 0
@@ -77,6 +86,8 @@ prune() {
         echo "backup.sh: pruned $f"
     done
 }
+prune 'papers-*.tar.gz'
+prune 'imports-*.tar.gz'
 prune 'agent-sessions-*.tar.gz'
 prune 'app-*.db'
 prune 'qdrant-*.snap'

@@ -63,6 +63,8 @@ def test_papers_schema(conn):
         "brief_summary",
         "summary_source",
         "metadata_version",
+        "doi",
+        "source_url",
     }
     # defaults
     assert cols["status"][4] == "'new'"

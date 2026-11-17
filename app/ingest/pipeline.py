@@ -134,6 +134,7 @@ async def ingest_paper(
     embedder: Embedder,
     store: VectorStore,
     data_dir: Path,
+    existing_paper_id: int | None = None,
 ) -> int:
     """Ingest one PDF end-to-end and return its paper_id.
 
@@ -149,7 +150,9 @@ async def ingest_paper(
     # with unchanged semantics.
     chunks, vectors = await asyncio.to_thread(_parse_and_embed, pdf_path, embedder)
 
-    existing_id = _find_existing_paper(db, arxiv_id, title)
+    existing_id = existing_paper_id if existing_paper_id is not None else _find_existing_paper(db, arxiv_id, title)
+    if existing_paper_id is not None and db.execute('SELECT 1 FROM papers WHERE id=?',(existing_paper_id,)).fetchone() is None:
+        raise ValueError('Target paper does not exist')
     if existing_id is not None:
         store.delete_paper(existing_id)  # idempotent; see module docstring
 

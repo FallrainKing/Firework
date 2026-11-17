@@ -13,6 +13,7 @@ from qdrant_client import QdrantClient
 
 from . import api
 from .api import library, imports_v2, workbench
+from .workbench.router import router as workbench_router
 from .agent.router import router as agent_router
 from .agent import service as agent_service
 from .reader.router import router as reader_router
@@ -120,6 +121,7 @@ def create_app() -> FastAPI:
     app.include_router(imports_v2.router)
     app.include_router(imports_v2.internal)
     app.include_router(workbench.router)
+    app.include_router(workbench_router)
 
     @app.get("/health")
     def health() -> dict:

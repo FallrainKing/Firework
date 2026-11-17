@@ -114,7 +114,7 @@ async def create_run(body: RunCreate, state) -> dict:
     elif skill in ('paper_read', 'paper_review', 'paper_compare'):
         raise ServiceError(400, '请先通过任务模板创建关联论文的会话')
     if body.attachment_ids:
-        from ..api.workbench import image_rows  # workbench domain lands in Task 6
+        from ..workbench.service import image_rows
 
         if conv_id is None:
             raise ServiceError(400, '图片需要关联论文会话')

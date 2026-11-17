@@ -5,12 +5,14 @@ import pytest
 import struct,zlib
 from fastapi.testclient import TestClient
 from app.api import workbench
+from app.workbench.router import router as workbench_router
+from app.storage import files as storage_files
 from test_reader_imports import reading
 from test_agent_mvp import client,wait
 
 @pytest.fixture
 def desk(reading):
-    c,s,sid,ctx=reading;c.app.include_router(workbench.router)
+    c,s,sid,ctx=reading;c.app.include_router(workbench.router);c.app.include_router(workbench_router)
     return c,s,sid,ctx
 
 def png():
@@ -95,8 +97,8 @@ def test_runner_native_image_stream_preserves_session_scope(desk,monkeypatch,tmp
 
 def test_container_images_are_owned_by_host_runner_user(desk,monkeypatch):
     c,s,sid,ctx=desk;owners=[]
-    monkeypatch.setattr(workbench.os,'geteuid',lambda:0)
-    monkeypatch.setattr(workbench.os,'chown',lambda path,uid,gid:owners.append((Path(path),uid,gid)))
+    monkeypatch.setattr(storage_files.os,'geteuid',lambda:0)
+    monkeypatch.setattr(storage_files.os,'chown',lambda path,uid,gid:owners.append((Path(path),uid,gid)))
     response=c.post('/api/workbench/images',data={'conversation_id':sid,'paper_id':1},files={'file':('figure.png',png())})
     assert response.status_code==201
     owner=s.data_dir.stat();assert len(owners)==2

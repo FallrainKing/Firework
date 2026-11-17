@@ -22,11 +22,12 @@ def _build_sample_pdf(path: Path) -> None:
 
     Layout (page numbers are 1-based):
       page 1 — title/authors/abstract (front matter) + "1 Introduction" + body
-      page 2 — intro continuation + "2 Method" + body, ending with the
-               unnumbered heading "Related Work" + body (exercises the
-               unnumbered-heading detection; the abstract is kept on the
-               "Abstract—..." line so it does not read as a standalone
-               "Abstract" heading)
+      page 2 — intro continuation + "2 Method" + body (including a
+               "Model"/"RT-2 55.4 21.1" table-header shape that must NOT
+               split), ending with the unnumbered heading "Related Work" +
+               body (exercises the unnumbered-heading detection; the
+               abstract is kept on the "Abstract—..." line so it does not
+               read as a standalone "Abstract" heading)
     """
     import pymupdf
 
@@ -73,6 +74,10 @@ def _build_sample_pdf(path: Path) -> None:
             "We split pages into sections with a numbered-heading regex.",
             "Then we chunk each section on sentence boundaries.",
             "The method is deliberately simple and deterministic.",
+            # a word-list line opening a table (header above a numeric row):
+            # must NOT split a section, even though "Model" is in the list
+            "Model",
+            "RT-2 55.4 21.1",
             "Related Work",
             "Prior work on unnumbered section headings is scarce.",
         ],

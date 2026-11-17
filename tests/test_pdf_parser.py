@@ -367,3 +367,104 @@ def test_known_heading_case_insensitive():
         "Experiments",
         "2 Conclusion",
     ]
+
+
+def test_table_header_word_list_line_not_heading(sample_pdf):
+    """A word-list line that opens a table — the next line is a table row
+    or row label, not prose — must not split a section. RT-2's tables put
+    the column header "Model" on its own line right above numeric rows;
+    accepting it swallowed Experiments body paragraphs into a fake
+    "Model" section."""
+    # the fixture bakes the numeric shape into the Method body:
+    # "Model" above "RT-2 55.4 21.1"
+    sections = split_sections(extract_pages(sample_pdf))
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "2 Method",
+        "Related Work",
+    ]
+    method = sections[2]
+    assert "Model" in method.text
+    assert "RT-2 55.4 21.1" in method.text
+
+    # lowercase row labels are table furniture too, not prose
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "Intro body.",
+        "Model",
+        "Seen Tasks",  # row label: has lowercase but reads as a table
+        "Language-Table 34.5 18.2",
+        "RT-2 62.2 26.7",
+        "2 Conclusion",
+        "Closing body.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == ["Front Matter", "1 Introduction", "2 Conclusion"]
+    assert "Model" in sections[1].text
+    assert "Seen Tasks" in sections[1].text
+
+
+def test_word_list_line_before_prose_is_heading():
+    """The same "Model" line followed by running prose does open a
+    section; so does a word-list heading directly followed by the next
+    accepted numbered heading ("Appendix" before "A. ...")."""
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "Intro body.",
+        "Model",
+        "We describe the model architecture in detail.",
+        "More model description continues here.",
+        "2 Conclusion",
+        "Closing body.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "Model",
+        "2 Conclusion",
+    ]
+
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "Intro body.",
+        "Appendix",
+        "A. Normalization",
+        "Normalization body.",
+        "2 Conclusion",
+        "Closing body.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "Appendix",
+        "A. Normalization",
+        "2 Conclusion",
+    ]
+
+
+def test_rejected_numbered_allcaps_never_falls_back():
+    """A numbered-shaped line rejected by the strict guards ("5 RELATED
+    WORK" skips 2-4) stays body text — it must never fall back to the
+    all-caps unnumbered rule."""
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "We begin with an overview of related methods.",
+        "5 RELATED WORK",  # skip -> rejected by the numbering state
+        "This stray line must not open a section.",
+        "2 Method",  # the real next major still lands
+        "Method body.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == ["Front Matter", "1 Introduction", "2 Method"]
+    assert "5 RELATED WORK" in sections[1].text

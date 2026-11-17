@@ -18,7 +18,10 @@ conservative unnumbered shapes (see :func:`_unnumbered_heading`): a whole
 line equal to a known section noun, or an all-caps line. Unnumbered
 headings run *parallel* to the numbering schemes — they never enter the
 numbering state machine, so a numbered heading elsewhere in the paper is
-unaffected by them.
+unaffected by them — but, unlike numbered headings, an unnumbered
+candidate must be followed by body prose (or by the next accepted
+heading): a word-list/all-caps line sitting on top of a table
+(``"Model"`` above ``"RT-2 55.4 21.1"``) is table furniture, not a title.
 
 Beyond the line-level shape rules (short, no sentence-final punctuation,
 capitalised content words), two context rules keep prose/list lines from
@@ -245,7 +248,9 @@ def _unnumbered_heading(stripped: str) -> str | None:
     The title is the whitespace-collapsed line in its original casing.
     Unnumbered headings are *parallel* to the numbered schemes: the caller
     keeps them out of :class:`_HeadingNumbering` entirely, so they neither
-    consume nor advance the numbered sequence.
+    consume nor advance the numbered sequence. The caller additionally
+    requires a prose line (or the next accepted heading) to follow — see
+    :func:`_is_prose_line`.
     """
     if not stripped or len(stripped) > _HEADING_MAX_CHARS:
         return None
@@ -262,6 +267,24 @@ def _unnumbered_heading(stripped: str) -> str | None:
     ):
         return collapsed
     return None
+
+
+def _is_prose_line(line: str) -> bool:
+    """True when a line reads as running text, not as table furniture.
+
+    A word-list/all-caps heading candidate is accepted only when the next
+    non-empty line is prose (or the next accepted heading) — RT-2's tables
+    put the column header ``"Model"`` on its own line right above numeric
+    rows or row labels (``"Seen Tasks"``), and accepting those as section
+    titles swallowed body paragraphs into fake sections. Prose means at
+    least three words carrying lowercase letters; a shorter line still
+    counts when it ends a sentence (``"Losses."``) — sentence-final
+    punctuation is the one shape table rows/labels never have.
+    """
+    lower_words = sum(1 for w in line.split() if any(c.islower() for c in w))
+    if lower_words >= 3:
+        return True
+    return bool(lower_words) and line[-1] in _SENTENCE_FINAL
 
 
 # -- context rules ----------------------------------------------------------
@@ -399,12 +422,14 @@ def split_sections(pages: list[PageText]) -> list[Section]:
     numbered but are rejected by those guards never fall back to the
     unnumbered rules — a rejected "3 Related Work" stays body text. A
     line that is not numbered at all becomes a heading when it matches one
-    of the unnumbered shapes (:func:`_unnumbered_heading`); unnumbered
-    headings do not enter the numbering state machine. Heading lines are
-    kept as the first line of their section's text; ``Section.page`` is
-    the page the heading appears on. Text found before the first heading
-    becomes a single ``"Front Matter"`` section (omitted entirely when the
-    paper starts with a heading).
+    of the unnumbered shapes (:func:`_unnumbered_heading`) **and** is
+    followed by a prose line or by the next accepted heading
+    (:func:`_is_prose_line`); unnumbered headings do not enter the
+    numbering state machine. Heading lines are kept as the first line of
+    their section's text; ``Section.page`` is the page the heading appears
+    on. Text found before the first heading becomes a single
+    ``"Front Matter"`` section (omitted entirely when the paper starts
+    with a heading).
     """
     # flatten to non-empty stripped lines with their pages (neighbour
     # checks need the stream, not per-page views)
@@ -417,21 +442,33 @@ def split_sections(pages: list[PageText]) -> list[Section]:
     if not lines:
         return []
 
+    # pass 1: numbered headings (the unnumbered pass needs to know which
+    # lines the numbering accepted, so it runs on the complete map)
     numbering = _HeadingNumbering()
     headings: dict[int, _Heading] = {}  # line index -> accepted numbered heading
-    unnumbered: dict[int, str] = {}  # line index -> unnumbered section title
     for i, (_, stripped) in enumerate(lines):
         candidate = _parse_heading(stripped)
-        if candidate is not None:
-            prev = lines[i - 1][1] if i > 0 else None
-            nxt = lines[i + 1][1] if i + 1 < len(lines) else None
-            if not _in_list_block(candidate, prev, nxt) and numbering.accepts(
-                candidate
-            ):
-                headings[i] = candidate
-            continue  # numbered-shaped lines never fall back to unnumbered
+        if candidate is None:
+            continue
+        prev = lines[i - 1][1] if i > 0 else None
+        nxt = lines[i + 1][1] if i + 1 < len(lines) else None
+        if not _in_list_block(candidate, prev, nxt) and numbering.accepts(
+            candidate
+        ):
+            headings[i] = candidate
+
+    # pass 2: unnumbered headings — numbered-shaped lines (accepted or
+    # rejected) never reach this pass, and a candidate must be followed by
+    # prose or by an accepted heading: a word-list/all-caps line sitting
+    # on top of a table ("Model" above "RT-2 55.4 21.1") is a table header
+    unnumbered: dict[int, str] = {}  # line index -> unnumbered section title
+    for i, (_, stripped) in enumerate(lines):
+        if i in headings or _parse_heading(stripped) is not None:
+            continue
         title = _unnumbered_heading(stripped)
-        if title is not None:
+        if title is None or i + 1 >= len(lines):
+            continue
+        if (i + 1) in headings or _is_prose_line(lines[i + 1][1]):
             unnumbered[i] = title
 
     sections: list[Section] = []

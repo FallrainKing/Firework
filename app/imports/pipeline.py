@@ -5,10 +5,10 @@ import re
 from pathlib import Path
 import tempfile
 import pymupdf
-from .ingest.pipeline import ingest_paper
-from .paper_sources import fetch_pdf,doi_metadata,arxiv_metadata,normalize_doi
-from .ingest.metadata import extract_arxiv_id
-from .reader.pages import pdf_file
+from ..ingest.pipeline import ingest_paper
+from .sources import fetch_pdf,doi_metadata,arxiv_metadata,normalize_doi
+from ..ingest.metadata import extract_arxiv_id
+from ..reader.pages import pdf_file
 
 
 def pdf_metadata(path,filename):

@@ -77,6 +77,11 @@ def get_run(db, run_id: str) -> dict:
     return view(row)
 
 
+def run_row(db, run_id: str):
+    """Raw run row for cross-domain binding checks (imports)."""
+    return repo.find_run(db, run_id)
+
+
 def search_library(db, q: str = '') -> dict:
     # Management lookup only. Agent performs research searches via MCP.
     return {'papers': [dict(row) for row in repo.search_papers(db, q)]}

@@ -21,6 +21,14 @@ def paper_exists(db: sqlite3.Connection, paper_id: int) -> bool:
     return bool(repo.paper_exists(db, paper_id))
 
 
+def collection_exists(db: sqlite3.Connection, collection_id: int) -> bool:
+    return bool(repo.collection_exists(db, collection_id))
+
+
+def add_to_collection(db: sqlite3.Connection, collection_id: int, paper_id: int) -> None:
+    repo.add_collection_item(db, collection_id, paper_id)
+
+
 def card(db: sqlite3.Connection, row) -> dict:
     d = dict(row)
     for k in ('authors', 'affiliations'):

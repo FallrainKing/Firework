@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
-from .api import imports_v2
+from .imports.router import router as imports_router, internal as imports_internal
 from .papers.router import router as papers_router
 from .schedules.router import router as schedules_router
 from .schedules import service as schedules_service
@@ -121,8 +121,8 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(papers_router)
     app.include_router(reader_router)
-    app.include_router(imports_v2.router)
-    app.include_router(imports_v2.internal)
+    app.include_router(imports_router)
+    app.include_router(imports_internal)
     app.include_router(workbench_router)
 
     @app.get("/health")

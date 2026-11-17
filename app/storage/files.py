@@ -38,6 +38,18 @@ def attachment_path(settings, ident: str) -> Path:
     return settings.data_dir / 'attachments' / ident
 
 
+def upload_path(settings, ident: str) -> Path:
+    return settings.data_dir / 'imports' / (ident + '.pdf')
+
+
+def save_upload(settings, ident: str, data: bytes) -> Path:
+    folder = settings.data_dir / 'imports'
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / (ident + '.pdf')
+    path.write_bytes(data)
+    return path
+
+
 def save_attachment(settings, ident: str, data: bytes) -> Path:
     folder = settings.data_dir / 'attachments'
     folder.mkdir(parents=True, exist_ok=True)

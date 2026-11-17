@@ -82,6 +82,10 @@ def replace_collection_items(db: sqlite3.Connection, pid: int, ids) -> None:
     )
 
 
+def add_collection_item(db: sqlite3.Connection, collection_id: int, pid: int) -> None:
+    db.execute('INSERT OR IGNORE INTO paper_collection_items(collection_id,paper_id) VALUES (?,?)', (collection_id, pid))
+
+
 def refresh_affiliations(db: sqlite3.Connection, pid: int, affiliations_json: str, source: str, expected_version: int) -> None:
     db.execute(
         'UPDATE papers SET affiliations=?,affiliation_source=?,metadata_version=metadata_version+1 WHERE id=? AND metadata_version=?',

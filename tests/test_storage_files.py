@@ -57,6 +57,16 @@ def test_save_attachment_private_permissions(tmp_path):
     assert path.parent.stat().st_mode & 0o777 == 0o700
 
 
+def test_save_upload_stages_pdf(tmp_path):
+    from app.storage.files import save_upload, upload_path
+
+    settings = Settings(data_dir=tmp_path, qdrant_url='unused')
+    ident = 'd' * 32
+    path = save_upload(settings, ident, b'%PDF-1.4 test')
+    assert path == upload_path(settings, ident)
+    assert path.read_bytes() == b'%PDF-1.4 test'
+
+
 def test_save_attachment_chowns_to_data_owner_when_root(tmp_path, monkeypatch):
     from app.storage import files
 

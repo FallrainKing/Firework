@@ -97,6 +97,10 @@ def link_papers(db: sqlite3.Connection, sid: int, ids: list[int]) -> None:
     )
 
 
+def link_paper(db: sqlite3.Connection, sid: int, pid: int) -> None:
+    db.execute('INSERT OR IGNORE INTO conversation_papers(conversation_id,paper_id) VALUES (?,?)', (sid, pid))
+
+
 def session_papers(db: sqlite3.Connection, sid: int):
     return db.execute(
         'SELECT p.id,p.title FROM papers p JOIN conversation_papers x ON x.paper_id=p.id WHERE x.conversation_id=?',

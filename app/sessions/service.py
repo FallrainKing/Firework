@@ -103,6 +103,10 @@ def create_session(db: sqlite3.Connection, body: SessionCreate) -> dict:
     return {'session': session_view(db, require_session(db, ident)), 'starting_prompt': starting_prompt}
 
 
+def link_paper(db: sqlite3.Connection, session_id: int, paper_id: int) -> None:
+    repo.link_paper(db, session_id, paper_id)
+
+
 def session_detail(db: sqlite3.Connection, session_id: int) -> dict:
     row = require_session(db, session_id)
     return {'session': session_view(db, row), 'papers': [dict(r) for r in repo.session_papers(db, session_id)]}

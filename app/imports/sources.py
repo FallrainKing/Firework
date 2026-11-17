@@ -68,7 +68,7 @@ async def crossref_search(query):
     return {'source':'crossref','query':query,'papers':[crossref_item(i) for i in r.json()['message']['items']]}
 
 async def arxiv_metadata(value):
-    from .ingest.metadata import extract_arxiv_id,parse_arxiv_atom
+    from ..ingest.metadata import extract_arxiv_id,parse_arxiv_atom
     ident=extract_arxiv_id(value)
     last=None
     async with httpx.AsyncClient(timeout=8) as c:

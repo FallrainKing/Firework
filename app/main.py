@@ -97,6 +97,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Research Assistant", lifespan=lifespan)
 
     app.include_router(api.papers.router)
+    app.include_router(api.notes.router)
     app.include_router(api.qa.router)
     app.include_router(api.imports.router)
 

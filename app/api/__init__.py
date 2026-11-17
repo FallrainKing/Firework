@@ -59,7 +59,7 @@ def require_rag_stack(request: Request) -> None:
         )
 
 
-from . import papers, qa  # noqa: E402  (helpers above must exist first)
+from . import notes, papers, qa  # noqa: E402  (helpers above must exist first)
 
 # ``app.api.import`` cannot be loaded with a normal import statement —
 # ``import`` is a Python keyword — so it is imported dynamically here and
@@ -71,6 +71,7 @@ __all__ = [
     "ingest_http_error",
     "require_rag_stack",
     "imports",
+    "notes",
     "papers",
     "qa",
 ]

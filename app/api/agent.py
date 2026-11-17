@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 from ..core.db import get_conn
 from ..agent_catalog import SKILLS as CATALOG, TEMPLATES
 from ..sessions.service import require_session
-from .reader import Context
-from ..reader_store import validate_context
+from ..reader.schemas import Context
+from ..reader.pages import validate_context
 
 router = APIRouter(prefix='/api/agent', tags=['agent'])
 logger = logging.getLogger(__name__)

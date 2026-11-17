@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import struct,zlib
 from fastapi.testclient import TestClient
-from app.api import workbench,reader
+from app.api import workbench
 from test_reader_imports import reading
 from test_agent_mvp import client,wait
 

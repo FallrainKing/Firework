@@ -8,7 +8,8 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel,Field
 import pymupdf
 from ..sessions.service import require_session
-from .reader import linked,Context
+from ..reader.service import linked
+from ..reader.schemas import Context
 router=APIRouter(prefix='/api/workbench',tags=['workbench'])
 MAX_IMAGE=5*1024*1024
 

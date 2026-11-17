@@ -29,7 +29,7 @@ def document_info(settings,row):
 
 @lru_cache(maxsize=64)
 def _document_info(path,version,paper_id,title):
-    from .rag.pdf_parser import extract_pages,split_sections,FRONT_MATTER_TITLE
+    from ..rag.pdf_parser import extract_pages,split_sections,FRONT_MATTER_TITLE
     with pymupdf.open(path) as doc:
         if doc.is_encrypted:raise ValueError('暂不支持加密 PDF')
         if not 0<len(doc)<=300:raise ValueError('PDF 页数必须为 1–300')

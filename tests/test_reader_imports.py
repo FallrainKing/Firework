@@ -7,8 +7,9 @@ import socket
 import sqlite3
 import pymupdf
 import pytest
-from app.api import reader, imports_v2
-from app.reader_store import pdf_file
+from app.api import imports_v2
+from app.reader import router as reader_router
+from app.reader.pages import pdf_file
 from app import paper_sources, import_service
 from app.core.db import get_conn
 from test_agent_mvp import client,wait
@@ -16,7 +17,7 @@ from test_agent_mvp import client,wait
 @pytest.fixture
 def reading(client,sample_pdf):
     c,s=client
-    c.app.include_router(reader.router);c.app.include_router(imports_v2.router);c.app.include_router(imports_v2.internal)
+    c.app.include_router(reader_router);c.app.include_router(imports_v2.router);c.app.include_router(imports_v2.internal)
     (s.data_dir/'papers').mkdir();path=s.data_dir/'papers'/'1.pdf';shutil.copyfile(sample_pdf,path)
     with sqlite3.connect(s.db_path) as db:
         db.execute('INSERT INTO papers(id,title,pdf_path,authors) VALUES (1,?,?,?)',('Sample',str(path),'["A"]'))

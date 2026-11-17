@@ -12,7 +12,8 @@ from ..core.db import get_conn
 from ..paper_sources import normalize_doi,public_url,MAX_PDF_BYTES
 from ..ingest.metadata import extract_arxiv_id
 from ..import_service import process_import
-from .sessions import SessionCreate,create_session
+from ..sessions.schemas import SessionCreate
+from ..sessions.service import create_session
 
 router=APIRouter(prefix='/api/imports',tags=['imports'])
 internal=APIRouter(prefix='/api/internal',tags=['internal'])
@@ -33,7 +34,7 @@ async def start_import(ident,request):
         if active and active['status'] in ('queued','running'):return import_view(row)
     sid=row['conversation_id']
     if sid is None:
-        result=await create_session(SessionCreate(template_id='import',title='导入：'+(row['original_filename'] or row['source_value'])[:100]),request)
+        result=create_session(db,SessionCreate(template_id='import',title='导入：'+(row['original_filename'] or row['source_value'])[:100]))
         sid=result['session']['id'];db.execute('UPDATE import_requests SET conversation_id=? WHERE id=?',(sid,ident));db.commit()
     try:
         run=await create_run(RunCreate(conversation_id=sid,prompt=f'请执行已授权的论文入库请求 {ident}。调用 paper_import 工具一次，按工具结果告知是否取得全文，不要编造。'),request)

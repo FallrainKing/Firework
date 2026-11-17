@@ -8,7 +8,7 @@ from fastapi import APIRouter,HTTPException,Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel,Field,model_validator
 from ..reader_store import document_info,pdf_file,read_page,validate_context
-from .sessions import require_session
+from ..sessions.service import require_session
 
 router=APIRouter(prefix='/api/reader',tags=['reader'])
 

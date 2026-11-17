@@ -14,7 +14,9 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 
-from app.api import agent, sessions, library
+from app.api import agent, library
+from app.sessions import router as sessions_router
+from app.core.errors import register_error_handlers
 from app.core.config import Settings
 from app.core.db import get_conn
 from agent_runner.tools import library_search
@@ -36,8 +38,9 @@ def client(tmp_path, monkeypatch):
         await agent.close_agent_state(app)
         app.state.db.close()
     app = FastAPI(lifespan=lifespan)
+    register_error_handlers(app)
     app.include_router(agent.router)
-    app.include_router(sessions.router)
+    app.include_router(sessions_router)
     app.include_router(library.router)
     with TestClient(app) as c:
         yield c, settings

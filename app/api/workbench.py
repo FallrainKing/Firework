@@ -7,7 +7,7 @@ from fastapi import APIRouter,Request,HTTPException,UploadFile,File,Form
 from fastapi.responses import FileResponse
 from pydantic import BaseModel,Field
 import pymupdf
-from .sessions import require_session
+from ..sessions.service import require_session
 from .reader import linked,Context
 router=APIRouter(prefix='/api/workbench',tags=['workbench'])
 MAX_IMAGE=5*1024*1024

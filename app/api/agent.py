@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from ..core.db import get_conn
 from ..agent_catalog import SKILLS as CATALOG, TEMPLATES
-from .sessions import require_session
+from ..sessions.service import require_session
 from .reader import Context
 from ..reader_store import validate_context
 

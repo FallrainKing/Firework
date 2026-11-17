@@ -12,7 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
-from .api import agent, sessions, library, reader, imports_v2, workbench
+from .api import agent, library, reader, imports_v2, workbench
+from .sessions.router import router as sessions_router
 from .core.config import Settings
 from .core.db import get_conn
 from .core.errors import register_error_handlers
@@ -110,7 +111,7 @@ def create_app() -> FastAPI:
     app.include_router(api.imports.router)
     app.include_router(api.study.router)
     app.include_router(agent.router)
-    app.include_router(sessions.router)
+    app.include_router(sessions_router)
     app.include_router(library.router)
     app.include_router(reader.router)
     app.include_router(imports_v2.router)

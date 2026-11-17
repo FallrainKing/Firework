@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from ..core.db import get_conn
 from ..ingest.batch import import_folder
-from . import require_rag_stack
+from .errors import require_rag_stack
 
 logger = logging.getLogger(__name__)
 

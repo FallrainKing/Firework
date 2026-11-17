@@ -25,8 +25,8 @@ import asyncio
 import re
 import sqlite3
 
-from ..llm.gateway import LLMExhaustedError
-from ..rag.vector_store import SearchHit
+from ..gateway import LLMExhaustedError
+from ...rag.vector_store import SearchHit
 
 #: 每篇论文检索的片段数（brief 固定 top_k=6）
 TOP_K_PER_PAPER = 6

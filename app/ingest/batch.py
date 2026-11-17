@@ -28,10 +28,10 @@ from ..rag.embedder import Embedder
 from ..rag.vector_store import VectorStore
 from .dedup import find_duplicate
 from .pipeline import ingest_from_upload
-from ..study.reader import interpret_paper
+from ..legacy.study.reader import interpret_paper
 
 if TYPE_CHECKING:
-    from ..llm.gateway import LLMGateway
+    from ..legacy.gateway import LLMGateway
 
 logger = logging.getLogger(__name__)
 

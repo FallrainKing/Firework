@@ -28,8 +28,8 @@ from pydantic import BaseModel
 
 from ..core.db import get_conn
 from ..ingest.batch import run_interpretation
-from ..study.compare import compare_papers
-from . import (
+from .study.compare import compare_papers
+from .errors import (
     KNOWN_INGEST_ERRORS,
     KNOWN_STUDY_ERRORS,
     ingest_http_error,

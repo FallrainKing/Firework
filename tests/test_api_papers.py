@@ -58,7 +58,7 @@ def test_arxiv_route_returns_paper_id(api_client, monkeypatch):
         assert url_or_id == "https://arxiv.org/abs/2401.00001"
         return 42
 
-    monkeypatch.setattr("app.api.papers.ingest_arxiv", fake_ingest_arxiv)
+    monkeypatch.setattr("app.legacy.api_papers.ingest_arxiv", fake_ingest_arxiv)
     with api_client(FakeGateway()) as client:
         r = client.post(
             "/api/papers/arxiv", json={"url": "https://arxiv.org/abs/2401.00001"}

@@ -42,7 +42,7 @@ from .dedup import find_duplicate, normalize_title
 from .metadata import extract_arxiv_id, fetch_arxiv_metadata
 
 if TYPE_CHECKING:
-    from ..llm.gateway import LLMGateway
+    from ..legacy.gateway import LLMGateway
 
 logger = logging.getLogger(__name__)
 

@@ -20,9 +20,9 @@ from qdrant_client import QdrantClient
 
 from app.core.config import Settings
 from app.core.db import get_conn
-from app.llm.gateway import LLMExhaustedError
+from app.legacy.gateway import LLMExhaustedError
 from app.rag.vector_store import ChunkPoint, VectorStore
-from app.study.compare import compare_papers
+from app.legacy.study.compare import compare_papers
 
 TITLE_A = "对比论文甲：强化学习方法"
 ABSTRACT_A = "论文甲的摘要：提出一种基于强化学习的训练技巧。"

@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from ..ingest.pipeline import ingest_arxiv, ingest_from_upload
-from . import KNOWN_INGEST_ERRORS, ingest_http_error, require_rag_stack
+from .errors import KNOWN_INGEST_ERRORS, ingest_http_error, require_rag_stack
 
 logger = logging.getLogger(__name__)
 

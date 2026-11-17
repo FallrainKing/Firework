@@ -20,8 +20,8 @@ import pytest
 
 from app.core.config import Settings
 from app.core.db import get_conn
-from app.llm.gateway import LLMExhaustedError
-from app.study.reader import InterpretationError, interpret_paper
+from app.legacy.gateway import LLMExhaustedError
+from app.legacy.study.reader import InterpretationError, interpret_paper
 
 SIX_KEYS = (
     "background",

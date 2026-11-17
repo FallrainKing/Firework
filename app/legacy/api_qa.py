@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from ..rag.vector_store import SearchHit
-from . import KNOWN_INGEST_ERRORS, ingest_http_error, require_rag_stack
+from .errors import KNOWN_INGEST_ERRORS, ingest_http_error, require_rag_stack
 
 logger = logging.getLogger(__name__)
 

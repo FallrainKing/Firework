@@ -13,7 +13,7 @@ import pytest
 
 from app.core.config import Settings
 from app.core.db import get_conn
-from app.llm.gateway import LLMExhaustedError, LLMGateway, LLMHTTPStatusError
+from app.legacy.gateway import LLMExhaustedError, LLMGateway, LLMHTTPStatusError
 
 ANTHROPIC_PROVIDER = {
     "name": "glm",
@@ -373,7 +373,7 @@ def test_unknown_preferred_provider_warns_and_continues(tmp_path, monkeypatch, c
         make_settings(tmp_path, [ANTHROPIC_PROVIDER], fast="no-such-provider")
     )
 
-    with caplog.at_level(logging.WARNING, logger="app.llm.gateway"):
+    with caplog.at_level(logging.WARNING, logger="app.legacy.gateway"):
         reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
 
     assert reply["provider"] == "glm"  # chat still succeeded

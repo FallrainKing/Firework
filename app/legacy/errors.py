@@ -1,22 +1,20 @@
-"""HTTP API package (Task 7): papers, QA and folder-import routers.
+"""HTTP error mapping for the legacy ingest/study routers.
 
 The shared helpers here map ingest-pipeline exceptions onto HTTP errors
-(the pipeline deliberately raises raw exceptions — Task 6 review concern)
-and answer 503 when the embedder/vector store failed to start.
+(the pipeline deliberately raises raw exceptions) and answer 503 when the
+embedder/vector store failed to start.
 """
 
 from __future__ import annotations
-
-from importlib import import_module as _import_module
 
 import httpx
 import pymupdf
 from fastapi import HTTPException, Request
 
 from ..ingest.pipeline import PdfTooLargeError
-from ..llm.gateway import LLMExhaustedError, LLMHTTPStatusError
+from .gateway import LLMExhaustedError, LLMHTTPStatusError
 from ..rag.vector_store import VectorStoreError
-from ..study.reader import InterpretationError
+from .study.reader import InterpretationError
 
 #: exceptions the ingest stack raises for *known-bad* inputs or environments;
 #: anything else is unexpected and becomes a logged 500.
@@ -77,37 +75,10 @@ def study_http_error(exc: Exception) -> HTTPException:
 
 
 def require_rag_stack(request: Request) -> None:
-    """Raise 503 unless the embedder and vector store both started.
-
-    Startup retries and aborts when the RAG stack cannot initialize (see
-    ``app.main``), so this is a belt-and-braces guard: if the stack ever
-    ends up missing at runtime, routes that need it say so with a clear
-    message instead of crashing with an opaque error.
-    """
+    """Raise 503 unless the embedder and vector store both started."""
     state = request.app.state
     if getattr(state, "embedder", None) is None or getattr(state, "store", None) is None:
         raise HTTPException(
             status_code=503,
             detail="embedding/vector store unavailable (qdrant unreachable at startup?)",
         )
-
-
-from . import notes, papers, qa, study  # noqa: E402  (helpers above must exist first)
-
-# ``app.api.import`` cannot be loaded with a normal import statement —
-# ``import`` is a Python keyword — so it is imported dynamically here and
-# re-exported as ``imports`` for app.main to wire up.
-imports = _import_module("app.api.import")
-
-__all__ = [
-    "KNOWN_INGEST_ERRORS",
-    "KNOWN_STUDY_ERRORS",
-    "ingest_http_error",
-    "study_http_error",
-    "require_rag_stack",
-    "imports",
-    "notes",
-    "papers",
-    "qa",
-    "study",
-]

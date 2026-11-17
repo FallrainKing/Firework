@@ -22,7 +22,7 @@ from conftest import FakeGateway
 
 from app.core.config import Settings
 from app.core.db import MIGRATIONS_DIR, get_conn
-from app.llm.gateway import LLMExhaustedError
+from app.legacy.gateway import LLMExhaustedError
 from app.rag.vector_store import ChunkPoint
 
 SIX_KEYS = (

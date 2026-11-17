@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
-from . import api
+from .legacy import api_papers, api_notes, api_qa, api_study, api_import
 from .imports.router import router as imports_router, internal as imports_internal
 from .papers.router import router as papers_router
 from .schedules.router import router as schedules_router
@@ -24,7 +24,7 @@ from .sessions.router import router as sessions_router
 from .core.config import Settings
 from .core.db import get_conn
 from .core.errors import register_error_handlers
-from .llm.gateway import LLMGateway
+from .legacy.gateway import LLMGateway
 from .rag.embedder import Embedder
 from .rag.vector_store import VectorStore
 
@@ -112,11 +112,11 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Research Assistant", lifespan=lifespan)
     register_error_handlers(app)
 
-    app.include_router(api.papers.router)
-    app.include_router(api.notes.router)
-    app.include_router(api.qa.router)
-    app.include_router(api.imports.router)
-    app.include_router(api.study.router)
+    app.include_router(api_papers.router)
+    app.include_router(api_notes.router)
+    app.include_router(api_qa.router)
+    app.include_router(api_import.router)
+    app.include_router(api_study.router)
     app.include_router(agent_router)
     app.include_router(sessions_router)
     app.include_router(papers_router)

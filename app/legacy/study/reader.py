@@ -30,7 +30,7 @@ import json
 import sqlite3
 from typing import Any
 
-from app.llm.gateway import LLMExhaustedError
+from app.legacy.gateway import LLMExhaustedError
 from app.rag.pdf_parser import FRONT_MATTER_TITLE
 
 MAX_SECTION_CHARS = 6000

@@ -13,7 +13,7 @@ import pytest
 
 from app.config import Settings
 from app.db import get_conn
-from app.llm.gateway import LLMGateway, LLMHTTPStatusError
+from app.llm.gateway import LLMExhaustedError, LLMGateway, LLMHTTPStatusError
 
 ANTHROPIC_PROVIDER = {
     "name": "glm",
@@ -266,10 +266,40 @@ def test_all_providers_empty_text_raises(tmp_path, monkeypatch):
         make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
     )
 
-    with pytest.raises(RuntimeError, match="all providers returned empty text"):
+    with pytest.raises(LLMExhaustedError, match="all providers returned empty text"):
         asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
 
     assert len(calls) == 2  # every provider got a chance before raising
+
+
+def test_exhausted_error_carries_per_provider_attempts(tmp_path, monkeypatch):
+    """网关穷尽抛 LLMExhaustedError，attempts 携带逐 provider 归因：
+    网络错（text_len=None）与空文本（text_len=0）混合时各记一条。"""
+    second = dict(ANTHROPIC_PROVIDER, name="second", model="m2")
+    starved_payload = {
+        "model": "m2",
+        "content": [{"type": "text", "text": ""}],
+        "usage": {"input_tokens": 10, "output_tokens": 2048},
+    }
+    patch_post(
+        monkeypatch,
+        [httpx.ConnectError("connection refused"), FakeResponse(200, starved_payload)],
+    )
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
+    )
+
+    with pytest.raises(LLMExhaustedError) as excinfo:
+        asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    attempts = excinfo.value.attempts
+    assert [a["provider"] for a in attempts] == ["glm", "second"]
+    # 网络错：error 记连接错误文本、无文本可量
+    assert "connection refused" in attempts[0]["error"]
+    assert attempts[0]["text_len"] is None
+    # 空文本：error 说明 200 但空、text_len=0
+    assert "empty text" in attempts[1]["error"]
+    assert attempts[1]["text_len"] == 0
 
 
 def test_starved_call_still_records_usage(tmp_path, monkeypatch):
@@ -284,7 +314,7 @@ def test_starved_call_still_records_usage(tmp_path, monkeypatch):
     settings = make_settings(tmp_path, [ANTHROPIC_PROVIDER], fast="glm", strong="glm")
     gw = LLMGateway(settings)
 
-    with pytest.raises(RuntimeError):
+    with pytest.raises(LLMExhaustedError):
         asyncio.run(gw.chat([{"role": "user", "content": "hi"}], tier="strong"))
 
     conn = get_conn(settings)

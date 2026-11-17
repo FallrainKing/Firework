@@ -20,6 +20,7 @@ import pytest
 
 from app.config import Settings
 from app.db import get_conn
+from app.llm.gateway import LLMExhaustedError
 from app.study.reader import InterpretationError, interpret_paper
 
 SIX_KEYS = (
@@ -238,10 +239,14 @@ def test_interpret_raises_after_second_bad_json(tmp_path):
     ]
     assert types == ["section_analysis"]
 
-    # 无 chunks 的论文直接报 InterpretationError，不产生任何调用
+    # 无 chunks 的论文直接报 InterpretationError，不产生任何调用；
+    # 也不置 'reading'、不删旧 notes（论文原状态原样保留）
     empty_pid = add_paper(db)
+    gw_empty = FakeGateway()
     with pytest.raises(InterpretationError, match="no indexed content"):
-        asyncio.run(interpret_paper(empty_pid, db=db, gateway=FakeGateway()))
+        asyncio.run(interpret_paper(empty_pid, db=db, gateway=gw_empty))
+    assert gw_empty.calls == []
+    assert paper_status(db, empty_pid) == "new"
 
 
 def test_long_section_truncated(tmp_path):
@@ -284,6 +289,80 @@ def test_all_sections_failed_raises(tmp_path):
         ).fetchone()[0]
         == 0
     )
+
+
+def test_rerun_failure_preserves_old_notes(tmp_path):
+    """重跑失败不再丢旧解读（Fix wave：_delete_old_notes 推迟到首个成功节）：
+
+    (a) 论文失去索引内容 → 旧 notes 与原 status 原样保留（不置 reading）；
+    (b) 全节失败 abort → 旧 notes 完整保留，状态停在 'reading'（重跑失败
+        时旧成果可见 + 状态可见）。
+    """
+    db = make_db(tmp_path)
+    pid = add_paper(db, sections=[("1 Introduction", "引言")])
+    asyncio.run(interpret_paper(pid, db=db, gateway=FakeGateway()))
+    assert paper_status(db, pid) == "read"
+
+    def _notes():
+        return [
+            (r["note_type"], r["content"])
+            for r in db.execute(
+                "SELECT note_type, content FROM notes WHERE paper_id = ?"
+                " ORDER BY id",
+                (pid,),
+            )
+        ]
+
+    old_notes = _notes()
+    assert [t for t, _ in old_notes] == ["section_analysis", "six_dim"]
+
+    # (a) 无索引内容：重跑直接报错——旧 notes 保留、状态不被扰动
+    db.execute("DELETE FROM chunks_meta WHERE paper_id = ?", (pid,))
+    db.commit()
+    with pytest.raises(InterpretationError, match="no indexed content"):
+        asyncio.run(interpret_paper(pid, db=db, gateway=FakeGateway()))
+    assert paper_status(db, pid) == "read"
+    assert _notes() == old_notes
+
+    # (b) 恢复一节内容但让全部节解读失败：旧 notes 仍完整保留，
+    #     状态停在 'reading'（可见重解读进行过且失败了）
+    db.execute(
+        "INSERT INTO chunks_meta (paper_id, chunk_idx, section, page, text)"
+        " VALUES (?, 0, '1 Introduction', 1, '引言')",
+        (pid,),
+    )
+    db.commit()
+    gw = FakeGateway()
+    gw.fail_section_markers = ("Introduction",)
+    with pytest.raises(InterpretationError, match="all section"):
+        asyncio.run(interpret_paper(pid, db=db, gateway=gw))
+    assert paper_status(db, pid) == "reading"
+    assert _notes() == old_notes
+
+
+def test_six_dim_starved_twice_raises_llm_exhausted(tmp_path):
+    """六维两次都是空文本（预算被 thinking 耗尽）→ 抛携带逐 provider
+    归因的 LLMExhaustedError（网关侧穷尽语义一致）；节成果保留（契约 3）、
+    状态停在 'reading'。坏 JSON 两次仍是 InterpretationError（既有测试）。"""
+    db = make_db(tmp_path)
+    pid = add_paper(db, sections=[("1 Introduction", "引言内容")])
+    gw = FakeGateway(six_dim_replies=["", ""])
+
+    with pytest.raises(LLMExhaustedError) as excinfo:
+        asyncio.run(interpret_paper(pid, db=db, gateway=gw))
+
+    assert len(gw.six_dim_calls) == 2
+    assert [a["provider"] for a in excinfo.value.attempts] == ["fake", "fake"]
+    assert all(a["text_len"] == 0 for a in excinfo.value.attempts)
+    # 节解读已成功落库，六维 note 没有；状态停在 reading
+    types = [
+        r["note_type"]
+        for r in db.execute(
+            "SELECT note_type FROM notes WHERE paper_id = ?", (pid,)
+        )
+    ]
+    assert types == ["section_analysis"]
+    assert paper_status(db, pid) == "reading"
 
 
 def test_status_transitions_reading_then_read(tmp_path):

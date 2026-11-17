@@ -15,6 +15,34 @@ from .config import Settings
 MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
 
 
+def _apply_migration(conn: sqlite3.Connection, path: Path) -> None:
+    """Apply one migration file atomically, bookkeeping included.
+
+    The script text runs inside an explicit ``BEGIN IMMEDIATE`` (grabbing
+    the write lock up front), and the ``schema_migrations`` row is inserted
+    into that *same* transaction before the ``COMMIT`` — so a migration is
+    either fully applied and recorded, or not applied and not recorded.
+    Without this, a script dying mid-way (e.g. 0002 crashing somewhere
+    after its first ``ALTER TABLE``) left the schema half-migrated *and*
+    unrecorded, so the next start re-ran it into "duplicate column" errors
+    with no way back. ``executescript`` never triggers the module's implicit
+    COMMIT mid-script here because the pending transaction is cleared before
+    the call (Python 3.12's executescript has no implicit pre-COMMIT at
+    all; on older interpreters ``conn.commit()`` below disarms it).
+    """
+    sql = path.read_text(encoding="utf-8")
+    conn.commit()  # a pending transaction would make BEGIN IMMEDIATE fail
+    try:
+        conn.executescript(f"BEGIN IMMEDIATE;\n{sql}")
+        conn.execute(
+            "INSERT INTO schema_migrations (name) VALUES (?)", (path.name,)
+        )
+        conn.commit()  # COMMITs the transaction the script prefix opened
+    except Exception:
+        conn.rollback()  # undo every statement the script already ran
+        raise
+
+
 def _ensure_migrations(conn: sqlite3.Connection) -> None:
     conn.execute(
         """
@@ -24,6 +52,7 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.commit()  # keep this bookkeeping out of the migration transactions
     applied = {
         row[0]
         for row in conn.execute("SELECT name FROM schema_migrations")
@@ -31,23 +60,21 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
     for path in sorted(MIGRATIONS_DIR.glob("*.sql")):
         if path.name in applied:
             continue
-        conn.executescript(path.read_text(encoding="utf-8"))
-        conn.execute(
-            "INSERT INTO schema_migrations (name) VALUES (?)", (path.name,)
-        )
-        conn.commit()
+        _apply_migration(conn, path)
 
 
 def get_conn(settings: Settings | None = None) -> sqlite3.Connection:
     """Open a connection to the app database, running pending migrations.
 
-    ``check_same_thread=False``: async code (reader/compare) hands this
-    connection to ``asyncio.to_thread`` worker threads. sqlite3's default
-    refuses any cross-thread use outright, so without this flag those calls
-    die with ProgrammingError the moment they leave the event-loop thread.
-    Every caller must still serialize access to one connection (a single
-    event loop awaiting its own to_thread calls does that); see Task 5's
-    report for the impact assessment.
+    ``check_same_thread=False`` does NOT make one connection safe to share
+    across threads: SQLite still serializes transactions itself, but the
+    *caller* is responsible for not interleaving them (two threads
+    committing on the same connection can commit each other's half-written
+    transactions). Async code hands connections to ``asyncio.to_thread``
+    workers — a single event loop awaiting its own to_thread calls serializes
+    fine, but background jobs and multi-threaded scenarios must each open a
+    *dedicated* connection (see the P1/P2 job routes and the compare route
+    for the pattern: ``get_conn()`` … ``try/finally close()``).
     """
     s = settings or Settings.from_env()
     s.data_dir.mkdir(parents=True, exist_ok=True)

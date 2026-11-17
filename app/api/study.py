@@ -10,7 +10,12 @@ the folder-import route in ``app.api.import``.
 citations. Validation lives here, not in the engine (contract 4): the id
 list is de-duplicated first (position numbering follows the deduped order),
 then 2–5 papers are required, and a missing id surfaces as the engine's
-ValueError → 400. An empty question string counts as "no question".
+ValueError → 400. An empty question string counts as "no question". The
+comparison runs on a *dedicated* short-lived sqlite connection (never the
+request-loop's ``app.state.db``): compare_papers hands its connection to
+``asyncio.to_thread`` workers, and interleaving those transactions with
+request handlers sharing one connection is unsafe (P1 job pattern — see
+``app.db.get_conn``).
 """
 
 from __future__ import annotations
@@ -136,11 +141,15 @@ async def compare(body: CompareRequest, request: Request) -> dict:
     # empty string counts as no question
     question = (body.question or "").strip() or None
 
+    # dedicated short-lived connection (P1 job pattern): compare_papers runs
+    # its sqlite reads on to_thread workers — the shared app.state.db must
+    # not be handed across that boundary
+    compare_db = get_conn(state.settings)
     try:
         return await compare_papers(
             ids,
             question,
-            db=state.db,
+            db=compare_db,
             embedder=state.embedder,
             store=state.store,
             gateway=state.gateway,
@@ -149,3 +158,5 @@ async def compare(body: CompareRequest, request: Request) -> dict:
         raise study_http_error(exc) from exc
     except KNOWN_INGEST_ERRORS as exc:
         raise ingest_http_error(exc) from exc
+    finally:
+        compare_db.close()

@@ -22,6 +22,7 @@ from conftest import FakeGateway
 
 from app.config import Settings
 from app.db import MIGRATIONS_DIR, get_conn
+from app.llm.gateway import LLMExhaustedError
 from app.rag.vector_store import ChunkPoint
 
 SIX_KEYS = (
@@ -123,8 +124,8 @@ class StudyGateway:
     Routes like tests/test_reader.py's fake: a prompt whose last message
     contains "JSON" is the six-dim synthesis call; every other prompt is a
     section interpretation. With ``fail_six_dim`` the synthesis call raises
-    the error the real gateway raises when every provider failed — after the
-    section notes were already produced.
+    LLMExhaustedError — the error the real gateway now raises when every
+    provider failed — after the section notes were already produced.
     """
 
     def __init__(
@@ -151,7 +152,16 @@ class StudyGateway:
         text = messages[-1]["content"]
         if "JSON" in text:
             if self.fail_six_dim:
-                raise RuntimeError("all providers failed for tier 'strong'")
+                raise LLMExhaustedError(
+                    f"all providers failed for tier {tier!r}",
+                    [
+                        {
+                            "provider": "fake",
+                            "error": "HTTP 500",
+                            "text_len": None,
+                        }
+                    ],
+                )
             return self._reply(self.six_dim_reply)
         return self._reply(self.section_reply)
 
@@ -301,6 +311,35 @@ def test_interpret_job_failure_marks_failed(api_client, tmp_path):
         assert _paper_status(conn, pid) == "reading"
 
 
+def test_interpret_rerun_without_content_preserves_old_notes(api_client, tmp_path):
+    """重跑时论文已失去索引内容 → job failed，但旧解读 notes 与 'read'
+    状态原样保留（不再"进入即删"旧 notes / 置 reading）。"""
+    with api_client(StudyGateway()) as client:
+        conn = _seed_conn(tmp_path)
+        pid = _add_paper(conn, sections=[("1 Introduction", "引言内容")])
+        r = client.post(f"/api/papers/{pid}/interpret")
+        assert r.status_code == 200, r.text
+        _wait_job_done(client, r.json()["job_id"])
+        assert _paper_status(conn, pid) == "read"
+        assert len(_note_types(client, pid)) == 2
+
+        # the paper loses its indexed content (e.g. re-ingest cleared it)
+        conn.execute("DELETE FROM chunks_meta WHERE paper_id = ?", (pid,))
+        conn.commit()
+
+        r2 = client.post(f"/api/papers/{pid}/interpret")
+        assert r2.status_code == 200, r.text
+        job = _wait_job_done(client, r2.json()["job_id"])
+        # the job reflects the failure honestly (the endpoint collapses
+        # completed|failed → "done"; per-item failure lives in failed/errors),
+        # but the old interpretation survives untouched and the status
+        # was not disturbed
+        assert job["failed"] == 1 and job["done"] == 0
+        assert "no indexed content" in job["errors"][0]
+        assert _paper_status(conn, pid) == "read"
+        assert len(_note_types(client, pid)) == 2
+
+
 # ---------------------------------------------------------------------------
 # compare route
 # ---------------------------------------------------------------------------
@@ -352,6 +391,34 @@ def test_compare_missing_paper_returns_400(api_client, tmp_path):
         )
         assert r.status_code == 400
         assert "99998" in r.json()["detail"]
+
+
+class ExhaustedGateway:
+    """Gateway double that always raises the real gateway's exhaustion error
+    (every provider failed) — the compare route must map it to 502, not 500
+    or 400, and surface the per-provider attempts attribution."""
+
+    async def chat(self, messages, tier="fast", max_tokens=4096, temperature=None):
+        raise LLMExhaustedError(
+            f"all providers failed for tier {tier!r}",
+            [{"provider": "fake", "error": "HTTP 502", "text_len": None}],
+        )
+
+
+def test_compare_llm_exhausted_returns_502(api_client, tmp_path, embedder):
+    with api_client(ExhaustedGateway()) as client:
+        conn = _seed_conn(tmp_path)
+        pid_a, pid_b = _seed_compare_stack(client, conn, embedder)
+
+        r = client.post(
+            "/api/compare", json={"paper_ids": [pid_a, pid_b], "question": "对比"}
+        )
+
+        assert r.status_code == 502, r.text
+        detail = r.json()["detail"]
+        assert "llm exhausted" in detail
+        # the per-provider attribution travels to the API client
+        assert "fake" in detail and "HTTP 502" in detail
 
 
 # ---------------------------------------------------------------------------

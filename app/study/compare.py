@@ -11,7 +11,7 @@ P1 教训：bge-m3 CPU 推理会卡死 loop，reader.py/pipeline.py 同例）：
 ④ 一次 strong 调用（max_tokens=16384），要求输出 Markdown 对比表格
    （方法/核心思想/实验设置/结果/局限 × 各论文列）+ 引用标记穿插正文；
    空文本/输出打满封顶（thinking 吃掉预算）→ 预算翻倍重试一次，
-   仍空则抛 ValueError；
+   仍空则抛 LLMExhaustedError（API 层归 502 而非 400）；
 ⑤ matrix 原样返回；[P{n}|页码] 标记映射回 citations（同 P1 qa 的映射
    语义：重复去重、越界丢弃、无有效标记时全部片段附上）。
 
@@ -25,6 +25,7 @@ import asyncio
 import re
 import sqlite3
 
+from ..llm.gateway import LLMExhaustedError
 from ..rag.vector_store import SearchHit
 
 #: 每篇论文检索的片段数（brief 固定 top_k=6）
@@ -220,18 +221,37 @@ async def compare_papers(
     if not any(hits_by_paper):
         return {"matrix": NO_CONTENT_MATRIX, "citations": []}
 
-    # ④ 一次 strong 调用生成对比表格；空文本/封顶 → 预算翻倍重试一次
+    # ④ 一次 strong 调用生成对比表格；空文本/封顶 → 预算翻倍重试一次，
+    #    仍空则抛携带逐 provider 归因的 LLMExhaustedError（API 层归 502：
+    #    LLM 侧耗尽不是调用方的请求错误）
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": _build_prompt(query, papers, hits_by_paper)},
     ]
     reply = await gateway.chat(messages, tier="strong", max_tokens=MAX_TOKENS)
     if _text_starved(reply, MAX_TOKENS):
+        first = reply
         reply = await gateway.chat(
             messages, tier="strong", max_tokens=RETRY_MAX_TOKENS
         )
         if not str(reply.get("text") or "").strip():
-            raise ValueError("LLM returned empty text (likely hit token cap)")
+            raise LLMExhaustedError(
+                "LLM returned empty text (likely hit token cap)",
+                [
+                    {
+                        "provider": str(first.get("provider") or "?"),
+                        "error": "starved at first call"
+                        f" (max_tokens={MAX_TOKENS})",
+                        "text_len": len(str(first.get("text") or "").strip()),
+                    },
+                    {
+                        "provider": str(reply.get("provider") or "?"),
+                        "error": "still empty after doubled-budget retry"
+                        f" (max_tokens={RETRY_MAX_TOKENS})",
+                        "text_len": len(str(reply.get("text") or "").strip()),
+                    },
+                ],
+            )
     matrix = str(reply["text"])
 
     # ⑤ 标记映射回 citations

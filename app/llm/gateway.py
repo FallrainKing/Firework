@@ -1,6 +1,8 @@
 """LLM gateway: dual-protocol (openai/anthropic) chat with failover and usage accounting.
 
-- ``LLMGateway.chat()`` is the single entry point all other modules use.
+- ``LLMGateway.chat()`` is the single entry point all other modules use;
+  when every provider in the tier fails it raises ``LLMExhaustedError``
+  carrying per-provider attribution in ``attempts``.
 - Failover semantics: network errors, HTTP 429/5xx, non-JSON (e.g.
   HTML) bodies, and 200 responses with empty text (e.g. thinking starved
   the whole max_tokens budget) move on to the next provider; other HTTP
@@ -34,6 +36,18 @@ class LLMHTTPStatusError(Exception):
         self.provider = provider
         self.status_code = status_code
         self.body = body
+
+
+class LLMExhaustedError(Exception):
+    """Every provider in the tier failed (network/5xx/malformed body) or
+    returned empty text. Carries the per-provider attribution in ``attempts``
+    (list of ``{"provider", "error", "text_len"}`` dicts) so callers can log
+    or surface *which* providers died and why, instead of one aggregate
+    "all providers failed" string."""
+
+    def __init__(self, message: str, attempts: list[dict]):
+        super().__init__(message)
+        self.attempts = attempts
 
 
 class _RetryableError(Exception):
@@ -76,11 +90,16 @@ class LLMGateway:
     ) -> LLMReply:
         last_error: Exception | None = None
         saw_empty_text = False
+        attempts: list[dict] = []
         for provider in self._ordered_providers(tier):
+            name = str(provider.get("name", "?"))
             try:
                 reply = await self._call(provider, messages, max_tokens, temperature)
             except _RetryableError as exc:
                 last_error = exc
+                attempts.append(
+                    {"provider": name, "error": str(exc), "text_len": None}
+                )
                 logger.warning(
                     "provider %s failed (%s); failing over to next provider",
                     provider.get("name"),
@@ -94,6 +113,16 @@ class LLMGateway:
                 # tokens were still consumed: account for them.
                 self._record_usage(reply, tier)
                 saw_empty_text = True
+                attempts.append(
+                    {
+                        "provider": name,
+                        "error": (
+                            "HTTP 200 but empty text"
+                            f" (usage output={reply['usage']['output']})"
+                        ),
+                        "text_len": 0,
+                    }
+                )
                 logger.warning(
                     "provider %s returned empty text (usage output=%s);"
                     " failing over to next provider",
@@ -104,10 +133,12 @@ class LLMGateway:
             self._record_usage(reply, tier)
             return reply
         if saw_empty_text:
-            raise RuntimeError(
-                f"all providers returned empty text for tier {tier!r}"
+            raise LLMExhaustedError(
+                f"all providers returned empty text for tier {tier!r}", attempts
             ) from last_error
-        raise RuntimeError(f"all providers failed for tier {tier!r}") from last_error
+        raise LLMExhaustedError(
+            f"all providers failed for tier {tier!r}", attempts
+        ) from last_error
 
     # -- provider ordering -------------------------------------------------
 

@@ -20,6 +20,7 @@ from qdrant_client import QdrantClient
 
 from app.config import Settings
 from app.db import get_conn
+from app.llm.gateway import LLMExhaustedError
 from app.rag.vector_store import ChunkPoint, VectorStore
 from app.study.compare import compare_papers
 
@@ -326,13 +327,16 @@ def test_compare_retries_on_starved_text_then_succeeds(tmp_path, embedder):
     assert [c["max_tokens"] for c in gw2.calls] == [16384, 32768]
 
 
-def test_compare_raises_when_text_stays_empty_after_retry(tmp_path, embedder):
-    """重试一次后仍空文本 → 抛明确 ValueError（提示 token 封顶）。"""
+def test_compare_raises_llm_exhausted_when_text_stays_empty_after_retry(
+    tmp_path, embedder
+):
+    """重试一次后仍空文本 → 抛 LLMExhaustedError（API 层归 502 而非
+    400），attempts 携带两次调用的逐 provider 归因。"""
     db, store = setup_stack(tmp_path, embedder)
     pid_a, pid_b = seed_two_papers(db, store, embedder)
     gw = ScriptedGateway([("", 16384), ("", 32768)])
 
-    with pytest.raises(ValueError, match="empty text"):
+    with pytest.raises(LLMExhaustedError, match="empty text") as excinfo:
         asyncio.run(
             compare_papers(
                 [pid_a, pid_b], None, db=db, embedder=embedder, store=store, gateway=gw
@@ -340,3 +344,8 @@ def test_compare_raises_when_text_stays_empty_after_retry(tmp_path, embedder):
         )
     # 恰好两次调用：初试 + 翻倍重试
     assert [c["max_tokens"] for c in gw.calls] == [16384, 32768]
+    # 逐 provider 归因：两次都是 fake 且都空文本
+    assert [a["provider"] for a in excinfo.value.attempts] == ["fake", "fake"]
+    assert all(a["text_len"] == 0 for a in excinfo.value.attempts)
+    assert "starved at first call" in excinfo.value.attempts[0]["error"]
+    assert "doubled-budget retry" in excinfo.value.attempts[1]["error"]

@@ -5,7 +5,7 @@ import sqlite3
 import pytest
 
 from app.config import Settings
-from app.db import get_conn
+from app.db import MIGRATIONS_DIR, get_conn
 
 EXPECTED_TABLES = {
     "papers",
@@ -104,6 +104,73 @@ def test_migrations_idempotent(conn):
     c2 = get_conn()  # second connection must not re-apply / must not fail
     assert "papers" in _tables(c2)
     c2.close()
+
+
+def test_migration_failure_rolls_back_and_rerun_completes(tmp_path):
+    """迁移中途失败必须整体回滚（runner 包 BEGIN IMMEDIATE/COMMIT）。
+
+    人为让 0002 在 ALTER 之后、脚本末尾之前崩掉（预建 notes_new 表 →
+    CREATE TABLE notes_new 重复）：失败后 schema 不得留半截状态——
+    import_jobs 无 kind 列、schema_migrations 未记账；清障后第二次跑
+    真实迁移文件应成功完成而非撞上 "duplicate column name: kind"。
+    """
+    settings = Settings(data_dir=tmp_path, qdrant_url=":memory:")
+    legacy = sqlite3.connect(settings.db_path)
+    legacy.executescript((MIGRATIONS_DIR / "0001_init.sql").read_text("utf-8"))
+    # replicate the bookkeeping _ensure_migrations did for 0001
+    legacy.execute(
+        "CREATE TABLE IF NOT EXISTS schema_migrations ("
+        "name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+    )
+    legacy.execute("INSERT INTO schema_migrations (name) VALUES ('0001_init.sql')")
+    # the obstacle: 0002 gets past ALTER ... ADD COLUMN kind, then dies at
+    # CREATE TABLE notes_new
+    legacy.execute("CREATE TABLE notes_new (id INTEGER PRIMARY KEY)")
+    legacy.commit()
+    legacy.close()
+
+    with pytest.raises(sqlite3.OperationalError, match="notes_new"):
+        get_conn(settings)  # 0002 fails midway
+
+    failed = sqlite3.connect(settings.db_path)
+    try:
+        # no half-migrated state: the ALTER was rolled back and the
+        # migration was NOT recorded as applied
+        assert (
+            "kind"
+            not in {r[1] for r in failed.execute("PRAGMA table_info(import_jobs)")}
+        )
+        assert "0002_jobs_kind_and_notes_sixdim.sql" not in {
+            row[0]
+            for row in failed.execute("SELECT name FROM schema_migrations")
+        }
+    finally:
+        failed.close()
+
+    # clear the obstacle and re-run the real migration files: the second
+    # run must complete (before the fix it died on "duplicate column name:
+    # kind" left behind by the un-rolled-back ALTER)
+    cleanup = sqlite3.connect(settings.db_path)
+    cleanup.execute("DROP TABLE notes_new")
+    cleanup.commit()
+    cleanup.close()
+
+    conn = get_conn(settings)
+    try:
+        cols = {r[1] for r in conn.execute("PRAGMA table_info(import_jobs)")}
+        assert "kind" in cols
+        assert "0002_jobs_kind_and_notes_sixdim.sql" in {
+            row[0] for row in conn.execute("SELECT name FROM schema_migrations")
+        }
+        # six_dim notes are writable again after the successful re-run
+        conn.execute("INSERT INTO papers (title, source) VALUES ('t', 'upload')")
+        conn.execute(
+            "INSERT INTO notes (paper_id, note_type, content)"
+            " VALUES (1, 'six_dim', '六维')"
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def test_foreign_key_enforced(conn):

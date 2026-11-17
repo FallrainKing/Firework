@@ -3,18 +3,21 @@
 流程（全部 sqlite 操作经 asyncio.to_thread，节解读顺序执行不并发）：
 
 ① 读论文行 + chunks_meta 按 section 聚合文本（chunk_idx 排序拼接，
-   每节超 6000 字符保头部截断；Front Matter 跳过；无内容报错）；
-② 删除该 paper 旧的 section_analysis/six_dim notes（先删后写，重跑幂等
-   ——契约 2）；
+   每节超 6000 字符保头部截断；Front Matter 跳过；无内容报错——此时
+   旧 notes 与 papers.status 一概不动）；
+② papers.status 置 'reading'（聚合检查通过后；不限 new/pushed——重解读
+   也应显示进度，立即 commit）；
 ③ 每节一次 strong 调用生成中文解读，失败记录占位继续；成功节立即落
    section_analysis note（逐节落——契约 3：六维失败时已解读的节成果
-   保留，job 仍 failed 但 notes 有节级产出）；
+   保留，job 仍 failed 但 notes 有节级产出）。首次成功时才删除该
+   paper 旧的 section_analysis/six_dim notes（先删后写，重跑幂等——
+   契约 2）：无索引内容、全节失败两条路径都不删——重跑失败时旧解读
+   完整保留；
 ④ 六维综合一次 strong 调用，要求严格 JSON；解析失败追加"只输出 JSON"
-   重试一次，再失败抛 InterpretationError；
+   重试一次，再失败抛 InterpretationError（空文本/封顶的"预算耗尽"形态
+   改抛携带归因的 LLMExhaustedError）；
 ⑤ 全部成功时写失败节占位 note + 六维 six_dim note（content 为 markdown）；
-⑥ papers.status：进入时无条件置 'reading'（不限 new/pushed——重解读也
-   应显示进度，立即 commit），全部成功后 → 'read'；任何异常路径不推到
-   'read'。
+⑥ 全部成功后 papers.status → 'read'；任何异常路径不推到 'read'。
 
 Ruling R1：notes 列名 note_type；six_dim 的 CHECK 值由 Task 5 的 0002
 迁移补进 schema（已落地）。
@@ -27,6 +30,7 @@ import json
 import sqlite3
 from typing import Any
 
+from app.llm.gateway import LLMExhaustedError
 from app.rag.pdf_parser import FRONT_MATTER_TITLE
 
 MAX_SECTION_CHARS = 6000
@@ -251,22 +255,24 @@ async def interpret_paper(
     if paper is None:
         raise InterpretationError(f"paper {paper_id} not found")
 
-    # ⑥ 进入时无条件置 reading（立即 commit，失败也可见；重解读也显示进度）
-    await asyncio.to_thread(_set_status, db, paper_id, "reading")
-
-    # ② 删除旧解读 notes：先删后写，重跑幂等（契约 2）
-    await asyncio.to_thread(_delete_old_notes, db, paper_id)
-
-    # ① 聚合章节文本
+    # ① 聚合章节文本；无内容直接报错——不置 reading、不删旧 notes
+    #    （重跑失败时旧解读原样保留，papers.status 也不被扰动）
     chunk_rows = await asyncio.to_thread(_fetch_chunks, db, paper_id)
     sections = _aggregate_sections(chunk_rows)
     if not sections:
         raise InterpretationError("paper has no indexed content")
 
+    # ② 有内容才置 reading（立即 commit，失败也可见；重解读也显示进度）
+    await asyncio.to_thread(_set_status, db, paper_id, "reading")
+
     # ③ 逐节解读：顺序执行（不并发，避免压测网关），失败记录占位继续；
-    #    成功节立即落 note（契约 3：六维失败时已成功节成果保留）
+    #    成功节立即落 note（契约 3：六维失败时已成功节成果保留）。
+    #    旧 notes 的删除推迟到首个成功节（契约 2 的"先删后写"在确定有
+    #    新产出时才生效）：无索引内容、全节失败两条路径都不删——重跑
+    #    失败时旧解读完整保留。
     section_notes: list[dict] = []
     failed_section_notes: list[dict] = []
+    old_notes_deleted = False
     for section, text in sections:
         try:
             reply = await gateway.chat(
@@ -279,22 +285,29 @@ async def interpret_paper(
             note = f"{SECTION_FAIL_PREFIX}{exc}）"
             failed_section_notes.append({"section": section, "note": note})
         else:
+            if not old_notes_deleted:
+                await asyncio.to_thread(_delete_old_notes, db, paper_id)
+                old_notes_deleted = True
             await asyncio.to_thread(
                 _insert_note, db, paper_id, "section_analysis", note
             )
         section_notes.append({"section": section, "note": note})
 
     # 全部节失败：没有材料可综合，提前失败（状态停在 'reading'；
-    # 没有成功节，故无 note 落库）
+    # 没有成功节，故旧 notes 未删、无新 note 落库）
     if all(item["note"].startswith(SECTION_FAIL_PREFIX) for item in section_notes):
         raise InterpretationError("all section interpretations failed")
 
-    # ③ 六维综合：解析失败追加"只输出 JSON"重试一次，再失败抛错
+    # ④ 六维综合：解析失败追加"只输出 JSON"重试一次，再失败抛错；
+    #    空文本/封顶（预算被 thinking 耗尽）的失败形态改抛携带逐 provider
+    #    归因的 LLMExhaustedError，坏 JSON 仍是 InterpretationError（502）
     messages = [
         {"role": "user", "content": _six_dim_prompt(paper["title"], section_notes)}
     ]
     six: dict[str, str] | None = None
     last_error: Exception | None = None
+    starved = False
+    attempts: list[dict] = []
     for _attempt in range(2):
         reply = await gateway.chat(
             messages, tier="strong", max_tokens=SIX_DIM_MAX_TOKENS
@@ -306,11 +319,23 @@ async def interpret_paper(
             break
         except ValueError as exc:
             last_error = exc
+            starved = starved or str(exc).startswith("LLM returned empty text")
+            attempts.append(
+                {
+                    "provider": str(reply.get("provider") or "?"),
+                    "error": str(exc),
+                    "text_len": len(str(reply.get("text") or "").strip()),
+                }
+            )
             messages = messages + [
                 {"role": "assistant", "content": reply["text"]},
                 {"role": "user", "content": "只输出 JSON，不要任何其他文字。"},
             ]
     if six is None:
+        if starved:
+            raise LLMExhaustedError(
+                f"six-dim synthesis failed after retry: {last_error}", attempts
+            )
         raise InterpretationError(
             f"six-dim synthesis failed after retry: {last_error}"
         )

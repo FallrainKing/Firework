@@ -14,7 +14,7 @@ import pymupdf
 from fastapi import HTTPException, Request
 
 from ..ingest.pipeline import PdfTooLargeError
-from ..llm.gateway import LLMHTTPStatusError
+from ..llm.gateway import LLMExhaustedError, LLMHTTPStatusError
 from ..rag.vector_store import VectorStoreError
 from ..study.reader import InterpretationError
 
@@ -35,6 +35,7 @@ KNOWN_INGEST_ERRORS: tuple[type[BaseException], ...] = (
 #: KNOWN_STUDY_ERRORS first so a compare failure reads as a compare problem.
 KNOWN_STUDY_ERRORS: tuple[type[BaseException], ...] = (
     InterpretationError,  # the read pipeline could not complete → 502
+    LLMExhaustedError,  # every provider failed/returned empty text → 502
     ValueError,  # compare input problems (missing paper) → 400
 )
 
@@ -56,10 +57,18 @@ def study_http_error(exc: Exception) -> HTTPException:
     """Map a study-stack exception to its HTTP error.
 
     InterpretationError means the reading pipeline ran but could not finish
-    (no indexed content, six-dim JSON refusing to parse) — an upstream/LLM
-    problem, so 502. A bare ValueError is a bad request (400): today that is
-    compare_papers finding a paper id that does not exist.
+    (no indexed content, six-dim JSON refusing to parse) and
+    LLMExhaustedError means every provider failed or returned empty text —
+    both upstream/LLM problems, so 502 (the LLMExhaustedError detail carries
+    the per-provider ``attempts`` attribution). A bare ValueError is a bad
+    request (400): today that is compare_papers finding a paper id that does
+    not exist.
     """
+    if isinstance(exc, LLMExhaustedError):
+        return HTTPException(
+            status_code=502,
+            detail=f"llm exhausted: {exc} (attempts: {exc.attempts})",
+        )
     if isinstance(exc, InterpretationError):
         return HTTPException(
             status_code=502, detail=f"interpretation failed: {exc}"

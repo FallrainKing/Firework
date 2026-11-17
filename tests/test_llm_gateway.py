@@ -218,6 +218,92 @@ def test_html_body_with_200_fails_over(tmp_path, monkeypatch):
     assert len(calls) == 2
 
 
+def test_empty_text_fails_over_to_next_provider(tmp_path, monkeypatch):
+    # starved 200 (thinking ate the whole budget -> empty text block) must
+    # NOT be returned as-is: it is as retryable as a 5xx.
+    second = dict(ANTHROPIC_PROVIDER, name="second", model="m2")
+    starved_payload = {
+        "model": "glm-5.3",
+        "content": [
+            {"type": "thinking", "thinking": "long " * 5000, "signature": "sig"},
+            {"type": "text", "text": ""},
+        ],
+        "usage": {"input_tokens": 10, "output_tokens": 2048},
+    }
+    payload = {
+        "model": "m2",
+        "content": [{"type": "text", "text": "rescued from starvation"}],
+        "usage": {"input_tokens": 1, "output_tokens": 1},
+    }
+    calls = patch_post(
+        monkeypatch,
+        [FakeResponse(200, starved_payload), FakeResponse(200, payload)],
+    )
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
+    )
+
+    reply = asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert reply["provider"] == "second"
+    assert reply["text"] == "rescued from starvation"
+    assert len(calls) == 2  # starved 200 did not end the loop
+
+
+def test_all_providers_empty_text_raises(tmp_path, monkeypatch):
+    second = dict(ANTHROPIC_PROVIDER, name="second", model="m2")
+    starved_payload = {
+        "model": "glm-5.3",
+        "content": [{"type": "text", "text": ""}],
+        "usage": {"input_tokens": 10, "output_tokens": 2048},
+    }
+    starved_payload_2 = dict(starved_payload, model="m2")
+    calls = patch_post(
+        monkeypatch,
+        [FakeResponse(200, starved_payload), FakeResponse(200, starved_payload_2)],
+    )
+    gw = LLMGateway(
+        make_settings(tmp_path, [ANTHROPIC_PROVIDER, second], fast="glm")
+    )
+
+    with pytest.raises(RuntimeError, match="all providers returned empty text"):
+        asyncio.run(gw.chat([{"role": "user", "content": "hi"}]))
+
+    assert len(calls) == 2  # every provider got a chance before raising
+
+
+def test_starved_call_still_records_usage(tmp_path, monkeypatch):
+    # a starved-but-200 call consumed tokens: llm_usage must have a row
+    # even though the call itself is treated as a retryable failure.
+    starved_payload = {
+        "model": "glm-5.3",
+        "content": [{"type": "text", "text": ""}],
+        "usage": {"input_tokens": 10, "output_tokens": 2048},
+    }
+    patch_post(monkeypatch, [FakeResponse(200, starved_payload)])
+    settings = make_settings(tmp_path, [ANTHROPIC_PROVIDER], fast="glm", strong="glm")
+    gw = LLMGateway(settings)
+
+    with pytest.raises(RuntimeError):
+        asyncio.run(gw.chat([{"role": "user", "content": "hi"}], tier="strong"))
+
+    conn = get_conn(settings)
+    try:
+        rows = conn.execute(
+            "SELECT provider, model, tier, prompt_tokens, completion_tokens"
+            " FROM llm_usage"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["provider"] == "glm"
+    assert row["model"] == "glm-5.3"
+    assert row["tier"] == "strong"
+    assert row["prompt_tokens"] == 10
+    assert row["completion_tokens"] == 2048
+
+
 def test_post_follows_redirects(tmp_path, monkeypatch):
     # httpx does NOT follow redirects by default; the gateway must opt in
     # so a provider answering a POST with a 3xx resolves instead of erroring.

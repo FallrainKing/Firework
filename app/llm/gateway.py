@@ -1,9 +1,11 @@
 """LLM gateway: dual-protocol (openai/anthropic) chat with failover and usage accounting.
 
 - ``LLMGateway.chat()`` is the single entry point all other modules use.
-- Failover semantics: network errors, HTTP 429/5xx, and non-JSON (e.g.
-  HTML) bodies move on to the next provider; other HTTP 4xx is raised
-  immediately (a configuration error must not silently switch routes).
+- Failover semantics: network errors, HTTP 429/5xx, non-JSON (e.g.
+  HTML) bodies, and 200 responses with empty text (e.g. thinking starved
+  the whole max_tokens budget) move on to the next provider; other HTTP
+  4xx is raised immediately (a configuration error must not silently
+  switch routes).
 - Every successful call is recorded in the ``llm_usage`` table. Accounting
   failures are logged but never break the main flow.
 """
@@ -73,6 +75,7 @@ class LLMGateway:
         temperature: float | None = None,
     ) -> LLMReply:
         last_error: Exception | None = None
+        saw_empty_text = False
         for provider in self._ordered_providers(tier):
             try:
                 reply = await self._call(provider, messages, max_tokens, temperature)
@@ -84,8 +87,26 @@ class LLMGateway:
                     exc,
                 )
                 continue
+            if not reply["text"].strip():
+                # HTTP 200 but starved: e.g. thinking consumed the entire
+                # max_tokens budget and the text block came back empty.
+                # Useless to every caller — as retryable as a 5xx. The
+                # tokens were still consumed: account for them.
+                self._record_usage(reply, tier)
+                saw_empty_text = True
+                logger.warning(
+                    "provider %s returned empty text (usage output=%s);"
+                    " failing over to next provider",
+                    reply["provider"],
+                    reply["usage"]["output"],
+                )
+                continue
             self._record_usage(reply, tier)
             return reply
+        if saw_empty_text:
+            raise RuntimeError(
+                f"all providers returned empty text for tier {tier!r}"
+            ) from last_error
         raise RuntimeError(f"all providers failed for tier {tier!r}") from last_error
 
     # -- provider ordering -------------------------------------------------

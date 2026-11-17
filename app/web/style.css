@@ -197,6 +197,144 @@ button:disabled { opacity: 0.55; cursor: default; }
   word-break: break-word;
 }
 
+/* ---------- 详情面板（精读视图） ---------- */
+#detail-panel h3#detail-title {
+  font-size: 1.05rem;
+  margin: 0 0 0.3rem;
+}
+#detail-abstract {
+  margin: 0.4rem 0 0.6rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 9rem;
+  overflow-y: auto;
+}
+.detail-actions { display: inline-flex; gap: 0.4rem; }
+.block-title {
+  font-size: 0.85rem;
+  margin: 0.8rem 0 0.4rem;
+  color: var(--muted);
+}
+#note-type { flex: 0 0 auto; }
+#note-content { flex: 1 1 100%; }
+#notes-list { list-style: none; margin: 0.4rem 0 0; padding: 0; }
+
+/* 六维卡片：移动端单列，宽屏两/三列 */
+.six-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+  margin-top: 0.6rem;
+}
+@media (min-width: 900px) {
+  .six-grid { grid-template-columns: repeat(3, 1fr); }
+}
+.six-card {
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+}
+.six-title {
+  font-weight: 700;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+}
+
+/* 章节解读卡片 */
+.section-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  margin-top: 0.5rem;
+  font-size: 0.85rem;
+}
+.section-title {
+  font-weight: 700;
+  font-size: 0.88rem;
+  margin-bottom: 0.3rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px dashed var(--border);
+}
+
+/* 用户笔记 */
+.user-note {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  margin-top: 0.5rem;
+  font-size: 0.84rem;
+}
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.3rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.note-delete {
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  margin-left: auto;
+}
+
+/* md.js 渲染结果 */
+.md { line-height: 1.55; word-break: break-word; }
+.md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+  margin: 0.3rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+.md h1 { font-size: 1.05rem; }
+.md h2 { font-size: 1rem; }
+.md p { margin: 0.25rem 0; }
+.md ul, .md ol { margin: 0.25rem 0; padding-left: 1.3rem; }
+.md table {
+  border-collapse: collapse;
+  margin: 0.4rem 0;
+  width: 100%;
+  display: block;
+  overflow-x: auto; /* 窄屏宽表格可横向滚动 */
+}
+.md th, .md td {
+  border: 1px solid var(--border);
+  padding: 0.28rem 0.45rem;
+  font-size: 0.8rem;
+}
+.md th { background: color-mix(in srgb, currentColor 8%, transparent); }
+.md pre {
+  margin: 0.3rem 0;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  overflow-x: auto;
+  background: color-mix(in srgb, currentColor 6%, transparent);
+}
+.md code { font-family: ui-monospace, monospace; font-size: 0.8em; }
+.md pre code { white-space: pre; }
+.md a { color: var(--accent); }
+
+/* 对比面板 */
+#compare-question { flex: 1 1 12rem; min-width: 0; }
+#compare-result { margin-top: 0.5rem; font-size: 0.88rem; }
+
+/* 状态徽标配色（详情/列表共用） */
+.badge.st-new { color: #6b7280; }
+.badge.st-reading { color: #9a6700; border-color: #9a6700; }
+.badge.st-read { color: #1d7a3d; border-color: #1d7a3d; }
+
+/* 列表条目：checkbox + 标题同行；detailing 标记详情面板展示中的论文 */
+.paper-top {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+}
+.compare-check { flex: 0 0 auto; margin-top: 0.2rem; }
+#paper-list li.detailing { border-color: var(--accent); }
+
 /* ---------- Toast ---------- */
 #toast-area {
   position: fixed;

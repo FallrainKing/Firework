@@ -15,13 +15,24 @@
   <div id="toast-area" aria-live="polite"></div>
 
   <main class="layout">
-    <!-- 左栏（移动端为上半区）：论文列表 + 添加论文 -->
+    <!-- 左栏（移动端为上半区）：论文列表 + 多选对比 + 添加论文 -->
     <div class="left-col">
       <section class="panel" id="papers-panel">
         <h2>论文列表 <button class="secondary" id="refresh-papers">刷新</button></h2>
         <ul id="paper-list"></ul>
         <p class="hint" id="papers-empty" hidden>暂无论文，请先在下方添加。</p>
-        <p class="hint">点击论文可将其选为问答上下文；再次点击取消选择。</p>
+        <p class="hint">勾选 2-5 篇可在下方生成对比；点击标题打开详情与精读笔记。</p>
+      </section>
+
+      <section class="panel" id="compare-panel">
+        <h2>对比</h2>
+        <div class="row">
+          <input type="text" id="compare-question"
+                 placeholder="对比问题（可选），如：这些方法的核心区别是什么" />
+          <button id="compare-btn" disabled>生成对比</button>
+        </div>
+        <p class="hint" id="compare-hint">已选 0 篇（需 2-5 篇）。</p>
+        <div id="compare-result"></div>
       </section>
 
       <section class="panel" id="upload-panel">
@@ -45,8 +56,44 @@
       </section>
     </div>
 
-    <!-- 右栏（移动端为下半区）：问答对话 -->
+    <!-- 右栏（移动端为下半区）：论文详情（精读）+ 问答对话 -->
     <div class="right-col">
+      <section class="panel" id="detail-panel" hidden>
+        <h2>论文详情
+          <span class="detail-actions">
+            <button class="secondary" id="detail-set-context">设为问答上下文</button>
+            <button class="secondary" id="detail-refresh">刷新</button>
+          </span>
+        </h2>
+        <div id="detail-body">
+          <h3 id="detail-title"></h3>
+          <div class="paper-meta" id="detail-meta"></div>
+          <p class="abstract" id="detail-abstract"></p>
+          <div class="row">
+            <button id="interpret-btn">生成深度解读</button>
+          </div>
+          <div class="progress-wrap" id="interpret-progress" hidden>
+            <div class="progress-bar"><div id="interpret-bar-fill"></div></div>
+            <div class="progress-text" id="interpret-status-text"></div>
+          </div>
+          <div id="six-dim"></div>
+          <h4 class="block-title" id="sections-title" hidden>章节解读</h4>
+          <div id="sections-list"></div>
+          <h4 class="block-title">笔记</h4>
+          <div class="row">
+            <select id="note-type">
+              <option value="annotation">阅读批注</option>
+              <option value="chat_summary">对话总结</option>
+            </select>
+          </div>
+          <div class="row">
+            <textarea id="note-content" placeholder="写点笔记…（支持 Markdown，安全渲染）"></textarea>
+            <button id="add-note-btn">添加笔记</button>
+          </div>
+          <ul id="notes-list"></ul>
+        </div>
+      </section>
+
       <section class="panel" id="qa-panel">
         <h2>问答</h2>
         <div id="qa-context">当前上下文：全部论文</div>
@@ -59,6 +106,7 @@
     </div>
   </main>
 
+  <script src="md.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

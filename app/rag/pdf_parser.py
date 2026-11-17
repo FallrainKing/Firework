@@ -12,6 +12,14 @@ Supported heading schemes (a paper mixes at most arabic + letter):
 * roman — ``I. INTRODUCTION``, ``VII. RELATED WORK``
 * letter — ``A. Denoising Diffusion Probabilistic Models``
 
+Papers that number their headings are covered by the schemes above; papers
+that do not (OpenVLA's ``Introduction``, ``Related Work``) fall back to two
+conservative unnumbered shapes (see :func:`_unnumbered_heading`): a whole
+line equal to a known section noun, or an all-caps line. Unnumbered
+headings run *parallel* to the numbering schemes — they never enter the
+numbering state machine, so a numbered heading elsewhere in the paper is
+unaffected by them.
+
 Beyond the line-level shape rules (short, no sentence-final punctuation,
 capitalised content words), two context rules keep prose/list lines from
 being mistaken for headings:
@@ -66,6 +74,41 @@ _ROMAN_CANONICAL_RE = re.compile(
     r"^(?=[IVXLCDM])M*(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$"
 )
 _ROMAN_DIGITS = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100, "D": 500, "M": 1000}
+
+#: known unnumbered section nouns — matched as the *whole* line,
+#: case-insensitively, after collapsing internal whitespace to single
+#: spaces (so a prose line merely containing "related work" never matches)
+_UNNUMBERED_HEADINGS = frozenset(
+    (
+        "abstract",
+        "introduction",
+        "background",
+        "related work",
+        "preliminary",
+        "preliminaries",
+        "method",
+        "methods",
+        "approach",
+        "model",
+        "experiment",
+        "experiments",
+        "experimental setup",
+        "results",
+        "analysis",
+        "discussion",
+        "conclusion",
+        "conclusions",
+        "limitations",
+        "acknowledgments",
+        "acknowledgements",
+        "references",
+        "appendix",
+    )
+)
+#: one word of an all-caps heading: letters, optionally with '-'/''
+#: inside or a trailing ':' ("PRELIMINARIES:"); digits and symbols like
+#: '=' never match, so figure/axis ticks ("NFE=8 NFE=10") stay body text
+_ALLCAPS_WORD_RE = re.compile(r"[A-Z][A-Z'\-:]*")
 
 
 def _roman_value(token: str) -> int:
@@ -178,6 +221,47 @@ def _content_is_heading_shaped(content: str) -> bool:
                 # datasets" is a real heading)
                 return False
     return seen_alpha_cap
+
+
+def _unnumbered_heading(stripped: str) -> str | None:
+    """Return the section title when the line is an unnumbered heading.
+
+    Two shapes, both sharing the heading line-level guards (short line, no
+    sentence-final punctuation) so prose never matches:
+
+    * the whole line equals a known section noun (:data:`_UNNUMBERED_HEADINGS`)
+      case-insensitively — "Introduction", "related work", "Experiments".
+      Internal whitespace is collapsed to single spaces before comparing,
+      and only a line consisting of *exactly* the phrase matches, so a body
+      sentence like "The introduction of new methods improved results."
+      never hits;
+    * an all-caps line of at least two words ("RELATED WORK",
+      "EVALUATION RESULTS"). Every word must be uppercase letters (plus
+      '-'/'’'/trailing ':'), digits and symbols excluded — figure ticks
+      like "NFE=8 NFE=10 NFE=20" stay body text — and at least one word
+      must be longer than a single character, so bare axis runs ("A B C D")
+      never hit either.
+
+    The title is the whitespace-collapsed line in its original casing.
+    Unnumbered headings are *parallel* to the numbered schemes: the caller
+    keeps them out of :class:`_HeadingNumbering` entirely, so they neither
+    consume nor advance the numbered sequence.
+    """
+    if not stripped or len(stripped) > _HEADING_MAX_CHARS:
+        return None
+    if stripped[-1] in _SENTENCE_FINAL:
+        return None
+    collapsed = " ".join(stripped.split())
+    if collapsed.lower() in _UNNUMBERED_HEADINGS:
+        return collapsed
+    words = collapsed.split()
+    if (
+        2 <= len(words) <= _HEADING_MAX_WORDS
+        and any(len(w) > 1 for w in words)
+        and all(_ALLCAPS_WORD_RE.fullmatch(w) for w in words)
+    ):
+        return collapsed
+    return None
 
 
 # -- context rules ----------------------------------------------------------
@@ -306,12 +390,17 @@ def extract_pages(pdf_path: str | Path) -> list[PageText]:
 
 
 def split_sections(pages: list[PageText]) -> list[Section]:
-    """Split a page stream into sections on numbered heading lines.
+    """Split a page stream into sections on heading lines.
 
     A line becomes a heading when it parses as a numbered/roman/letter
     heading (see :func:`_parse_heading`), is not part of a consecutive
     numbered list block (:func:`_in_list_block`) and fits the strict
-    numbering sequence (:class:`_HeadingNumbering`). Heading lines are
+    numbering sequence (:class:`_HeadingNumbering`). Lines that look
+    numbered but are rejected by those guards never fall back to the
+    unnumbered rules — a rejected "3 Related Work" stays body text. A
+    line that is not numbered at all becomes a heading when it matches one
+    of the unnumbered shapes (:func:`_unnumbered_heading`); unnumbered
+    headings do not enter the numbering state machine. Heading lines are
     kept as the first line of their section's text; ``Section.page`` is
     the page the heading appears on. Text found before the first heading
     becomes a single ``"Front Matter"`` section (omitted entirely when the
@@ -329,17 +418,21 @@ def split_sections(pages: list[PageText]) -> list[Section]:
         return []
 
     numbering = _HeadingNumbering()
-    headings: dict[int, _Heading] = {}  # line index -> accepted heading
+    headings: dict[int, _Heading] = {}  # line index -> accepted numbered heading
+    unnumbered: dict[int, str] = {}  # line index -> unnumbered section title
     for i, (_, stripped) in enumerate(lines):
         candidate = _parse_heading(stripped)
-        if candidate is None:
-            continue
-        prev = lines[i - 1][1] if i > 0 else None
-        nxt = lines[i + 1][1] if i + 1 < len(lines) else None
-        if _in_list_block(candidate, prev, nxt):
-            continue
-        if numbering.accepts(candidate):
-            headings[i] = candidate
+        if candidate is not None:
+            prev = lines[i - 1][1] if i > 0 else None
+            nxt = lines[i + 1][1] if i + 1 < len(lines) else None
+            if not _in_list_block(candidate, prev, nxt) and numbering.accepts(
+                candidate
+            ):
+                headings[i] = candidate
+            continue  # numbered-shaped lines never fall back to unnumbered
+        title = _unnumbered_heading(stripped)
+        if title is not None:
+            unnumbered[i] = title
 
     sections: list[Section] = []
     title = FRONT_MATTER_TITLE
@@ -358,6 +451,10 @@ def split_sections(pages: list[PageText]) -> list[Section]:
         if heading is not None:
             flush()
             title = heading.title
+            start_page = page
+        elif i in unnumbered:
+            flush()
+            title = unnumbered[i]
             start_page = page
         body.append(stripped)
     flush()

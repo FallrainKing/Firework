@@ -22,7 +22,11 @@ def _build_sample_pdf(path: Path) -> None:
 
     Layout (page numbers are 1-based):
       page 1 — title/authors/abstract (front matter) + "1 Introduction" + body
-      page 2 — intro continuation + "2 Method" + body
+      page 2 — intro continuation + "2 Method" + body, ending with the
+               unnumbered heading "Related Work" + body (exercises the
+               unnumbered-heading detection; the abstract is kept on the
+               "Abstract—..." line so it does not read as a standalone
+               "Abstract" heading)
     """
     import pymupdf
 
@@ -42,8 +46,7 @@ def _build_sample_pdf(path: Path) -> None:
         [
             "Sample Research Paper",
             "Author One and Author Two",
-            "Abstract",
-            "This is a tiny synthetic paper generated with PyMuPDF for the",
+            "Abstract—This is a tiny synthetic paper generated with PyMuPDF for the",
             "parser and chunker test suite. It exercises numbered section",
             "headings, multi-page sections, and plain English sentences.",
             "1 Introduction",
@@ -70,6 +73,8 @@ def _build_sample_pdf(path: Path) -> None:
             "We split pages into sections with a numbered-heading regex.",
             "Then we chunk each section on sentence boundaries.",
             "The method is deliberately simple and deterministic.",
+            "Related Work",
+            "Prior work on unnumbered section headings is scarce.",
         ],
     )
 

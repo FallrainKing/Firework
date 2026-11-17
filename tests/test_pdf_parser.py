@@ -21,10 +21,11 @@ def test_split_sections(sample_pdf):
     titles = [s.title for s in sections]
     assert "1 Introduction" in titles
     assert "2 Method" in titles
-    # text before the first numbered heading becomes "Front Matter"
-    assert titles == ["Front Matter", "1 Introduction", "2 Method"]
+    # text before the first numbered heading becomes "Front Matter"; the
+    # standalone "Related Work" line at the end is an unnumbered heading
+    assert titles == ["Front Matter", "1 Introduction", "2 Method", "Related Work"]
 
-    front, intro, method = sections
+    front, intro, method = sections[:3]
     # Front Matter holds the title/abstract, not the "1 Introduction" heading
     assert "Sample Research Paper" in front.text
     assert "Abstract" in front.text
@@ -240,7 +241,10 @@ def test_roman_and_letter_headings_detected():
 
 def test_bibliography_author_lines_are_not_headings():
     """Reference-list author lines ('A. Herzog, J. Hsu, …', 'H. Wallach,')
-    must never become sections even though they start like letter headings."""
+    must never become sections even though they start like letter headings.
+    The standalone 'References' line itself is a known unnumbered heading,
+    so the bibliography becomes its own section — with the author lines
+    kept inside it, not split out."""
     lines = [
         "Paper Title",
         "Abstract text.",
@@ -254,15 +258,112 @@ def test_bibliography_author_lines_are_not_headings():
         "Closing body.",
     ]
     sections = split_sections([PageText(page=1, text="\n".join(lines))])
-    assert [s.title for s in sections] == ["Front Matter", "1 Introduction", "2 Conclusion"]
-    assert "References" in sections[1].text
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "References",
+        "2 Conclusion",
+    ]
+    # the author lines stay inside the References section, unsplit
+    assert "A. Herzog, J. Hsu, et al. Do as I can, not as I say." in sections[2].text
+    assert "H. Wallach, H. Larochelle, A. Beygelzimer," in sections[2].text
 
 
 def test_sample_pdf_prose_lines_stay_in_body(sample_pdf):
     """The mis-split-prone body lines baked into the fixture stay in the body."""
     sections = split_sections(extract_pages(sample_pdf))
-    assert [s.title for s in sections] == ["Front Matter", "1 Introduction", "2 Method"]
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "2 Method",
+        "Related Work",
+    ]
     body = "\n".join(s.text for s in sections)
     assert "2023 A Survey of Embodied AI" in body
     assert "3 The authors acknowledge..." in body
     assert "10 All experiments use three seeds" in body
+
+
+def test_unnumbered_heading_recognized(sample_pdf):
+    """A standalone 'Related Work' line (baked into the fixture) splits its
+    own section without disturbing the numbered headings before it."""
+    sections = split_sections(extract_pages(sample_pdf))
+
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "2 Method",
+        "Related Work",
+    ]
+    related = sections[-1]
+    # the heading line is kept as the first line of its section's text
+    assert related.text.lstrip().startswith("Related Work")
+    assert "Prior work on unnumbered section headings is scarce." in related.text
+
+
+def test_allcaps_heading_recognized():
+    """All-caps lines (>=2 words, no trailing punctuation) split sections;
+    a numbered all-caps heading keeps its number in the title."""
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "Intro body.",
+        "2 Method",
+        "Method body.",
+        "3 RELATED WORK",  # numbered + all-caps content
+        "Related work body text.",
+        "EVALUATION RESULTS",  # pure all-caps, not in the known-word list
+        "Evaluation body text.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "2 Method",
+        "3 RELATED WORK",
+        "EVALUATION RESULTS",
+    ]
+    assert "RELATED WORK" in sections[3].title
+
+
+def test_body_sentence_with_keyword_not_heading():
+    """Prose lines that merely *contain* a section keyword never split —
+    the match must be the whole line."""
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "The introduction of new methods improved results.",
+        "This line discusses related work in passing while flowing on.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == ["Front Matter", "1 Introduction"]
+    assert "The introduction of new methods improved results." in sections[1].text
+    assert "related work in passing" in sections[1].text
+
+
+def test_known_heading_case_insensitive():
+    """Known section nouns match whole-line, case-insensitively, with
+    internal whitespace collapsed; unnumbered headings never touch the
+    numbered sequence ('2 Conclusion' still lands after them)."""
+    lines = [
+        "Paper Title",
+        "Abstract text.",
+        "1 Introduction",
+        "Intro body.",
+        "Related   Work",  # collapsed to "Related Work" before matching
+        "We survey prior approaches in detail.",
+        "Experiments",  # title case
+        "We evaluate the proposed approach.",
+        "2 Conclusion",  # numbering unharmed by the unnumbered headings
+        "Conclusion body.",
+    ]
+    sections = split_sections([PageText(page=1, text="\n".join(lines))])
+    assert [s.title for s in sections] == [
+        "Front Matter",
+        "1 Introduction",
+        "Related Work",
+        "Experiments",
+        "2 Conclusion",
+    ]

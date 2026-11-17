@@ -166,7 +166,7 @@ def test_native_resume_uses_same_workspace_and_session_id(monkeypatch,tmp_path):
 
 def test_affiliation_candidates_do_not_include_benchmark_or_copyright(client):
     import pymupdf
-    from app.library_assets import affiliation_candidates
+    from app.papers.assets import affiliation_candidates
     c,s=client
     folder=s.data_dir/'papers';folder.mkdir();path=folder/'2.pdf'
     doc=pymupdf.open();page=doc.new_page()

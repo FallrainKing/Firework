@@ -62,11 +62,6 @@ def category_exists(db: sqlite3.Connection, ident: int):
     return db.execute('SELECT 1 FROM session_categories WHERE id=?', (ident,)).fetchone()
 
 
-def paper_exists(db: sqlite3.Connection, pid: int):
-    # Transitional: papers domain lands in Task 8; existence check moves there.
-    return db.execute('SELECT 1 FROM papers WHERE id=?', (pid,)).fetchone()
-
-
 def search_sessions(db, *, q, kind, paper_id, category_id, archived, limit):
     sql = "SELECT c.* FROM conversations c WHERE c.module='agent' AND c.archived=?"
     args = [int(archived)]

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 
-from app.api import library
+from app.papers.router import router as library_router
 from app.agent.router import router as agent_router
 from app.agent import service as agent, runner_client
 from app.sessions import router as sessions_router
@@ -43,7 +43,7 @@ def client(tmp_path, monkeypatch):
     register_error_handlers(app)
     app.include_router(agent_router)
     app.include_router(sessions_router)
-    app.include_router(library.router)
+    app.include_router(library_router)
     with TestClient(app) as c:
         yield c, settings
 

@@ -6,6 +6,7 @@ import uuid
 
 from ..agent.catalog import KINDS, SKILLS
 from ..core.errors import ServiceError
+from ..papers.service import paper_exists
 from . import repository as repo
 from .schemas import Name, SessionCreate, SessionPatch, TemplateCreate
 
@@ -79,7 +80,7 @@ def create_session(db: sqlite3.Connection, body: SessionCreate) -> dict:
     if template['skill'] == 'paper_compare' and len(ids) < 2:
         raise ServiceError(400, '对比会话至少选择两篇论文')
     for ident in ids:
-        if not repo.paper_exists(db, ident):
+        if not paper_exists(db, ident):
             raise ServiceError(400, '关联论文不存在')
     starting_prompt = body.starting_prompt if body.starting_prompt is not None else template['prompt']
     try:

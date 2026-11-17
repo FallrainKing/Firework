@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 import struct,zlib
 from fastapi.testclient import TestClient
-from app.api import workbench
+from app.schedules.router import router as schedules_router
 from app.workbench.router import router as workbench_router
 from app.storage import files as storage_files
 from test_reader_imports import reading
@@ -12,7 +12,7 @@ from test_agent_mvp import client,wait
 
 @pytest.fixture
 def desk(reading):
-    c,s,sid,ctx=reading;c.app.include_router(workbench.router);c.app.include_router(workbench_router)
+    c,s,sid,ctx=reading;c.app.include_router(schedules_router);c.app.include_router(workbench_router)
     return c,s,sid,ctx
 
 def png():

@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
-from .api import library, imports_v2, workbench
+from .api import library, imports_v2
+from .schedules.router import router as schedules_router
+from .schedules import service as schedules_service
 from .workbench.router import router as workbench_router
 from .agent.router import router as agent_router
 from .agent import service as agent_service
@@ -95,7 +97,7 @@ async def lifespan(app: FastAPI):
 
     agent_service.init_agent_state(app)
     try:
-        scheduler=asyncio.create_task(workbench.schedule_loop(app))
+        scheduler=asyncio.create_task(schedules_service.schedule_loop(app))
         yield
     finally:
         scheduler.cancel()
@@ -120,7 +122,6 @@ def create_app() -> FastAPI:
     app.include_router(reader_router)
     app.include_router(imports_v2.router)
     app.include_router(imports_v2.internal)
-    app.include_router(workbench.router)
     app.include_router(workbench_router)
 
     @app.get("/health")

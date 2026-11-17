@@ -217,6 +217,32 @@ def test_compare_citations_mapped(tmp_path, embedder):
     ]
 
 
+def test_compare_citations_escaped_marker_in_table(tmp_path, embedder):
+    """F1：表格单元格内的规范转义写法 [P1\\|2] 也必须映射到 citations。"""
+    db, store = setup_stack(tmp_path, embedder)
+    pid_a, pid_b = seed_two_papers(db, store, embedder)
+    # markdown 表格单元格内的标准转义形态：竖线前带反斜杠
+    reply = (
+        "| 维度 | 论文甲 |\n"
+        "|---|---|\n"
+        "| 方法 | 策略梯度 [P1\\|2] |\n"
+        "| 结果 | 提升三点 [P1\\|5] |\n"
+    )
+    gw = FakeGateway(reply)
+
+    result = asyncio.run(
+        compare_papers(
+            [pid_a, pid_b], "对比两篇", db=db, embedder=embedder, store=store, gateway=gw
+        )
+    )
+
+    # 转义标记不能静默丢失走全量回退，必须精确映射
+    assert result["citations"] == [
+        {"paper_id": pid_a, "page": 2, "quote": CHUNK_A_P2},
+        {"paper_id": pid_a, "page": 5, "quote": CHUNK_A_P5},
+    ]
+
+
 def test_compare_matrix_is_markdown_with_all_papers(tmp_path, embedder):
     db, store = setup_stack(tmp_path, embedder)
     pid_a, pid_b = seed_two_papers(db, store, embedder)

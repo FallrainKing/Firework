@@ -4,7 +4,7 @@ from __future__ import annotations
 import sqlite3
 import uuid
 
-from ..agent_catalog import KINDS, SKILLS
+from ..agent.catalog import KINDS, SKILLS
 from ..core.errors import ServiceError
 from . import repository as repo
 from .schemas import Name, SessionCreate, SessionPatch, TemplateCreate
@@ -108,7 +108,7 @@ def session_detail(db: sqlite3.Connection, session_id: int) -> dict:
 
 
 def session_runs(db: sqlite3.Connection, session_id: int, before: int | None = None, limit: int = 50) -> dict:
-    from ..api.agent import view  # agent domain lands in Task 4; keep late-bound
+    from ..agent.service import view
 
     require_session(db, session_id)
     rows = repo.session_runs(db, session_id, before, limit + 1)

@@ -68,7 +68,7 @@ async def translations(paper_id: int, request: Request):
 
 @router.post('/translations')
 async def translate(body: Translation, request: Request):
-    return await service.translate(request.app.state.db, request.app.state.settings, body, request)
+    return await service.translate(request.app.state.db, request.app.state.settings, body, request.app.state)
 
 
 @router.patch('/translations/{ident}')

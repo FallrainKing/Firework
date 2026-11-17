@@ -175,7 +175,7 @@ def test_scanned_pdf_reports_missing_text(tmp_path):
 
 def test_full_queue_keeps_import_visible_and_retryable(reading,monkeypatch):
     from fastapi import HTTPException
-    from app.api import agent
+    from app.agent import service as agent
     c,s,sid,ctx=reading
     async def full(*a,**kw):raise HTTPException(429,'Queue full; please wait')
     monkeypatch.setattr(agent,'create_run',full)

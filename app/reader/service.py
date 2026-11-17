@@ -86,10 +86,9 @@ def translations(db: sqlite3.Connection, paper_id: int) -> dict:
     return {'translations': [dict(r) for r in repo.list_translations(db, paper_id)]}
 
 
-async def translate(db: sqlite3.Connection, settings, body: Translation, request) -> dict:
-    # Transitional: create_run takes (body, request) until Task 4 switches it
-    # to (body, state); this signature follows in Task 4.
-    from ..api.agent import RunCreate, create_run
+async def translate(db: sqlite3.Connection, settings, body: Translation, state) -> dict:
+    from ..agent.schemas import RunCreate
+    from ..agent.service import create_run
 
     linked(db, body.conversation_id, body.paper_id)
     if not body.quote.strip():
@@ -104,7 +103,7 @@ async def translate(db: sqlite3.Connection, settings, body: Translation, request
         repo.undelete_translation(db, old['id'])
         db.commit()
         return {**dict(old), 'deleted': 0, 'cached': True}
-    run = await create_run(RunCreate(conversation_id=body.conversation_id, prompt='请把本次选中的原文准确翻译成简体中文，只输出译文，保留专业术语、数字与公式。', contexts=[context], purpose='translate'), request)
+    run = await create_run(RunCreate(conversation_id=body.conversation_id, prompt='请把本次选中的原文准确翻译成简体中文，只输出译文，保留专业术语、数字与公式。', contexts=[context], purpose='translate'), state)
     ident = old['id'] if old else uuid.uuid4().hex
     repo.upsert_translation(db, ident, body.paper_id, body.conversation_id, body.page, body.file_version, body.quote, digest, run['id'])
     db.commit()

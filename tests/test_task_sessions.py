@@ -49,7 +49,7 @@ def test_category_rename_archive_pin_and_search(client):
     assert len(c.get('/api/sessions?category_id=0').json()['sessions'])==1
 
 def test_fixed_skill_and_bound_paper_payload(client,monkeypatch):
-    from app.api import agent
+    from app.agent import runner_client as agent
     c,s=client;pid=paper(s)
     session=c.post('/api/sessions',json={'template_id':'read','paper_ids':[pid]}).json()['session']
     assert c.post('/api/agent/runs',json={'conversation_id':session['id'],'skill':'chat','prompt':'x'}).status_code==409

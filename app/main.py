@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
-from .api import agent, library, imports_v2, workbench
+from .api import library, imports_v2, workbench
+from .agent.router import router as agent_router
+from .agent import service as agent_service
 from .reader.router import router as reader_router
 from .sessions.router import router as sessions_router
 from .core.config import Settings
@@ -90,14 +92,14 @@ async def lifespan(app: FastAPI):
     app.state.embedder = embedder
     app.state.store = store
 
-    agent.init_agent_state(app)
+    agent_service.init_agent_state(app)
     try:
         scheduler=asyncio.create_task(workbench.schedule_loop(app))
         yield
     finally:
         scheduler.cancel()
         await asyncio.gather(scheduler,return_exceptions=True)
-        await agent.close_agent_state(app)
+        await agent_service.close_agent_state(app)
         db.close()
 
 
@@ -111,7 +113,7 @@ def create_app() -> FastAPI:
     app.include_router(api.qa.router)
     app.include_router(api.imports.router)
     app.include_router(api.study.router)
-    app.include_router(agent.router)
+    app.include_router(agent_router)
     app.include_router(sessions_router)
     app.include_router(library.router)
     app.include_router(reader_router)

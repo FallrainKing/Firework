@@ -26,7 +26,8 @@ def validate_targets(db,collection_id,target):
     if target and not db.execute('SELECT 1 FROM papers WHERE id=?',(target,)).fetchone():raise HTTPException(400,'目标论文不存在')
 
 async def start_import(ident,request):
-    from .agent import RunCreate,create_run
+    from ..agent.schemas import RunCreate
+    from ..agent.service import create_run
     db=request.app.state.db;row=db.execute('SELECT * FROM import_requests WHERE id=?',(ident,)).fetchone()
     if row['status'] in ('completed','running'):return import_view(row)
     if row['run_id']:
@@ -37,7 +38,7 @@ async def start_import(ident,request):
         result=create_session(db,SessionCreate(template_id='import',title='导入：'+(row['original_filename'] or row['source_value'])[:100]))
         sid=result['session']['id'];db.execute('UPDATE import_requests SET conversation_id=? WHERE id=?',(sid,ident));db.commit()
     try:
-        run=await create_run(RunCreate(conversation_id=sid,prompt=f'请执行已授权的论文入库请求 {ident}。调用 paper_import 工具一次，按工具结果告知是否取得全文，不要编造。'),request)
+        run=await create_run(RunCreate(conversation_id=sid,prompt=f'请执行已授权的论文入库请求 {ident}。调用 paper_import 工具一次，按工具结果告知是否取得全文，不要编造。'),request.app.state)
     except HTTPException as exc:
         db.execute("UPDATE import_requests SET status='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",(str(exc.detail)[:250],ident));db.commit()
         return import_view(db.execute('SELECT * FROM import_requests WHERE id=?',(ident,)).fetchone())

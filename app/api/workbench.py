@@ -161,10 +161,11 @@ async def enable_schedule(ident:int,body:Enable,request:Request):
     db.execute('UPDATE research_schedules SET enabled=?,next_at=? WHERE id=?',(body.enabled,next_time(r['interval_hours']),ident));db.commit();return {'saved':True}
 
 async def fire_schedule(ident,request):
-    from .agent import create_run,RunCreate
+    from ..agent.service import create_run
+    from ..agent.schemas import RunCreate
     db=request.app.state.db;r=db.execute('SELECT * FROM research_schedules WHERE id=?',(ident,)).fetchone()
     if r is None:raise HTTPException(404,'定时任务不存在')
-    run=await create_run(RunCreate(conversation_id=r['conversation_id'],prompt=r['prompt']),request)
+    run=await create_run(RunCreate(conversation_id=r['conversation_id'],prompt=r['prompt']),request.app.state)
     db.execute('UPDATE research_schedules SET last_run_id=?,next_at=? WHERE id=?',(run['id'],next_time(r['interval_hours']),ident));db.commit();return run
 @router.post('/schedules/{ident}/run',status_code=202)
 async def run_schedule(ident:int,request:Request):return await fire_schedule(ident,request)

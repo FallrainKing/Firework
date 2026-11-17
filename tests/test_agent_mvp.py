@@ -14,7 +14,9 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 
-from app.api import agent, library
+from app.api import library
+from app.agent.router import router as agent_router
+from app.agent import service as agent, runner_client
 from app.sessions import router as sessions_router
 from app.core.errors import register_error_handlers
 from app.core.config import Settings
@@ -28,7 +30,7 @@ def client(tmp_path, monkeypatch):
         if request.url.path == '/health':
             return httpx.Response(200, json={'status':'ok','model':'test-model','skills':[]})
         return httpx.Response(200, json={'status':'succeeded','answer':'Saved answer: diffusion policy','model':'test-model','usage':{'input_tokens':12,'output_tokens':5},'cli_estimated_cost_usd':0.001,'tool_calls':[],'metadata':{}})
-    monkeypatch.setattr(agent, 'client', lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url='http://test'))
+    monkeypatch.setattr(runner_client,'client', lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url='http://test'))
     @asynccontextmanager
     async def lifespan(app):
         app.state.settings = settings
@@ -39,7 +41,7 @@ def client(tmp_path, monkeypatch):
         app.state.db.close()
     app = FastAPI(lifespan=lifespan)
     register_error_handlers(app)
-    app.include_router(agent.router)
+    app.include_router(agent_router)
     app.include_router(sessions_router)
     app.include_router(library.router)
     with TestClient(app) as c:
@@ -88,7 +90,7 @@ def test_runner_failure_is_persisted_without_automatic_retry(client,monkeypatch)
     def handler(request):
         calls.append(request)
         raise httpx.ConnectError('offline')
-    monkeypatch.setattr(agent,'client',lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    monkeypatch.setattr(runner_client,'client',lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
     r = c.post('/api/agent/runs',json={'prompt':'test'}).json()
     result = wait(c,r['id'])
     assert result['status'] == 'failed'
@@ -124,7 +126,7 @@ def test_followup_passes_bounded_saved_history(client,monkeypatch):
     def handler(req):
         captured.append(json.loads(req.content))
         return httpx.Response(200,json={'status':'succeeded','answer':'followup'})
-    monkeypatch.setattr(agent,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
     wait(c,c.post('/api/agent/runs',json={'prompt':'second','conversation_id':first['conversation_id']}).json()['id'])
     assert captured[0]['history'][0]['content']=='first'
     assert captured[0]['history'][1]['role']=='assistant'

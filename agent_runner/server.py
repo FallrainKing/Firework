@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / 'data' / 'agent'
 MODEL = os.environ.get('RESEARCH_AGENT_MODEL', 'deepseek-latest')
 TIMEOUT = 120
-from app.agent_catalog import SKILLS
+from app.agent.catalog import SKILLS
 
 app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, openapi_url=None)
 _lock = asyncio.Lock()

@@ -26,6 +26,22 @@ def linked(db: sqlite3.Connection, sid: int, pid: int) -> None:
         raise ServiceError(400, '当前会话未关联该论文')
 
 
+def validate_context(settings, db, context, conversation_id=None):
+    if conversation_id is not None and not repo.is_linked(db, conversation_id, context['paper_id']):
+        raise ValueError('论文未关联当前会话')
+    row = repo.find_paper(db, context['paper_id'])
+    if row is None:
+        raise ValueError('论文不存在')
+    data = pages.read_page(settings, row, context['page'])
+    if data['file_version'] != context['file_version']:
+        raise ValueError('PDF 版本已变化，请重新选择原文')
+    quote = context.get('quote', '').strip()
+    # PDF.js and PyMuPDF can differ in ligatures/hyphens/reading order.
+    # Preserve captured geometry, but never overstate a failed text match.
+    located = bool(quote and pages.normalize(quote) in pages.normalize(data['text']))
+    return {**context, 'quote': quote, 'validation': 'text_located' if located else 'page_captured', 'source': 'original_pdf_page'}
+
+
 def annotation_view(row) -> dict:
     out = dict(row)
     out['rects'] = json.loads(out.pop('rects_json'))
@@ -40,7 +56,7 @@ def annotations(db: sqlite3.Connection, paper_id: int) -> dict:
 
 def annotate(db: sqlite3.Connection, settings, body: Annotation) -> dict:
     try:
-        ctx = pages.validate_context(settings, db, body.model_dump(include={'paper_id', 'page', 'file_version', 'quote', 'rects'}), body.conversation_id)
+        ctx = validate_context(settings, db, body.model_dump(include={'paper_id', 'page', 'file_version', 'quote', 'rects'}), body.conversation_id)
     except ValueError as e:
         raise ServiceError(409, str(e))
     ident = uuid.uuid4().hex
@@ -94,7 +110,7 @@ async def translate(db: sqlite3.Connection, settings, body: Translation, state) 
     if not body.quote.strip():
         raise ServiceError(400, '请先选择需要翻译的原文')
     try:
-        context = pages.validate_context(settings, db, body.model_dump(exclude={'conversation_id'}), body.conversation_id)
+        context = validate_context(settings, db, body.model_dump(exclude={'conversation_id'}), body.conversation_id)
     except ValueError as e:
         raise ServiceError(409, str(e))
     digest = str(body.page) + ':' + hashlib.sha256(body.quote.strip().encode()).hexdigest()

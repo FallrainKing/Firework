@@ -41,7 +41,7 @@ def paper_page(paper_id,page,db_path):
 def paper_search(query,source):
     if source=='arxiv':return arxiv_search(query)
     if source=='crossref':
-        from app.paper_sources import crossref_search
+        from app.imports.sources import crossref_search
         return asyncio.run(crossref_search(query))
     raise ValueError('Unknown academic source')
 

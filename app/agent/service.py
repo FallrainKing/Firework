@@ -10,7 +10,7 @@ import httpx
 
 from ..core.db import get_conn
 from ..core.errors import ServiceError
-from ..reader.pages import validate_context
+from ..reader.service import validate_context
 from ..sessions.service import require_session
 from . import repository as repo, runner_client
 from .catalog import SKILLS as CATALOG, TEMPLATES

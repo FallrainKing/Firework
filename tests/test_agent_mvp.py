@@ -184,3 +184,11 @@ def test_arxiv_search_falls_back_without_extra_model_call(monkeypatch):
     assert 'arxiv.org/api/query?' in calls[1]
     assert 'sortBy' not in calls[0]
     assert result['papers'][0]['url']=='https://arxiv.org/abs/1234.56789'
+
+def test_paper_search_crossref_uses_imports_sources(monkeypatch):
+    from agent_runner import tools
+    from app.imports import sources
+    async def fake_crossref(query):
+        return [{'title': 'Crossref paper', 'query': query}]
+    monkeypatch.setattr(sources, 'crossref_search', fake_crossref)
+    assert tools.paper_search('robotics', 'crossref') == [{'title': 'Crossref paper', 'query': 'robotics'}]

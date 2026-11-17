@@ -166,3 +166,13 @@ async def run_interpretation(
         )
     finally:
         db.close()
+
+
+def fail_interrupted_jobs(db) -> None:
+    """Startup sweep: jobs a previous (crashed/restarted) process left
+    pending/running can never finish in this process — mark them failed
+    so pollers see the truth instead of a job "running" forever."""
+    db.execute(
+        "UPDATE import_jobs SET status='failed' WHERE status IN ('pending','running')"
+    )
+    db.commit()

@@ -84,13 +84,8 @@ async def lifespan(app: FastAPI):
     app.state.db = db
     app.state.gateway = LLMGateway(settings)
 
-    # Startup sweep: jobs a previous (crashed/restarted) process left
-    # pending/running can never finish in this process — mark them failed
-    # so pollers see the truth instead of a job "running" forever.
-    db.execute(
-        "UPDATE import_jobs SET status='failed' WHERE status IN ('pending','running')"
-    )
-    db.commit()
+    from .ingest.batch import fail_interrupted_jobs
+    fail_interrupted_jobs(db)
 
     embedder, store = await _init_rag_stack(settings)
     app.state.embedder = embedder

@@ -125,7 +125,7 @@ Runner 由用户级 systemd 服务管理：
 - 搜索与导入：`app/web/discover.html`。
 - 历史页面：`app/web/legacy.html`。
 - 内置 PDF.js：`app/web/vendor/pdfjs/`，版本 `6.5.438`。
-- Skill 注册表：`app/agent_catalog.py`。
+- Skill 注册表：`app/agent/catalog.py`。
 - Skill 说明：`skills/<skill>/SKILL.md`。
 
 当前新版为原生 HTML/CSS/JavaScript，不需要额外运行前端开发服务器。

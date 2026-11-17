@@ -49,14 +49,3 @@ def read_page(settings,row,page):
 def normalize(text):
     return re.sub(r'\s+','',text).replace('\u00ad','').replace('−','-').replace('–','-')
 
-def validate_context(settings,db,context,conversation_id=None):
-    if conversation_id is not None and not db.execute('SELECT 1 FROM conversation_papers WHERE conversation_id=? AND paper_id=?',(conversation_id,context['paper_id'])).fetchone():raise ValueError('论文未关联当前会话')
-    row=db.execute('SELECT * FROM papers WHERE id=?',(context['paper_id'],)).fetchone()
-    if row is None:raise ValueError('论文不存在')
-    data=read_page(settings,row,context['page'])
-    if data['file_version']!=context['file_version']:raise ValueError('PDF 版本已变化，请重新选择原文')
-    quote=context.get('quote','').strip()
-    # PDF.js and PyMuPDF can differ in ligatures/hyphens/reading order.
-    # Preserve captured geometry, but never overstate a failed text match.
-    located=bool(quote and normalize(quote) in normalize(data['text']))
-    return {**context,'quote':quote,'validation':'text_located' if located else 'page_captured','source':'original_pdf_page'}

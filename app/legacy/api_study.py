@@ -4,7 +4,7 @@
 row in the shared ``import_jobs`` table (polled via the existing
 ``GET /api/import/jobs/{id}``) and launches ``run_interpretation`` as an
 asyncio background task with a *dedicated* sqlite connection — same shape as
-the folder-import route in ``app.api.import``.
+the folder-import route in ``app.legacy.api_import``.
 
 ``POST /api/compare`` runs the whole comparison inline and returns matrix +
 citations. Validation lives here, not in the engine (contract 4): the id
@@ -43,7 +43,7 @@ router = APIRouter(prefix="/api", tags=["study"])
 
 #: asyncio only keeps *referenced* tasks alive; holding them here also gives
 #: the done-callback a place to log a crashed job it would otherwise swallow.
-#: (Same pattern as app.api.import._RUNNING_JOBS.)
+#: (Same pattern as app.legacy.api_import._RUNNING_JOBS.)
 _RUNNING_JOBS: set[asyncio.Task] = set()
 
 

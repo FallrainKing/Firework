@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
+from .api import agent
 from .config import Settings
 from .db import get_conn
 from .llm.gateway import LLMGateway
@@ -86,9 +87,11 @@ async def lifespan(app: FastAPI):
     app.state.embedder = embedder
     app.state.store = store
 
+    agent.init_agent_state(app)
     try:
         yield
     finally:
+        await agent.close_agent_state(app)
         db.close()
 
 
@@ -101,6 +104,7 @@ def create_app() -> FastAPI:
     app.include_router(api.qa.router)
     app.include_router(api.imports.router)
     app.include_router(api.study.router)
+    app.include_router(agent.router)
 
     @app.get("/health")
     def health() -> dict:

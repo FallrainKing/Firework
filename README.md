@@ -1,3 +1,9 @@
+## Agent 最小交互版本（2026-11-17）
+
+新首页已接入服务器已有 Claude Code：科研对话、论文库检索、arXiv 检索，结果和 token 用量保存 SQLite。原有导入/精读/比较页面位于 `/legacy.html`。
+
+运行、限额、测试与回滚见 [docs/AGENT-MVP.md](docs/AGENT-MVP.md)。本阶段先验证链路，复杂科研 Skills 后续完善。
+
 # 个人 AI 科研助手（research-assistant）
 
 个人论文库 + RAG 问答：上传 PDF / 导入 arXiv / 批量导入文件夹 → bge-m3 向量检索 → LLM 带页码引用的中文问答。Web UI 为免构建原生 JS 单页应用。

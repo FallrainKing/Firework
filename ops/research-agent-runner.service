@@ -1,0 +1,20 @@
+[Unit]
+Description=Research Assistant existing Claude Agent Runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/research-assistant
+Environment=RESEARCH_AGENT_MODEL=deepseek-latest
+Environment=PYTHONDONTWRITEBYTECODE=1
+UMask=0077
+ExecStartPre=/usr/bin/mkdir -p %h/research-assistant/data/agent
+ExecStart=%h/research-assistant/.venv/bin/python -m uvicorn agent_runner.server:app --uds %h/research-assistant/data/agent/runner.sock --workers 1 --no-access-log --log-level warning
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+KillMode=control-group
+
+[Install]
+WantedBy=default.target

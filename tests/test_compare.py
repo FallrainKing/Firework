@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import sqlite3
 
+import pytest
 from qdrant_client import QdrantClient
 
 from app.config import Settings
@@ -141,6 +142,29 @@ class FakeGateway:
         }
 
 
+class ScriptedGateway:
+    """按脚本依次返回的 gateway double。
+
+    script 每项是 (text, output_tokens)：output_tokens 用于模拟
+    thinking 型模型 thinking+text 打满 max_tokens 的封顶信号。
+    """
+
+    def __init__(self, script: list[tuple[str, int]]):
+        self.script = list(script)
+        self.calls: list[dict] = []
+
+    async def chat(self, messages, tier="fast", max_tokens=4096, temperature=None):
+        self.calls.append({"max_tokens": max_tokens, "tier": tier})
+        text, output = self.script.pop(0)
+        return {
+            "text": text,
+            "thinking": "",
+            "provider": "fake",
+            "model": "fake",
+            "usage": {"input": 0, "output": output},
+        }
+
+
 def test_compare_with_question_uses_question_embedding(tmp_path, embedder):
     db, store = setup_stack(tmp_path, embedder)
     pid_a, pid_b = seed_two_papers(db, store, embedder)
@@ -156,10 +180,11 @@ def test_compare_with_question_uses_question_embedding(tmp_path, embedder):
 
     # question 非空：只 embed 一次，且调用文本就是 question（不含标题/摘要）
     assert rec.calls == [[question]]
-    # gateway 形态：一次 strong / 4096
+    # gateway 形态：一次 strong / 16384（thinking 型模型 thinking+text
+    # 共享预算，4096 会被 thinking 吃掉 → matrix 空串）
     assert len(gw.calls) == 1
     assert gw.calls[0]["tier"] == "strong"
-    assert gw.calls[0]["max_tokens"] == 4096
+    assert gw.calls[0]["max_tokens"] == 16384
     assert result["matrix"] == MARKDOWN_REPLY
 
 
@@ -272,3 +297,46 @@ def test_compare_matrix_is_markdown_with_all_papers(tmp_path, embedder):
     assert "核心思想" in prompt
     assert "实验设置" in prompt
     assert "局限" in prompt
+
+
+def test_compare_retries_on_starved_text_then_succeeds(tmp_path, embedder):
+    """thinking 型模型 thinking+text 共享 max_tokens：空文本（或输出打满
+    封顶）→ 预算翻倍重试一次，第二次正常 → matrix 正常返回。"""
+    db, store = setup_stack(tmp_path, embedder)
+    pid_a, pid_b = seed_two_papers(db, store, embedder)
+
+    # 场景 1：第一次空文本 + 输出恰打满 16384（实测 llm_usage 的失败形态）
+    gw = ScriptedGateway([("", 16384), (MARKDOWN_REPLY, 100)])
+    result = asyncio.run(
+        compare_papers(
+            [pid_a, pid_b], None, db=db, embedder=embedder, store=store, gateway=gw
+        )
+    )
+    assert result["matrix"] == MARKDOWN_REPLY
+    assert [c["max_tokens"] for c in gw.calls] == [16384, 32768]
+
+    # 场景 2：第一次有文本但输出打满封顶（截断信号）→ 同样触发重试
+    gw2 = ScriptedGateway([("| 维度 | 截断的表", 16384), (MARKDOWN_REPLY, 100)])
+    result2 = asyncio.run(
+        compare_papers(
+            [pid_a, pid_b], None, db=db, embedder=embedder, store=store, gateway=gw2
+        )
+    )
+    assert result2["matrix"] == MARKDOWN_REPLY
+    assert [c["max_tokens"] for c in gw2.calls] == [16384, 32768]
+
+
+def test_compare_raises_when_text_stays_empty_after_retry(tmp_path, embedder):
+    """重试一次后仍空文本 → 抛明确 ValueError（提示 token 封顶）。"""
+    db, store = setup_stack(tmp_path, embedder)
+    pid_a, pid_b = seed_two_papers(db, store, embedder)
+    gw = ScriptedGateway([("", 16384), ("", 32768)])
+
+    with pytest.raises(ValueError, match="empty text"):
+        asyncio.run(
+            compare_papers(
+                [pid_a, pid_b], None, db=db, embedder=embedder, store=store, gateway=gw
+            )
+        )
+    # 恰好两次调用：初试 + 翻倍重试
+    assert [c["max_tokens"] for c in gw.calls] == [16384, 32768]

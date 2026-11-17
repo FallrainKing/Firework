@@ -116,12 +116,16 @@ class FakeGateway:
         section_reply="## 本节解读",
         six_dim_replies=(),
         six_dim_default=None,
+        section_replies=(),
     ):
         self.section_reply = section_reply
         self.six_dim_queue = list(six_dim_replies)
         self.six_dim_default = (
             six_dim_default if six_dim_default is not None else SIX_DIM_JSON
         )
+        #: 节解读回复队列（依次消费；空后回落 section_reply）——用于模拟
+        #: "第一次空文本、第二次正常"等脚本化场景
+        self.section_replies = list(section_replies)
         self.fail_section_markers: tuple[str, ...] = ()
         self.section_prompts: list[str] = []
         self.six_dim_calls: list[list[dict]] = []
@@ -147,7 +151,12 @@ class FakeGateway:
         self.section_prompts.append(text)
         if any(marker in text for marker in self.fail_section_markers):
             raise RuntimeError("fake gateway exploded")
-        return _reply(self.section_reply)
+        reply = (
+            self.section_replies.pop(0)
+            if self.section_replies
+            else self.section_reply
+        )
+        return _reply(reply)
 
 
 def test_interpret_writes_section_and_six_dim_notes(tmp_path):
@@ -183,8 +192,9 @@ def test_interpret_writes_section_and_six_dim_notes(tmp_path):
     six_note = next(n["content"] for n in notes if n["note_type"] == "six_dim")
     assert "## 背景" in six_note
     assert "## 局限" in six_note
-    # gateway 调用形态：每节一次 strong/2048，六维一次 strong/4096
-    assert [c["max_tokens"] for c in gw.calls] == [2048, 2048, 4096]
+    # gateway 调用形态：每节一次 strong/4096，六维一次 strong/16384
+    # （thinking 型模型 thinking+text 共享预算，2048/4096 会被吃掉）
+    assert [c["max_tokens"] for c in gw.calls] == [4096, 4096, 16384]
     assert all(c["tier"] == "strong" for c in gw.calls)
 
 
@@ -325,3 +335,37 @@ def test_failed_section_noted_and_continues(tmp_path):
         ).fetchone()[0]
         == 4
     )
+
+
+def test_empty_text_section_placeholder_and_six_dim_retry(tmp_path):
+    """thinking 预算耗尽 → 空文本（实测形态：completion_tokens 打满封顶、
+    text 块为空）：节解读空文本记失败占位继续；六维空文本沿既有重试一次
+    机制（当坏 JSON 处理），第二次成功。"""
+    db = make_db(tmp_path)
+    pid = add_paper(db, sections=[("1 Introduction", "引言"), ("2 Method", "方法")])
+    # 第一次节解读 → 空文本；六维第一次 → 空文本、第二次 → 正常 JSON
+    gw = FakeGateway(section_replies=[""], six_dim_replies=["", SIX_DIM_JSON])
+
+    result = asyncio.run(interpret_paper(pid, db=db, gateway=gw))
+
+    # 空文本节 → 失败占位（明确提示 token 封顶），整体不失败
+    intro = next(s for s in result["sections"] if s["section"] == "1 Introduction")
+    assert intro["note"].startswith("（本节解读失败：")
+    assert "empty text" in intro["note"] and "token cap" in intro["note"]
+    method = next(s for s in result["sections"] if s["section"] == "2 Method")
+    assert method["note"] == "## 本节解读"
+
+    # 六维空文本 → 沿既有重试路径：两次调用，第二次成功
+    assert len(gw.six_dim_calls) == 2
+    assert "只输出 JSON" in gw.six_dim_calls[1][-1]["content"]
+    assert tuple(result["six_dim"]) == SIX_KEYS
+
+    # notes：成功节 + 失败节占位 + 六维 = 3 条；状态推到 read
+    types = sorted(
+        r["note_type"]
+        for r in db.execute(
+            "SELECT note_type FROM notes WHERE paper_id = ?", (pid,)
+        )
+    )
+    assert types == ["section_analysis", "section_analysis", "six_dim"]
+    assert paper_status(db, pid) == "read"

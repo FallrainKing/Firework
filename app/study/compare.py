@@ -8,8 +8,10 @@ P1 教训：bge-m3 CPU 推理会卡死 loop，reader.py/pipeline.py 同例）：
    该向量；为空则逐篇用"标题+摘要"批量 embed；
 ③ 每篇 store.search(top_k=6, paper_id=...)，片段以 [P{n}|页码] 标号
    （n 为 paper_ids 内序号，1 起）；
-④ 一次 strong 调用（max_tokens=4096），要求输出 Markdown 对比表格
+④ 一次 strong 调用（max_tokens=16384），要求输出 Markdown 对比表格
    （方法/核心思想/实验设置/结果/局限 × 各论文列）+ 引用标记穿插正文；
+   空文本/输出打满封顶（thinking 吃掉预算）→ 预算翻倍重试一次，
+   仍空则抛 ValueError；
 ⑤ matrix 原样返回；[P{n}|页码] 标记映射回 citations（同 P1 qa 的映射
    语义：重复去重、越界丢弃、无有效标记时全部片段附上）。
 
@@ -27,8 +29,12 @@ from ..rag.vector_store import SearchHit
 
 #: 每篇论文检索的片段数（brief 固定 top_k=6）
 TOP_K_PER_PAPER = 6
-#: 一次 strong 调用的输出上限（brief 固定 4096）
-MAX_TOKENS = 4096
+#: 一次 strong 调用的输出上限。thinking 型模型（glm-5.3 等）的 max_tokens
+#: 同时限制 thinking+text：4096 会被 thinking 吃掉导致 text 块为空
+#: （实测 completion_tokens 恰好打满封顶），故提到 16384。
+MAX_TOKENS = 16384
+#: 封顶重试一次时的预算（翻倍）
+RETRY_MAX_TOKENS = MAX_TOKENS * 2
 #: 一篇片段都没有时的占位对比结果（不调 gateway）
 NO_CONTENT_MATRIX = "未找到相关内容，无法对比。"
 
@@ -148,6 +154,27 @@ def _map_citations(
 
 
 # ---------------------------------------------------------------------------
+# 空文本守卫（thinking 型模型 thinking+text 共享 max_tokens 预算）
+# ---------------------------------------------------------------------------
+
+
+def _text_starved(reply: dict, max_tokens: int) -> bool:
+    """True if the reply's text is empty OR the output hit the token cap.
+
+    思考型模型的 max_tokens 同时限制 thinking+text：预算被 thinking 耗尽
+    时 text 块为空，usage 的 completion_tokens 恰好等于 max_tokens（实测
+    llm_usage 打满封顶的失败形态）。两种信号都视为"预算不足，产出不可用"。
+    """
+    text = str(reply.get("text") or "").strip()
+    usage = reply.get("usage") or {}
+    try:
+        output = int(usage.get("output") or 0)
+    except (TypeError, ValueError):
+        output = 0
+    return not text or output >= max_tokens
+
+
+# ---------------------------------------------------------------------------
 # 主流程
 # ---------------------------------------------------------------------------
 
@@ -193,12 +220,18 @@ async def compare_papers(
     if not any(hits_by_paper):
         return {"matrix": NO_CONTENT_MATRIX, "citations": []}
 
-    # ④ 一次 strong 调用生成对比表格
+    # ④ 一次 strong 调用生成对比表格；空文本/封顶 → 预算翻倍重试一次
     messages = [
         {"role": "system", "content": _SYSTEM_PROMPT},
         {"role": "user", "content": _build_prompt(query, papers, hits_by_paper)},
     ]
     reply = await gateway.chat(messages, tier="strong", max_tokens=MAX_TOKENS)
+    if _text_starved(reply, MAX_TOKENS):
+        reply = await gateway.chat(
+            messages, tier="strong", max_tokens=RETRY_MAX_TOKENS
+        )
+        if not str(reply.get("text") or "").strip():
+            raise ValueError("LLM returned empty text (likely hit token cap)")
     matrix = str(reply["text"])
 
     # ⑤ 标记映射回 citations

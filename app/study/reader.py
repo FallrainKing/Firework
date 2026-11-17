@@ -34,6 +34,12 @@ TRUNCATION_MARK = "\n…[截断]"
 #: 失败节占位解读的前缀；六维综合 prompt 据此把它标为元信息而非材料
 SECTION_FAIL_PREFIX = "（本节解读失败："
 
+#: 节解读调用的输出上限。thinking 型模型（glm-5.3 等）的 max_tokens 同时
+#: 限制 thinking+text：2048 会被 thinking 吃掉导致 text 为空，故提到 4096。
+SECTION_MAX_TOKENS = 4096
+#: 六维综合调用的输出上限（原 4096 同理提到 16384：thinking+JSON 共享预算）
+SIX_DIM_MAX_TOKENS = 16384
+
 SIX_KEYS = (
     "background",
     "innovation",
@@ -109,6 +115,25 @@ def _insert_note(
 # ---------------------------------------------------------------------------
 # 聚合与 JSON
 # ---------------------------------------------------------------------------
+
+
+def _reply_text(reply: dict, max_tokens: int) -> str:
+    """空文本守卫：text 为空或输出打满 max_tokens（thinking 型模型的
+    thinking+text 共享预算，预算被 thinking 耗尽时 text 为空、
+    completion_tokens 恰好封顶）→ 抛 ValueError 视为失败。
+
+    节解读里该异常走既有 except 分支记失败占位；六维综合里沿既有
+    "解析失败重试一次"机制（ValueError 与坏 JSON 同路）。
+    """
+    text = str(reply.get("text") or "").strip()
+    usage = reply.get("usage") or {}
+    try:
+        output = int(usage.get("output") or 0)
+    except (TypeError, ValueError):
+        output = 0
+    if not text or output >= max_tokens:
+        raise ValueError("LLM returned empty text (likely hit token cap)")
+    return text
 
 
 def _aggregate_sections(rows: list[sqlite3.Row]) -> list[tuple[str, str]]:
@@ -247,9 +272,9 @@ async def interpret_paper(
             reply = await gateway.chat(
                 [{"role": "user", "content": _section_prompt(section, text)}],
                 tier="strong",
-                max_tokens=2048,
+                max_tokens=SECTION_MAX_TOKENS,
             )
-            note = reply["text"]
+            note = _reply_text(reply, SECTION_MAX_TOKENS)
         except Exception as exc:  # noqa: BLE001 — 单节失败不拖垮整篇
             note = f"{SECTION_FAIL_PREFIX}{exc}）"
             failed_section_notes.append({"section": section, "note": note})
@@ -271,9 +296,13 @@ async def interpret_paper(
     six: dict[str, str] | None = None
     last_error: Exception | None = None
     for _attempt in range(2):
-        reply = await gateway.chat(messages, tier="strong", max_tokens=4096)
+        reply = await gateway.chat(
+            messages, tier="strong", max_tokens=SIX_DIM_MAX_TOKENS
+        )
         try:
-            six = _validate_six_dim(_extract_json(reply["text"]))
+            six = _validate_six_dim(
+                _extract_json(_reply_text(reply, SIX_DIM_MAX_TOKENS))
+            )
             break
         except ValueError as exc:
             last_error = exc

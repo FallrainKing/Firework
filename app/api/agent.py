@@ -11,7 +11,7 @@ import uuid
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
-from ..db import get_conn
+from ..core.db import get_conn
 from ..agent_catalog import SKILLS as CATALOG, TEMPLATES
 from .sessions import require_session
 from .reader import Context

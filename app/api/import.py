@@ -10,7 +10,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from ..db import get_conn
+from ..core.db import get_conn
 from ..ingest.batch import import_folder
 from . import require_rag_stack
 

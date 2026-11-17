@@ -18,8 +18,8 @@ import sqlite3
 import pytest
 from qdrant_client import QdrantClient
 
-from app.config import Settings
-from app.db import get_conn
+from app.core.config import Settings
+from app.core.db import get_conn
 from app.llm.gateway import LLMExhaustedError
 from app.rag.vector_store import ChunkPoint, VectorStore
 from app.study.compare import compare_papers

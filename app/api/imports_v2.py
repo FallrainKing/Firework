@@ -8,7 +8,7 @@ import uuid
 from typing import Literal
 from fastapi import APIRouter,File,Form,HTTPException,Request,UploadFile
 from pydantic import BaseModel,Field
-from ..db import get_conn
+from ..core.db import get_conn
 from ..paper_sources import normalize_doi,public_url,MAX_PDF_BYTES
 from ..ingest.metadata import extract_arxiv_id
 from ..import_service import process_import

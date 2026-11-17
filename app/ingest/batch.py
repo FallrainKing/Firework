@@ -11,7 +11,7 @@ The caller hands these coroutines a *dedicated* sqlite connection (never one
 shared with request handlers): the job runs as an ``asyncio`` background
 task and must not interleave transactions with request handlers on the same
 connection. The job closes that connection when it finishes. The connection
-must be ``check_same_thread=False`` (see app.db.get_conn) because
+must be ``check_same_thread=False`` (see app.core.db.get_conn) because
 ``interpret_paper`` runs its sqlite work on ``asyncio.to_thread`` workers.
 """
 

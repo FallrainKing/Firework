@@ -29,7 +29,7 @@ TOOLS = [
 
 def paper_page(paper_id,page,db_path):
     from app.reader_store import read_page
-    from app.config import Settings
+    from app.core.config import Settings
     if paper_id not in json.loads(os.environ.get('RESEARCH_PAPER_IDS','[]')):raise ValueError('Paper is not linked to this session')
     with sqlite3.connect(Path(db_path).resolve().as_uri()+'?mode=ro',uri=True) as db:
         db.row_factory=sqlite3.Row;row=db.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()

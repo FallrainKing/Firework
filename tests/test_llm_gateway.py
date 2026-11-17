@@ -11,8 +11,8 @@ import logging
 import httpx
 import pytest
 
-from app.config import Settings
-from app.db import get_conn
+from app.core.config import Settings
+from app.core.db import get_conn
 from app.llm.gateway import LLMExhaustedError, LLMGateway, LLMHTTPStatusError
 
 ANTHROPIC_PROVIDER = {

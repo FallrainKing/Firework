@@ -15,7 +15,7 @@ comparison runs on a *dedicated* short-lived sqlite connection (never the
 request-loop's ``app.state.db``): compare_papers hands its connection to
 ``asyncio.to_thread`` workers, and interleaving those transactions with
 request handlers sharing one connection is unsafe (P1 job pattern — see
-``app.db.get_conn``).
+``app.core.db.get_conn``).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
-from ..db import get_conn
+from ..core.db import get_conn
 from ..ingest.batch import run_interpretation
 from ..study.compare import compare_papers
 from . import (

@@ -12,7 +12,7 @@ from pathlib import Path
 
 from .config import Settings
 
-MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
 
 
 def _apply_migration(conn: sqlite3.Connection, path: Path) -> None:

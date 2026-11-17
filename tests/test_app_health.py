@@ -5,8 +5,8 @@ import sqlite3
 import pytest
 from fastapi.testclient import TestClient
 
-from app.config import Settings
-from app.db import get_conn
+from app.core.config import Settings
+from app.core.db import get_conn
 from app.main import create_app
 
 

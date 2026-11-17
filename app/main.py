@@ -13,8 +13,9 @@ from qdrant_client import QdrantClient
 
 from . import api
 from .api import agent, sessions, library, reader, imports_v2, workbench
-from .config import Settings
-from .db import get_conn
+from .core.config import Settings
+from .core.db import get_conn
+from .core.errors import register_error_handlers
 from .llm.gateway import LLMGateway
 from .rag.embedder import Embedder
 from .rag.vector_store import VectorStore
@@ -101,6 +102,7 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     """Build the FastAPI app: API routers + health endpoint + static web UI."""
     app = FastAPI(title="Research Assistant", lifespan=lifespan)
+    register_error_handlers(app)
 
     app.include_router(api.papers.router)
     app.include_router(api.notes.router)

@@ -10,7 +10,7 @@ import pytest
 from app.api import reader, imports_v2
 from app.reader_store import pdf_file
 from app import paper_sources, import_service
-from app.db import get_conn
+from app.core.db import get_conn
 from test_agent_mvp import client,wait
 
 @pytest.fixture

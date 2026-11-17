@@ -29,8 +29,8 @@ if str(REPO_ROOT) not in sys.path:
 
 from qdrant_client import QdrantClient  # noqa: E402
 
-from app.config import Settings  # noqa: E402
-from app.db import get_conn  # noqa: E402
+from app.core.config import Settings  # noqa: E402
+from app.core.db import get_conn  # noqa: E402
 from app.ingest.pipeline import ingest_paper  # noqa: E402
 from app.rag.embedder import Embedder  # noqa: E402
 from app.rag.vector_store import VectorStore  # noqa: E402

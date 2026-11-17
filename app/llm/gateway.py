@@ -19,8 +19,8 @@ from typing import Any, TypedDict
 
 import httpx
 
-from ..config import Settings
-from ..db import get_conn
+from ..core.config import Settings
+from ..core.db import get_conn
 
 logger = logging.getLogger(__name__)
 

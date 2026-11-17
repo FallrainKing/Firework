@@ -4,8 +4,8 @@ import sqlite3
 
 import pytest
 
-from app.config import Settings
-from app.db import MIGRATIONS_DIR, get_conn
+from app.core.config import Settings
+from app.core.db import MIGRATIONS_DIR, get_conn
 
 EXPECTED_TABLES = {
     "papers",

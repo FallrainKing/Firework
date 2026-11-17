@@ -115,8 +115,8 @@ def ingest_stack(tmp_path, embedder):
     """
     from qdrant_client import QdrantClient
 
-    from app.config import Settings
-    from app.db import get_conn
+    from app.core.config import Settings
+    from app.core.db import get_conn
     from app.rag.vector_store import VectorStore
 
     db = get_conn(Settings(data_dir=tmp_path, qdrant_url="http://localhost:6333"))

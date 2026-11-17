@@ -15,8 +15,8 @@ import httpx
 import pytest
 
 from app.api import agent, sessions, library
-from app.config import Settings
-from app.db import get_conn
+from app.core.config import Settings
+from app.core.db import get_conn
 from agent_runner.tools import library_search
 
 @pytest.fixture

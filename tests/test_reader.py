@@ -216,8 +216,8 @@ def test_interpret_raises_after_second_bad_json(tmp_path):
     with pytest.raises(InterpretationError):
         asyncio.run(interpret_paper(pid, db=db, gateway=gw))
 
-    # 两次都坏：状态停在 'reading'；notes 在六维成功后才写 → 一条都没有，
-    # 自然包含"无 six_dim note"
+    # 两次都坏：状态停在 'reading'；六维失败，但已成功节逐节落库
+    # （P2 Task 5 契约 3）——节成果保留，无 six_dim note
     assert paper_status(db, pid) == "reading"
     assert len(gw.six_dim_calls) == 2
     types = [
@@ -226,7 +226,7 @@ def test_interpret_raises_after_second_bad_json(tmp_path):
             "SELECT note_type FROM notes WHERE paper_id = ?", (pid,)
         )
     ]
-    assert types == []
+    assert types == ["section_analysis"]
 
     # 无 chunks 的论文直接报 InterpretationError，不产生任何调用
     empty_pid = add_paper(db)

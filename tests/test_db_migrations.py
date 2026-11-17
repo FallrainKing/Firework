@@ -81,6 +81,7 @@ def test_import_jobs_schema(conn):
     assert cols == {
         "id",
         "path",
+        "kind",  # added by 0002 (P2 Task 5): 'import' | 'interpret'
         "total",
         "done",
         "failed",
@@ -94,6 +95,8 @@ def test_import_jobs_schema(conn):
     row = conn.execute("SELECT * FROM import_jobs").fetchone()
     assert row["errors"] == "[]" and row["status"] == "pending"
     assert row["done"] == 0 and row["failed"] == 0
+    # existing rows and new rows both default to the P1 import job kind
+    assert row["kind"] == "import"
 
 
 def test_migrations_idempotent(conn):

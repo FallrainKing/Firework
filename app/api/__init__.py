@@ -16,6 +16,7 @@ from fastapi import HTTPException, Request
 from ..ingest.pipeline import PdfTooLargeError
 from ..llm.gateway import LLMHTTPStatusError
 from ..rag.vector_store import VectorStoreError
+from ..study.reader import InterpretationError
 
 #: exceptions the ingest stack raises for *known-bad* inputs or environments;
 #: anything else is unexpected and becomes a logged 500.
@@ -27,6 +28,14 @@ KNOWN_INGEST_ERRORS: tuple[type[BaseException], ...] = (
     VectorStoreError,
     LLMHTTPStatusError,  # provider rejected the request (HTTP 4xx)
     httpx.HTTPError,  # upstream (arXiv) request failures
+)
+
+#: exceptions the study (deep-read / compare) stack raises deliberately.
+#: Note ValueError is in both tuples on purpose: study routes catch
+#: KNOWN_STUDY_ERRORS first so a compare failure reads as a compare problem.
+KNOWN_STUDY_ERRORS: tuple[type[BaseException], ...] = (
+    InterpretationError,  # the read pipeline could not complete → 502
+    ValueError,  # compare input problems (missing paper) → 400
 )
 
 
@@ -41,6 +50,21 @@ def ingest_http_error(exc: Exception) -> HTTPException:
             status_code=503, detail=f"vector store unavailable: {exc}"
         )
     return HTTPException(status_code=400, detail=f"ingest failed: {exc}")
+
+
+def study_http_error(exc: Exception) -> HTTPException:
+    """Map a study-stack exception to its HTTP error.
+
+    InterpretationError means the reading pipeline ran but could not finish
+    (no indexed content, six-dim JSON refusing to parse) — an upstream/LLM
+    problem, so 502. A bare ValueError is a bad request (400): today that is
+    compare_papers finding a paper id that does not exist.
+    """
+    if isinstance(exc, InterpretationError):
+        return HTTPException(
+            status_code=502, detail=f"interpretation failed: {exc}"
+        )
+    return HTTPException(status_code=400, detail=f"invalid request: {exc}")
 
 
 def require_rag_stack(request: Request) -> None:
@@ -59,7 +83,7 @@ def require_rag_stack(request: Request) -> None:
         )
 
 
-from . import notes, papers, qa  # noqa: E402  (helpers above must exist first)
+from . import notes, papers, qa, study  # noqa: E402  (helpers above must exist first)
 
 # ``app.api.import`` cannot be loaded with a normal import statement —
 # ``import`` is a Python keyword — so it is imported dynamically here and
@@ -68,10 +92,13 @@ imports = _import_module("app.api.import")
 
 __all__ = [
     "KNOWN_INGEST_ERRORS",
+    "KNOWN_STUDY_ERRORS",
     "ingest_http_error",
+    "study_http_error",
     "require_rag_stack",
     "imports",
     "notes",
     "papers",
     "qa",
+    "study",
 ]

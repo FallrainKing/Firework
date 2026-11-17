@@ -1,4 +1,4 @@
-"""Background folder-import job (Task 7).
+"""Background jobs: folder import (Task 7) + paper interpretation (P2 Task 5).
 
 Walks one directory — non-recursive, ``*.pdf`` only — and ingests every file
 through the standard upload pipeline. Progress is written to the job's
@@ -7,10 +7,12 @@ poll a live job. A file that duplicates something already in the library
 counts as done; a file that raises is recorded in ``errors`` and the job
 moves on to the next one.
 
-The caller hands this coroutine a *dedicated* sqlite connection (never one
+The caller hands these coroutines a *dedicated* sqlite connection (never one
 shared with request handlers): the job runs as an ``asyncio`` background
 task and must not interleave transactions with request handlers on the same
-connection. The job closes that connection when it finishes.
+connection. The job closes that connection when it finishes. The connection
+must be ``check_same_thread=False`` (see app.db.get_conn) because
+``interpret_paper`` runs its sqlite work on ``asyncio.to_thread`` workers.
 """
 
 from __future__ import annotations
@@ -26,6 +28,7 @@ from ..rag.embedder import Embedder
 from ..rag.vector_store import VectorStore
 from .dedup import find_duplicate
 from .pipeline import ingest_from_upload
+from ..study.reader import interpret_paper
 
 if TYPE_CHECKING:
     from ..llm.gateway import LLMGateway
@@ -116,6 +119,50 @@ async def import_folder(
         _update_job(
             db, job_id, total=total, done=done, failed=failed,
             errors=errors, status="completed",
+        )
+    finally:
+        db.close()
+
+
+async def run_interpretation(
+    job_id: int,
+    paper_id: int,
+    db: sqlite3.Connection,
+    gateway: "LLMGateway",
+) -> None:
+    """Deep-read one paper as a background job (total=1).
+
+    interpret_paper raises on any failure (missing content, six-dim JSON
+    refusing to parse, gateway exhaustion); the job must still reach a
+    terminal state, so every outcome writes the row before the connection
+    closes. Section notes produced before the failure stay in the DB
+    (contract 3) — the job row's failure is the record of what went wrong.
+    """
+    _update_job(
+        db, job_id, total=1, done=0, failed=0, errors=[], status="running"
+    )
+    try:
+        await interpret_paper(paper_id, db=db, gateway=gateway)
+    except Exception as exc:  # noqa: BLE001 — job 必有终态，不让任务崩掉
+        logger.warning(
+            "interpret job %d (paper %d) failed: %s", job_id, paper_id, exc
+        )
+        _update_job(
+            db, job_id, total=1, done=0, failed=1,
+            errors=[str(exc)], status="failed",
+        )
+    except BaseException:
+        # cancelled (app shutdown): mark failed, then let it propagate —
+        # same shape as import_folder's crash path
+        _update_job(
+            db, job_id, total=1, done=0, failed=1,
+            errors=["job cancelled"], status="failed",
+        )
+        raise
+    else:
+        _update_job(
+            db, job_id, total=1, done=1, failed=0,
+            errors=[], status="completed",
         )
     finally:
         db.close()

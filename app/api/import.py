@@ -50,7 +50,8 @@ async def start_folder_import(body: FolderImportRequest, request: Request) -> di
     job_db = get_conn(state.settings)
     try:
         cursor = job_db.execute(
-            "INSERT INTO import_jobs (path, total, status) VALUES (?, 0, 'running')",
+            "INSERT INTO import_jobs (path, kind, total, status)"
+            " VALUES (?, 'import', 0, 'running')",
             (str(folder),),
         )
         job_id = int(cursor.lastrowid)

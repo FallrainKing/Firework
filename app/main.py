@@ -100,6 +100,7 @@ def create_app() -> FastAPI:
     app.include_router(api.notes.router)
     app.include_router(api.qa.router)
     app.include_router(api.imports.router)
+    app.include_router(api.study.router)
 
     @app.get("/health")
     def health() -> dict:

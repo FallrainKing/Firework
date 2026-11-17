@@ -1,13 +1,12 @@
 """Note routes: per-paper reading notes (list / create / delete).
 
-Ruling R1: the notes table's column is ``note_type`` and its CHECK (see
-app/migrations/0001_init.sql) currently allows section_analysis |
-annotation | chat_summary. ``six_dim`` arrives with migration 0002 (Task 5),
-which extends this constant in the same change — accepting it here, before
-the CHECK knows it, would turn a validation-passing POST into an unhandled
-IntegrityError (500) instead of a clean 400. Task 3's section analyses
-reuse the DB's existing ``section_analysis`` and likewise extend this set
-when they gain an API surface.
+Ruling R1: the notes table's column is ``note_type``; its CHECK allowed
+section_analysis | annotation | chat_summary until migration 0002 (P2
+Task 5) added ``six_dim``. This constant tracks, and only tracks, what
+that CHECK can store: since 0002 and this constant were shipped in the
+same change, a six_dim POST passes validation and the CHECK together.
+Task 3's section analyses reuse the DB's existing ``section_analysis``
+and extend this set when they gain a create surface of their own.
 """
 
 from __future__ import annotations
@@ -19,7 +18,7 @@ router = APIRouter(prefix="/api", tags=["notes"])
 
 #: note types the create route accepts (see module docstring for why this
 #: tracks, and only tracks, what the notes table's CHECK can store).
-NOTE_TYPES = frozenset({"annotation", "chat_summary"})
+NOTE_TYPES = frozenset({"annotation", "chat_summary", "six_dim"})
 
 
 class NoteCreate(BaseModel):

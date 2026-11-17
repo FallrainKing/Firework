@@ -39,10 +39,19 @@ def _ensure_migrations(conn: sqlite3.Connection) -> None:
 
 
 def get_conn(settings: Settings | None = None) -> sqlite3.Connection:
-    """Open a connection to the app database, running pending migrations."""
+    """Open a connection to the app database, running pending migrations.
+
+    ``check_same_thread=False``: async code (reader/compare) hands this
+    connection to ``asyncio.to_thread`` worker threads. sqlite3's default
+    refuses any cross-thread use outright, so without this flag those calls
+    die with ProgrammingError the moment they leave the event-loop thread.
+    Every caller must still serialize access to one connection (a single
+    event loop awaiting its own to_thread calls does that); see Task 5's
+    report for the impact assessment.
+    """
     s = settings or Settings.from_env()
     s.data_dir.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(s.db_path)
+    conn = sqlite3.connect(s.db_path, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")

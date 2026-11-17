@@ -4,16 +4,20 @@
 
 ① 读论文行 + chunks_meta 按 section 聚合文本（chunk_idx 排序拼接，
    每节超 6000 字符保头部截断；Front Matter 跳过；无内容报错）；
-② 每节一次 strong 调用生成中文解读，失败记录占位继续；
-③ 六维综合一次 strong 调用，要求严格 JSON；解析失败追加"只输出 JSON"
+② 删除该 paper 旧的 section_analysis/six_dim notes（先删后写，重跑幂等
+   ——契约 2）；
+③ 每节一次 strong 调用生成中文解读，失败记录占位继续；成功节立即落
+   section_analysis note（逐节落——契约 3：六维失败时已解读的节成果
+   保留，job 仍 failed 但 notes 有节级产出）；
+④ 六维综合一次 strong 调用，要求严格 JSON；解析失败追加"只输出 JSON"
    重试一次，再失败抛 InterpretationError；
-④ 写 notes（节解读 section_analysis，六维 six_dim，content 为 markdown）；
-⑤ papers.status：进入时 new/pushed → 'reading'（立即 commit），全部
-   成功后 → 'read'；任何异常路径不推到 'read'。
+⑤ 全部成功时写失败节占位 note + 六维 six_dim note（content 为 markdown）；
+⑥ papers.status：进入时无条件置 'reading'（不限 new/pushed——重解读也
+   应显示进度，立即 commit），全部成功后 → 'read'；任何异常路径不推到
+   'read'。
 
 Ruling R1：notes 列名 note_type；six_dim 的 CHECK 值由 Task 5 的 0002
-迁移补进 schema。本模块不感知 CHECK——生产路径在 0002 落地前若用旧
-连接写 six_dim 会 IntegrityError，属预期（届时由迁移解除）。
+迁移补进 schema（已落地）。
 """
 
 from __future__ import annotations
@@ -82,12 +86,22 @@ def _set_status(db: sqlite3.Connection, paper_id: int, status: str) -> None:
     db.commit()
 
 
-def _insert_notes(
-    db: sqlite3.Connection, paper_id: int, rows: list[tuple[str, str]]
+def _delete_old_notes(db: sqlite3.Connection, paper_id: int) -> None:
+    """契约 2：重跑幂等——开始时删除旧的节解读与六维 notes（先删后写）。"""
+    db.execute(
+        "DELETE FROM notes WHERE paper_id = ?"
+        " AND note_type IN ('section_analysis', 'six_dim')",
+        (paper_id,),
+    )
+    db.commit()
+
+
+def _insert_note(
+    db: sqlite3.Connection, paper_id: int, note_type: str, content: str
 ) -> None:
-    db.executemany(
+    db.execute(
         "INSERT INTO notes (paper_id, note_type, content) VALUES (?, ?, ?)",
-        [(paper_id, note_type, content) for note_type, content in rows],
+        (paper_id, note_type, content),
     )
     db.commit()
 
@@ -212,9 +226,11 @@ async def interpret_paper(
     if paper is None:
         raise InterpretationError(f"paper {paper_id} not found")
 
-    # ⑤ 进入时：new/pushed → reading（立即 commit，失败也可见）
-    if paper["status"] in ("new", "pushed"):
-        await asyncio.to_thread(_set_status, db, paper_id, "reading")
+    # ⑥ 进入时无条件置 reading（立即 commit，失败也可见；重解读也显示进度）
+    await asyncio.to_thread(_set_status, db, paper_id, "reading")
+
+    # ② 删除旧解读 notes：先删后写，重跑幂等（契约 2）
+    await asyncio.to_thread(_delete_old_notes, db, paper_id)
 
     # ① 聚合章节文本
     chunk_rows = await asyncio.to_thread(_fetch_chunks, db, paper_id)
@@ -222,8 +238,10 @@ async def interpret_paper(
     if not sections:
         raise InterpretationError("paper has no indexed content")
 
-    # ② 逐节解读：顺序执行（不并发，避免压测网关），失败记录占位继续
+    # ③ 逐节解读：顺序执行（不并发，避免压测网关），失败记录占位继续；
+    #    成功节立即落 note（契约 3：六维失败时已成功节成果保留）
     section_notes: list[dict] = []
+    failed_section_notes: list[dict] = []
     for section, text in sections:
         try:
             reply = await gateway.chat(
@@ -234,9 +252,15 @@ async def interpret_paper(
             note = reply["text"]
         except Exception as exc:  # noqa: BLE001 — 单节失败不拖垮整篇
             note = f"{SECTION_FAIL_PREFIX}{exc}）"
+            failed_section_notes.append({"section": section, "note": note})
+        else:
+            await asyncio.to_thread(
+                _insert_note, db, paper_id, "section_analysis", note
+            )
         section_notes.append({"section": section, "note": note})
 
-    # 全部节失败：没有材料可综合，提前失败（状态停在 'reading'）
+    # 全部节失败：没有材料可综合，提前失败（状态停在 'reading'；
+    # 没有成功节，故无 note 落库）
     if all(item["note"].startswith(SECTION_FAIL_PREFIX) for item in section_notes):
         raise InterpretationError("all section interpretations failed")
 
@@ -262,14 +286,16 @@ async def interpret_paper(
             f"six-dim synthesis failed after retry: {last_error}"
         )
 
-    # ④ 写 notes（节解读 + 六维 markdown），写完 commit
-    note_rows = [
-        ("section_analysis", item["note"]) for item in section_notes
-    ]
-    note_rows.append(("six_dim", _six_dim_markdown(six)))
-    await asyncio.to_thread(_insert_notes, db, paper_id, note_rows)
+    # ⑤ 全部成功：补写失败节占位 note + 六维 note
+    for item in failed_section_notes:
+        await asyncio.to_thread(
+            _insert_note, db, paper_id, "section_analysis", item["note"]
+        )
+    await asyncio.to_thread(
+        _insert_note, db, paper_id, "six_dim", _six_dim_markdown(six)
+    )
 
-    # ⑤ 全部成功 → read
+    # ⑥ 全部成功 → read
     await asyncio.to_thread(_set_status, db, paper_id, "read")
 
     return {"six_dim": six, "sections": section_notes}

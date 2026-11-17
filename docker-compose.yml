@@ -7,6 +7,9 @@ services:
       # Container-internal overrides: paths/hosts differ from the host-side .env
       DATA_DIR: /app/data
       QDRANT_URL: http://qdrant:6333
+      # Cached production model: avoid startup network probes/rate-limit sleeps.
+      # Set HF_HUB_OFFLINE=0 for an intentional first model download.
+      HF_HUB_OFFLINE: "${HF_HUB_OFFLINE:-1}"
       # Host uid/gid owning ./data: docker auto-creates the volume dir as
       # root; the container entrypoint chowns the mount point to this id on
       # startup so the host user keeps write access (set HOST_UID in .env

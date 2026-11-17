@@ -17,7 +17,22 @@ _last_arxiv_request = 0.0
 TOOLS = [
     {"name": "library_search", "description": "Search the user's saved paper titles, abstracts and original text. Empty query lists papers. Read only. Page numbers from legacy chunks are unverified.", "inputSchema": SCHEMA},
     {"name": "arxiv_search", "description": "Search real arXiv papers by short English keywords. Returns titles, IDs, abstracts and source URLs. No PDF download or model call.", "inputSchema": SCHEMA},
+    {"name":"paper_read", "description":"Read indexed original text for a paper associated with this task session. Returns bounded chunks and explicit coverage; not a full-paper or figure reading guarantee.", "inputSchema":{"type":"object","properties":{"paper_id":{"type":"integer","minimum":1},"start_chunk":{"type":"integer","minimum":0}},"required":["paper_id"],"additionalProperties":False}},
 ]
+
+def paper_read(paper_id: int, start_chunk: int, db_path: str) -> dict:
+    allowed=json.loads(os.environ.get('RESEARCH_PAPER_IDS','[]'))
+    if paper_id not in allowed:
+        raise ValueError('Paper is not associated with this task session')
+    if not isinstance(start_chunk,int) or start_chunk<0:
+        raise ValueError('Invalid chunk offset')
+    with sqlite3.connect(Path(db_path).resolve().as_uri()+'?mode=ro',uri=True,timeout=5) as db:
+        db.row_factory=sqlite3.Row
+        row=db.execute('SELECT id,title,abstract,authors FROM papers WHERE id=?',(paper_id,)).fetchone()
+        if row is None:raise ValueError('Paper not found')
+        total=db.execute('SELECT count(*) FROM chunks_meta WHERE paper_id=?',(paper_id,)).fetchone()[0]
+        chunks=[dict(r) for r in db.execute('SELECT chunk_idx,section,page,text FROM chunks_meta WHERE paper_id=? AND chunk_idx>=? ORDER BY chunk_idx LIMIT 8',(paper_id,start_chunk))]
+    return {'paper':dict(row),'chunks':chunks,'total_chunks':total,'next_chunk_idx':chunks[-1]['chunk_idx']+1 if chunks else None,'has_more':bool(chunks and chunks[-1]['chunk_idx']+1<total),'coverage':{'scope':'indexed_text_only','returned_chunks':len(chunks),'total_chunks':total,'figures_read':False},'warning':'This is bounded indexed text, not the complete paper. Legacy page numbers are unverified.'}
 
 def library_search(query: str, db_path: str) -> dict:
     # Literal substring search, not an SQL wildcard language.
@@ -95,11 +110,11 @@ def serve() -> None:
                 if name not in json.loads(os.environ.get('RESEARCH_ALLOWED_TOOLS', '[]')):
                     raise ValueError('tool not allowed by this skill')
                 calls += 1
-                if calls > 2:
+                if calls > int(os.environ.get('RESEARCH_MAX_TOOL_CALLS','2')):
                     raise ValueError('tool call limit reached; finish with existing results')
                 started = time.monotonic()
                 try:
-                    payload = library_search(query, os.environ['RESEARCH_DB_PATH']) if name == 'library_search' else arxiv_search(query) if name == 'arxiv_search' else None
+                    payload = library_search(query, os.environ['RESEARCH_DB_PATH']) if name == 'library_search' else arxiv_search(query) if name == 'arxiv_search' else paper_read(params.get('arguments',{}).get('paper_id'),params.get('arguments',{}).get('start_chunk',0),os.environ['RESEARCH_DB_PATH']) if name=='paper_read' else None
                     if payload is None:
                         raise ValueError('unknown tool')
                     record = {'tool': name, 'query': query, 'ok': True, 'result': payload}

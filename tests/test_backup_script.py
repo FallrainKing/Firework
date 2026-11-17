@@ -196,3 +196,19 @@ def test_qdrant_server_prune_noop_when_under_limit(tmp_path, fake_qdrant):
 
     assert fake_qdrant.deleted == []
     assert len(fake_qdrant.snapshots) == 4
+
+
+def test_native_sessions_are_archived_with_private_permissions(tmp_path):
+    import tarfile
+    data=tmp_path/'data';backups=tmp_path/'backups'
+    (data/'agent/claude-config/projects').mkdir(parents=True)
+    (data/'agent/sessions/example').mkdir(parents=True)
+    (data/'agent/claude-config/projects/session.jsonl').write_text('native transcript')
+    (data/'agent/sessions/example/context.txt').write_text('workspace')
+    result=run_backup(data,backups,'http://127.0.0.1:1')
+    assert result.returncode==0,result.stderr
+    archive=next(backups.glob('agent-sessions-*.tar.gz'))
+    assert archive.stat().st_mode & 0o077 == 0
+    with tarfile.open(archive) as tar:
+        assert 'agent/claude-config/projects/session.jsonl' in tar.getnames()
+        assert 'agent/sessions/example/context.txt' in tar.getnames()

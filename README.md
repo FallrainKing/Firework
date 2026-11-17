@@ -1,3 +1,7 @@
+## 任务会话与图文论文库（2026-11-17）
+
+新版首页支持阅读/对比/审查等起步模板、分类会话、Claude 原生会话恢复、论文图文卡片与多分类管理。部署与恢复见 [docs/TASK-SESSIONS.md](docs/TASK-SESSIONS.md)。
+
 ## Agent 最小交互版本（2026-11-17）
 
 新首页已接入服务器已有 Claude Code：科研对话、论文库检索、arXiv 检索，结果和 token 用量保存 SQLite。原有导入/精读/比较页面位于 `/legacy.html`。

@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from . import api
-from .api import agent
+from .api import agent, sessions, library
 from .config import Settings
 from .db import get_conn
 from .llm.gateway import LLMGateway
@@ -105,6 +105,8 @@ def create_app() -> FastAPI:
     app.include_router(api.imports.router)
     app.include_router(api.study.router)
     app.include_router(agent.router)
+    app.include_router(sessions.router)
+    app.include_router(library.router)
 
     @app.get("/health")
     def health() -> dict:

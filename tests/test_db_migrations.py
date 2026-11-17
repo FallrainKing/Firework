@@ -58,9 +58,16 @@ def test_papers_schema(conn):
         "status",
         "pdf_path",
         "created_at",
+        "affiliations",
+        "affiliation_source",
+        "brief_summary",
+        "summary_source",
+        "metadata_version",
     }
     # defaults
     assert cols["status"][4] == "'new'"
+    assert cols["affiliations"][4] == "'[]'"
+    assert cols["metadata_version"][4] == "1"
     # CHECK constraints accept valid values and reject invalid ones
     conn.execute(
         "INSERT INTO papers(title, source) VALUES ('t1', 'upload')"

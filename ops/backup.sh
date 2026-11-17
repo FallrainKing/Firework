@@ -8,6 +8,7 @@
 # NOTE: busybox crond starts jobs with a minimal environment, so the defaults
 # below are baked in; override via env when invoking manually (docker exec).
 set -eu
+umask 077
 
 DATA_DIR="${DATA_DIR:-/data}"
 BACKUP_DIR="${BACKUP_DIR:-/backups}"
@@ -59,6 +60,13 @@ else
     echo "backup.sh: qdrant not ready at $QDRANT_URL, skipping snapshot backup" >&2
 fi
 
+# Project-owned native transcripts are paired with DB session mappings.
+if [ -d "${DATA_DIR}/agent/claude-config" ] && [ -d "${DATA_DIR}/agent/sessions" ]; then
+    tar -czf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$DATA_DIR" \
+        agent/claude-config agent/sessions
+    echo "backup.sh: native agent sessions archived"
+fi
+
 # --- 3) Retention (local): keep newest $KEEP of each kind, prune by mtime ---
 # NOTE: the glob must stay OUTSIDE the quotes: `"$BACKUP_DIR"/$1` lets the
 # shell expand the pattern; quoting it makes ls see a literal name, list 0
@@ -69,6 +77,7 @@ prune() {
         echo "backup.sh: pruned $f"
     done
 }
+prune 'agent-sessions-*.tar.gz'
 prune 'app-*.db'
 prune 'qdrant-*.snap'
 

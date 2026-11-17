@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import httpx
 import pytest
 
-from app.api import agent
+from app.api import agent, sessions, library
 from app.config import Settings
 from app.db import get_conn
 from agent_runner.tools import library_search
@@ -37,6 +37,8 @@ def client(tmp_path, monkeypatch):
         app.state.db.close()
     app = FastAPI(lifespan=lifespan)
     app.include_router(agent.router)
+    app.include_router(sessions.router)
+    app.include_router(library.router)
     with TestClient(app) as c:
         yield c, settings
 
@@ -131,7 +133,7 @@ def test_mcp_transport_and_unknown_method():
     replies=[json.loads(x) for x in result.stdout.splitlines()]
     assert len(replies)==3
     assert replies[0]['result']['capabilities']['tools']=={}
-    assert len(replies[1]['result']['tools'])==2
+    assert len(replies[1]['result']['tools'])==3
     assert replies[2]['error']['code']==-32601
 
 def test_tool_permissions_do_not_allow_arbitrary_execution():

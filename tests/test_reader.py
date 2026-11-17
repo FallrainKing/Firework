@@ -246,9 +246,34 @@ def test_long_section_truncated(tmp_path):
     # 整个 prompt 比原始节文本（8000 字符）短
     assert len(prompt) < 8000
     body = prompt.split(SECTION_TEXT_MARK, 1)[1]
-    # 发出的节文本被截到 ≤ 6000 + 截断标记长度，且带截断标记
-    assert len(body) <= MAX_SECTION_CHARS + len(TRUNCATION_MARK)
+    # 发出的节文本被截到 ≤ 6000 + 截断标记长度，且带截断标记；
+    # 下界防"截过头"（错截到 100 字符仍过）
+    assert MAX_SECTION_CHARS <= len(body) <= MAX_SECTION_CHARS + len(
+        TRUNCATION_MARK
+    )
     assert body.endswith(TRUNCATION_MARK)
+
+
+def test_all_sections_failed_raises(tmp_path):
+    db = make_db(tmp_path)
+    pid = add_paper(
+        db, status="new", sections=[("1 Introduction", "引言"), ("2 Method", "方法")]
+    )
+    gw = FakeGateway()
+    gw.fail_section_markers = ("Introduction", "Method")
+
+    with pytest.raises(InterpretationError, match="all section"):
+        asyncio.run(interpret_paper(pid, db=db, gateway=gw))
+
+    # 全部节失败：提前抛错，状态停在 'reading'，不进入六维、不写 notes
+    assert paper_status(db, pid) == "reading"
+    assert gw.six_dim_calls == []
+    assert (
+        db.execute(
+            "SELECT COUNT(*) FROM notes WHERE paper_id = ?", (pid,)
+        ).fetchone()[0]
+        == 0
+    )
 
 
 def test_status_transitions_reading_then_read(tmp_path):
@@ -286,6 +311,10 @@ def test_failed_section_noted_and_continues(tmp_path):
     method = next(s for s in result["sections"] if s["section"] == "2 Method")
     assert "解读失败" in method["note"]
     assert "fake gateway exploded" in method["note"]
+    # 综合 prompt 中失败节是元信息而非材料：不含原始错误文本
+    six_prompt = gw.six_dim_calls[0][-1]["content"]
+    assert "（本节解读失败，请基于其余章节综合）" in six_prompt
+    assert "fake gateway exploded" not in six_prompt
     assert [s["note"] for s in result["sections"] if s["section"] != "2 Method"] == [
         "## 本节解读"
     ] * 2

@@ -23,9 +23,12 @@ import json
 import sqlite3
 from typing import Any
 
+from app.rag.pdf_parser import FRONT_MATTER_TITLE
+
 MAX_SECTION_CHARS = 6000
 TRUNCATION_MARK = "\n…[截断]"
-FRONT_MATTER = "Front Matter"
+#: 失败节占位解读的前缀；六维综合 prompt 据此把它标为元信息而非材料
+SECTION_FAIL_PREFIX = "（本节解读失败："
 
 SIX_KEYS = (
     "background",
@@ -103,7 +106,7 @@ def _aggregate_sections(rows: list[sqlite3.Row]) -> list[tuple[str, str]]:
     grouped: dict[str, list[tuple[int, str]]] = {}
     for row in rows:
         section = row["section"] or "未命名节"
-        if section == FRONT_MATTER:
+        if section == FRONT_MATTER_TITLE:
             continue
         grouped.setdefault(section, []).append((row["chunk_idx"], row["text"]))
     sections: list[tuple[str, str]] = []
@@ -167,7 +170,11 @@ def _six_dim_prompt(title: str, sections: list[dict]) -> str:
     ]
     for item in sections:
         parts.append(f"【{item['section']}】")
-        parts.append(item["note"])
+        if item["note"].startswith(SECTION_FAIL_PREFIX):
+            # 失败节的占位是元信息而非材料，不喂给模型
+            parts.append("（本节解读失败，请基于其余章节综合）")
+        else:
+            parts.append(item["note"])
         parts.append("")
     parts.append(
         "请基于以上章节解读，对这篇论文做六维综合分析。严格输出一个 JSON"
@@ -226,8 +233,12 @@ async def interpret_paper(
             )
             note = reply["text"]
         except Exception as exc:  # noqa: BLE001 — 单节失败不拖垮整篇
-            note = f"（本节解读失败：{exc}）"
+            note = f"{SECTION_FAIL_PREFIX}{exc}）"
         section_notes.append({"section": section, "note": note})
+
+    # 全部节失败：没有材料可综合，提前失败（状态停在 'reading'）
+    if all(item["note"].startswith(SECTION_FAIL_PREFIX) for item in section_notes):
+        raise InterpretationError("all section interpretations failed")
 
     # ③ 六维综合：解析失败追加"只输出 JSON"重试一次，再失败抛错
     messages = [

@@ -119,6 +119,7 @@ def create_app() -> FastAPI:
     app.include_router(imports_router)
     app.include_router(imports_internal)
     app.include_router(workbench_router)
+    app.include_router(schedules_router)
 
     @app.get("/health")
     def health() -> dict:

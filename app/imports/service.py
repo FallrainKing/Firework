@@ -101,6 +101,10 @@ async def upload_import(db, settings, state, *, data: bytes, filename: str, requ
         raise ServiceError(400, '无效请求编号')
     prior = repo.find_import_by_key(db, request_key)
     if prior:
+        # Baseline streamed the body and hit the size cap before comparing
+        # digests; keep 413 ahead of the idempotency 409.
+        if len(data) > MAX_PDF_BYTES:
+            raise ServiceError(413, 'PDF 超过 30MB 限额')
         digest = hashlib.sha256(data).hexdigest()
         if prior['channel'] != 'upload' or digest != prior['file_hash'] or prior['collection_id'] != collection_id or prior['target_paper_id'] != target_paper_id:
             raise ServiceError(409, '请求编号已用于其他文件或分类')
@@ -108,12 +112,13 @@ async def upload_import(db, settings, state, *, data: bytes, filename: str, requ
     validate_targets(db, collection_id, target_paper_id)
     if not filename.lower().endswith('.pdf'):
         raise ServiceError(400, '请选择 PDF 文件')
+    # Baseline checked the first block's magic before the accumulated size.
+    if data and not data[:1024].lstrip().startswith(b'%PDF-'):
+        raise ServiceError(400, '文件不是有效 PDF')
     if len(data) > MAX_PDF_BYTES:
         raise ServiceError(413, 'PDF 超过 30MB 限额')
     if not data:
         raise ServiceError(400, 'PDF 文件为空')
-    if not data[:1024].lstrip().startswith(b'%PDF-'):
-        raise ServiceError(400, '文件不是有效 PDF')
     ident = uuid.uuid4().hex
     path = files.save_upload(settings, ident, data)
     try:

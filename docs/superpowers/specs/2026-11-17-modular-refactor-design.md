@@ -101,6 +101,13 @@ app/
 - `ops/public-access-credentials.txt`、`ops/tunnel.*` 永不提交。
 - 真实模型验证用最小材料、短输出，控制用量。
 
+## 9.1 计划一遗留债务（计划二前置）
+
+- 跨域只读 JOIN 仍留在部分 repository（sessions/reader→agent_runs，agent→papers/conversations/import_requests，schedules→conversations/papers，workbench→papers）。计划二改动 `agent_runs` 结构前，把这些读取收敛到属主域 service。
+- imports/schedules service 仍 import `fastapi.HTTPException` 用于捕获过渡期错误，计划二/三移除。
+- workbench.service 自带 `repo.paper_exists`，与 papers.service.paper_exists 不一致，顺手对齐。
+- 部署后须补跑 `scripts/smoke_test.py`（计划一在 worktree 执行，未对运行镜像冒烟）。
+
 ## 10. 计划路线
 
 1. `2026-11-17-backend-domain-refactor.md` — 后端功能域三层重组（纯重构，行为不变）。

@@ -236,3 +236,18 @@ def test_translation_cache_separates_same_quote_on_different_pages(reading):
     first=c.post('/api/reader/translations',json={**ctx,'quote':'the','conversation_id':sid}).json();wait(c,first['run_id'])
     second=c.post('/api/reader/translations',json={**ctx,'page':2,'quote':'the','conversation_id':sid}).json()
     assert not second['cached'] and second['run_id']!=first['run_id']
+
+def test_upload_duplicate_key_oversized_still_413(reading):
+    from app.imports.service import MAX_PDF_BYTES
+    c,s,sid,ctx=reading
+    file=(s.data_dir/'papers'/'1.pdf').read_bytes()
+    assert c.post('/api/imports/upload',data={'request_key':'big-dup'},files={'file':('x.pdf',file)}).status_code==202
+    big=b'%PDF-1.4'+b'\0'*MAX_PDF_BYTES
+    assert c.post('/api/imports/upload',data={'request_key':'big-dup'},files={'file':('x.pdf',big)}).status_code==413
+
+def test_upload_oversized_invalid_pdf_reports_magic_400(reading):
+    from app.imports.service import MAX_PDF_BYTES
+    c,s,sid,ctx=reading
+    big=b'not pdf'+b'\0'*MAX_PDF_BYTES
+    r=c.post('/api/imports/upload',data={'request_key':'big-bad'},files={'file':('x.pdf',big)})
+    assert r.status_code==400 and '有效 PDF' in r.json()['detail']

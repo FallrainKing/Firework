@@ -242,6 +242,11 @@ def test_compare_citations_escaped_marker_in_table(tmp_path, embedder):
         {"paper_id": pid_a, "page": 5, "quote": CHUNK_A_P5},
     ]
 
+    # system prompt 要求表格内用规范转义写法（裸竖线会截断表格列）
+    system_prompt = gw.calls[0]["messages"][0]["content"]
+    assert "[P{n}\\|页码]" in system_prompt
+    assert "竖线前加反斜杠" in system_prompt
+
 
 def test_compare_matrix_is_markdown_with_all_papers(tmp_path, embedder):
     db, store = setup_stack(tmp_path, embedder)

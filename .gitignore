@@ -13,3 +13,6 @@ __pycache__/
 # tooling
 .pytest_cache/
 .superpowers/
+
+# worktrees
+.worktrees/

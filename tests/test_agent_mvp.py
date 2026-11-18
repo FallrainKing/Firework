@@ -253,6 +253,13 @@ def test_paper_search_crossref_uses_imports_sources(monkeypatch):
     monkeypatch.setattr(sources, 'crossref_search', fake_crossref)
     assert tools.paper_search('robotics', 'crossref') == [{'title': 'Crossref paper', 'query': 'robotics'}]
 
+def test_skill_docs_cover_deep_reading():
+    from pathlib import Path
+    text = Path('skills/paper_read/SKILL.md').read_text()
+    for kw in ('研究问题', '贡献边界', '覆盖范围', '证据', '作者陈述'):
+        assert kw in text, kw
+
+
 def test_services_are_framework_free():
     from pathlib import Path
     import app.imports.service as imports_service

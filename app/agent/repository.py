@@ -64,6 +64,10 @@ def clear_draft(db: sqlite3.Connection, conv_id: int) -> None:
     db.execute("UPDATE conversations SET draft_prompt='' WHERE id=?", (conv_id,))
 
 
+def update_progress(db: sqlite3.Connection, run_id: str, progress_json: str) -> None:
+    db.execute("UPDATE agent_runs SET progress_json=? WHERE id=? AND status IN ('queued','running')", (progress_json, run_id))
+
+
 def set_run_status(db: sqlite3.Connection, run_id: str, status: str) -> None:
     # Guard: a run cancelled while queued must not be revived.
     db.execute("UPDATE agent_runs SET status=? WHERE id=? AND status IN ('queued','running')", (status, run_id))

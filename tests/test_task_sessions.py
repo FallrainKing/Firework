@@ -54,10 +54,9 @@ def test_fixed_skill_and_bound_paper_payload(client,monkeypatch):
     session=c.post('/api/sessions',json={'template_id':'read','paper_ids':[pid]}).json()['session']
     assert c.post('/api/agent/runs',json={'conversation_id':session['id'],'skill':'chat','prompt':'x'}).status_code==409
     captures=[]
-    def handler(req):
-        payload=json.loads(req.content);captures.append(payload)
-        return httpx.Response(200,json={'status':'succeeded','answer':'read','session_id':payload['session_id'],'native_ready':True})
-    monkeypatch.setattr(agent,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    from test_agent_mvp import runner_mock
+    mock=runner_mock(lambda p:{'status':'succeeded','answer':'read','session_id':p['session_id'],'native_ready':True},capture=captures)
+    monkeypatch.setattr(agent,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(mock),base_url='http://test'))
     first=wait(c,c.post('/api/agent/runs',json={'conversation_id':session['id'],'prompt':'read'}).json()['id'])
     second=wait(c,c.post('/api/agent/runs',json={'conversation_id':session['id'],'prompt':'continue'}).json()['id'])
     assert captures[0]['paper_ids']==[pid]

@@ -23,14 +23,48 @@ from app.core.config import Settings
 from app.core.db import get_conn
 from agent_runner.tools import library_search
 
+class _SSE(httpx.AsyncByteStream):
+    def __init__(self, frames):
+        self._data = ''.join(f'data: {json.dumps(f, ensure_ascii=False)}\n\n' for f in frames).encode()
+    async def __aiter__(self):
+        yield self._data
+
+
+def runner_mock(result, capture=None, frames=None):
+    """Mock Runner speaking the async protocol. result: dict or fn(payload)->dict."""
+    submitted = {}
+    def resolve(run_id):
+        payload = submitted.get(run_id, {})
+        return result(payload) if callable(result) else result
+    async def handler(request):
+        path = request.url.path
+        if path == '/health':
+            return httpx.Response(200, json={'status':'ok','model':'test-model','skills':[],'concurrency':2,'queued':0,'running':0})
+        if path == '/runs' and request.method == 'POST':
+            payload = json.loads(request.content)
+            submitted[payload['run_id']] = payload
+            if capture is not None:
+                capture.append(payload)
+            return httpx.Response(202, json={'run_id':payload['run_id'],'status':'queued'})
+        if path.endswith('/events'):
+            run_id = path.split('/')[2]
+            fr = frames if frames is not None else [{'type':'progress','event':{'type':'assistant','text':'working'}},{'type':'result','result':resolve(run_id)}]
+            return httpx.Response(200, headers={'content-type':'text/event-stream'}, stream=_SSE(fr))
+        if path.startswith('/runs/'):
+            run_id = path.split('/')[2]
+            res = resolve(run_id)
+            return httpx.Response(200, json={'run_id':run_id,'status':res.get('status','succeeded'),'progress':None,'result':res})
+        return httpx.Response(200, json=resolve(''))
+    return handler
+
+
+CANNED_RESULT = {'status':'succeeded','answer':'Saved answer: diffusion policy','model':'test-model','usage':{'input_tokens':12,'output_tokens':5},'cli_estimated_cost_usd':0.001,'tool_calls':[],'metadata':{}}
+
+
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     settings = Settings(data_dir=tmp_path, qdrant_url=':memory:')
-    async def handler(request):
-        if request.url.path == '/health':
-            return httpx.Response(200, json={'status':'ok','model':'test-model','skills':[]})
-        return httpx.Response(200, json={'status':'succeeded','answer':'Saved answer: diffusion policy','model':'test-model','usage':{'input_tokens':12,'output_tokens':5},'cli_estimated_cost_usd':0.001,'tool_calls':[],'metadata':{}})
-    monkeypatch.setattr(runner_client,'client', lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler), base_url='http://test'))
+    monkeypatch.setattr(runner_client,'client', lambda: httpx.AsyncClient(transport=httpx.MockTransport(runner_mock(CANNED_RESULT)), base_url='http://test'))
     @asynccontextmanager
     async def lifespan(app):
         app.state.settings = settings
@@ -123,10 +157,7 @@ def test_followup_passes_bounded_saved_history(client,monkeypatch):
     c,_=client
     first=wait(c,c.post('/api/agent/runs',json={'prompt':'first'}).json()['id'])
     captured=[]
-    def handler(req):
-        captured.append(json.loads(req.content))
-        return httpx.Response(200,json={'status':'succeeded','answer':'followup'})
-    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock({'status':'succeeded','answer':'followup'},capture=captured)),base_url='http://test'))
     wait(c,c.post('/api/agent/runs',json={'prompt':'second','conversation_id':first['conversation_id']}).json()['id'])
     assert captured[0]['history'][0]['content']=='first'
     assert captured[0]['history'][1]['role']=='assistant'
@@ -220,3 +251,26 @@ def test_catalog_budgets():
     for k in ('paper_read', 'paper_review', 'paper_compare'):
         r = SKILLS[k]
         assert (r['max_turns'], r['max_output_tokens'], r['timeout_s'], r['max_budget_usd']) == (30, 8192, None, 1.00)
+
+def test_progress_persisted_during_run(client, monkeypatch):
+    c,_ = client
+    event = {'type':'assistant','tools':['paper_read'],'text':'reading page 2'}
+    frames = [{'type':'progress','event':event},{'type':'result','result':CANNED_RESULT}]
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock(CANNED_RESULT,frames=frames)),base_url='http://test'))
+    run = wait(c, c.post('/api/agent/runs',json={'prompt':'read'}).json()['id'])
+    assert run['status'] == 'succeeded'
+    assert run['progress'] == event
+
+def test_stream_break_marks_failed_no_retry(client, monkeypatch):
+    c,_ = client
+    submits = []
+    base = runner_mock(CANNED_RESULT, capture=submits)
+    async def handler(request):
+        if request.url.path.endswith('/events'):
+            raise httpx.ReadError('stream broke')
+        return await base(request)
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    run = wait(c, c.post('/api/agent/runs',json={'prompt':'read'}).json()['id'])
+    assert run['status'] == 'failed'
+    assert 'No automatic retry' in run['error']
+    assert len(submits) == 1

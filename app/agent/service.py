@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 import uuid
 
 import httpx
@@ -26,6 +27,7 @@ def view(row) -> dict:
         result[key] = json.loads(result.pop(key + '_json'))
     result['contexts'] = json.loads(result.pop('context_json', '[]'))
     result['attachment_ids'] = json.loads(result.pop('attachment_ids_json', '[]'))
+    result['progress'] = json.loads(result.pop('progress_json', '{}') or '{}')
     result['cost_verified'] = False
     return result
 
@@ -38,7 +40,6 @@ def init_agent_state(app):
     repo.fail_orphan_imports(db)
     db.commit()
     app.state.agent_jobs = set()
-    app.state.agent_semaphore = asyncio.Semaphore(1)
     # This MVP deployment runs one web worker. Interrupted runs are marked
     # explicitly; never auto-retry a possibly billed model request.
     repo.fail_interrupted_runs(db)
@@ -63,7 +64,7 @@ async def status_view(db) -> dict:
             runner = response.json()
     except (httpx.HTTPError, ValueError):
         runner = {'status': 'offline', 'skills': []}
-    return {'runner': runner, 'runs': counts, 'database': 'ok', 'limits': {'concurrency': 1, 'max_queued': 8, 'max_output_tokens_per_turn': 1024, 'max_tool_calls': 4, 'max_tool_calls_search': 2, 'max_turns': 6, 'timeout_seconds': 120, 'cost_verified': False}}
+    return {'runner': runner, 'runs': counts, 'database': 'ok', 'limits': {'concurrency': runner.get('concurrency', 2), 'max_queued': 8, 'skills': {k: {'max_turns': v['max_turns'], 'max_output_tokens': v['max_output_tokens'], 'timeout_s': v['timeout_s'], 'max_budget_usd': v['max_budget_usd']} for k, v in CATALOG.items()}, 'cost_verified': False}}
 
 
 def list_runs(db, conversation_id: int | None = None, q: str = '') -> dict:
@@ -183,37 +184,62 @@ async def create_run(body: RunCreate, state) -> dict:
 
 
 async def execute_run(run_id: str, state):
+    """Submit a runner job and consume its SSE progress until terminal.
+
+    Concurrency is gated by the Runner (queue + semaphore), not here. A broken
+    stream marks the run failed; a possibly billed request is never replayed.
+    """
     db = get_conn(state.settings)
     try:
-        async with state.agent_semaphore:
-            row = repo.find_run(db, run_id)
-            session = require_session(db, row['conversation_id'])
-            if not session['native_session_id']:
-                repo.set_native_session(db, session['id'], str(uuid.uuid4()))
-                db.commit()
-                session = require_session(db, session['id'])
-            paper_ids = repo.conversation_paper_ids(db, session['id'])
-            past = repo.past_successful_runs(db, row['conversation_id'], run_id)
-            import_row = repo.find_import_request(db, session['id'], run_id)
-            history = []
-            for entry in reversed(past):
-                history.extend([{'role': 'user', 'content': entry['prompt']}, {'role': 'assistant', 'content': entry['answer']}])
-            repo.set_run_status(db, run_id, 'running')
+        row = repo.find_run(db, run_id)
+        session = require_session(db, row['conversation_id'])
+        if not session['native_session_id']:
+            repo.set_native_session(db, session['id'], str(uuid.uuid4()))
             db.commit()
-            try:
-                async with runner_client.client() as c:
-                    response = await c.post('/run', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None})
+            session = require_session(db, session['id'])
+        paper_ids = repo.conversation_paper_ids(db, session['id'])
+        past = repo.past_successful_runs(db, row['conversation_id'], run_id)
+        import_row = repo.find_import_request(db, session['id'], run_id)
+        history = []
+        for entry in reversed(past):
+            history.extend([{'role': 'user', 'content': entry['prompt']}, {'role': 'assistant', 'content': entry['answer']}])
+        repo.set_run_status(db, run_id, 'running')
+        db.commit()
+        try:
+            async with runner_client.client() as c:
+                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None})
+                sub.raise_for_status()
+                result = None
+                last_write = 0.0
+                async with c.stream('GET', f'/runs/{run_id}/events', timeout=httpx.Timeout(10.0, read=None)) as response:
                     response.raise_for_status()
-                    result = response.json()
-                if result.get('status') not in ('succeeded', 'failed'):
+                    async for line in response.aiter_lines():
+                        if not line.startswith('data: '):
+                            continue
+                        frame = json.loads(line[6:])
+                        if frame.get('type') == 'progress':
+                            event = frame.get('event') or {}
+                            now = time.monotonic()
+                            if event.get('tools') or now - last_write >= 1.0:
+                                repo.update_progress(db, run_id, json.dumps(event, ensure_ascii=False))
+                                db.commit()
+                                last_write = now
+                        elif frame.get('type') == 'result':
+                            result = frame.get('result') or {}
+                            break
+                if result is None:
+                    got = await c.get(f'/runs/{run_id}')
+                    got.raise_for_status()
+                    result = got.json().get('result')
+                if not result or result.get('status') not in ('succeeded', 'failed', 'cancelled'):
                     raise ValueError('Invalid runner status')
-            except (httpx.HTTPError, ValueError):
-                result = {'status': 'failed', 'error': 'Agent connection failed or timed out; retry manually. No automatic retry was made.'}
-            repo.finish_run(db, run_id, result['status'], str(result.get('answer') or ''), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
-            if result.get('session_id') == session['native_session_id'] and result.get('native_ready'):
-                repo.set_native_ready(db, session['id'])
-            repo.touch_conversation(db, row['conversation_id'])
-            db.commit()
+        except (httpx.HTTPError, ValueError):
+            result = {'status': 'failed', 'error': 'Agent connection failed or timed out; retry manually. No automatic retry was made.'}
+        repo.finish_run(db, run_id, result['status'], str(result.get('answer') or ''), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
+        if result.get('session_id') == session['native_session_id'] and result.get('native_ready'):
+            repo.set_native_ready(db, session['id'])
+        repo.touch_conversation(db, row['conversation_id'])
+        db.commit()
     except Exception:
         logger.exception('Agent execution failed before result persistence')
         db.rollback()

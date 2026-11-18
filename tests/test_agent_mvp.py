@@ -30,7 +30,14 @@ class _SSE(httpx.AsyncByteStream):
         yield self._data
 
 
-def runner_mock(result, capture=None, frames=None):
+class _HangingSSE(httpx.AsyncByteStream):
+    """Progress frame, then stays open until the client disconnects."""
+    async def __aiter__(self):
+        yield b'data: {"type":"progress","event":{"type":"assistant","text":"working"}}\n\n'
+        await asyncio.Event().wait()
+
+
+def runner_mock(result, capture=None, frames=None, hang=False):
     """Mock Runner speaking the async protocol. result: dict or fn(payload)->dict."""
     submitted = {}
     def resolve(run_id):
@@ -46,8 +53,13 @@ def runner_mock(result, capture=None, frames=None):
             if capture is not None:
                 capture.append(payload)
             return httpx.Response(202, json={'run_id':payload['run_id'],'status':'queued'})
+        if path.endswith('/cancel'):
+            run_id = path.split('/')[2]
+            return httpx.Response(200, json={'run_id':run_id,'status':'cancelled'})
         if path.endswith('/events'):
             run_id = path.split('/')[2]
+            if hang:
+                return httpx.Response(200, headers={'content-type':'text/event-stream'}, stream=_HangingSSE())
             fr = frames if frames is not None else [{'type':'progress','event':{'type':'assistant','text':'working'}},{'type':'result','result':resolve(run_id)}]
             return httpx.Response(200, headers={'content-type':'text/event-stream'}, stream=_SSE(fr))
         if path.startswith('/runs/'):
@@ -274,3 +286,46 @@ def test_stream_break_marks_failed_no_retry(client, monkeypatch):
     assert run['status'] == 'failed'
     assert 'No automatic retry' in run['error']
     assert len(submits) == 1
+
+def test_cancel_running_run(client, monkeypatch):
+    c,_ = client
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock(CANNED_RESULT,hang=True)),base_url='http://test'))
+    run = c.post('/api/agent/runs',json={'prompt':'long task'}).json()
+    for _ in range(200):
+        if c.get('/api/agent/runs/'+run['id']).json()['status'] == 'running':
+            break
+        time.sleep(0.01)
+    r = c.post('/api/agent/runs/'+run['id']+'/cancel')
+    assert r.status_code == 200 and r.json()['status'] == 'cancelled'
+    # conversation is immediately free for a new run
+    assert c.post('/api/agent/runs',json={'prompt':'next','conversation_id':run['conversation_id']}).status_code == 202
+
+def test_cancel_finished_conflict(client):
+    c,_ = client
+    run = wait(c, c.post('/api/agent/runs',json={'prompt':'done'}).json()['id'])
+    assert c.post('/api/agent/runs/'+run['id']+'/cancel').status_code == 409
+
+def test_cancel_runner_offline_503(client, monkeypatch):
+    c,_ = client
+    base = runner_mock(CANNED_RESULT, hang=True)
+    async def handler(request):
+        if request.url.path.endswith('/cancel'):
+            raise httpx.ConnectError('offline')
+        return await base(request)
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    run = c.post('/api/agent/runs',json={'prompt':'long task'}).json()
+    for _ in range(200):
+        if c.get('/api/agent/runs/'+run['id']).json()['status'] == 'running':
+            break
+        time.sleep(0.01)
+    r = c.post('/api/agent/runs/'+run['id']+'/cancel')
+    assert r.status_code == 503
+    assert c.get('/api/agent/runs/'+run['id']).json()['status'] == 'running'
+
+def test_app_sse_emits_terminal(client):
+    c,_ = client
+    run = wait(c, c.post('/api/agent/runs',json={'prompt':'done'}).json()['id'])
+    ev = c.get('/api/agent/runs/'+run['id']+'/events')
+    assert ev.status_code == 200 and ev.headers['content-type'].startswith('text/event-stream')
+    assert 'data: ' in ev.text and '"succeeded"' in ev.text
+    assert c.get('/api/agent/runs/missing/events').status_code == 404

@@ -64,6 +64,13 @@ def clear_draft(db: sqlite3.Connection, conv_id: int) -> None:
     db.execute("UPDATE conversations SET draft_prompt='' WHERE id=?", (conv_id,))
 
 
+def cancel_run(db: sqlite3.Connection, run_id: str) -> None:
+    db.execute(
+        "UPDATE agent_runs SET status='cancelled',error='已取消',finished_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('queued','running')",
+        (run_id,),
+    )
+
+
 def update_progress(db: sqlite3.Connection, run_id: str, progress_json: str) -> None:
     db.execute("UPDATE agent_runs SET progress_json=? WHERE id=? AND status IN ('queued','running')", (progress_json, run_id))
 

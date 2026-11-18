@@ -1,5 +1,9 @@
 """HTTP routes for agent status and persisted runs."""
+import asyncio
+import json
+
 from fastapi import APIRouter, Query, Request
+from fastapi.responses import StreamingResponse
 
 from . import service
 from .schemas import RunCreate
@@ -20,6 +24,39 @@ async def list_runs(request: Request, conversation_id: int | None = None, q: str
 @router.get('/runs/{run_id}')
 async def get_run(run_id: str, request: Request):
     return service.get_run(request.app.state.db, run_id)
+
+
+@router.post('/runs/{run_id}/cancel')
+async def cancel_run(run_id: str, request: Request):
+    return await service.cancel_run(request.app.state.db, run_id, request.app.state)
+
+
+@router.get('/runs/{run_id}/events')
+async def run_events(run_id: str, request: Request):
+    """Browser-facing progress stream, tails the app's own database.
+
+    Decoupled from the Runner connection: survives runner restarts and works
+    for runs that finished long ago (first frame is the terminal state).
+    """
+    db = request.app.state.db
+    if service.run_snapshot(db, run_id) is None:
+        from ..core.errors import ServiceError
+        raise ServiceError(404, 'Task not found')
+
+    async def gen():
+        last = None
+        while True:
+            snap = service.run_snapshot(db, run_id)
+            if snap is None:
+                return
+            if snap != last:
+                yield f'data: {json.dumps(snap, ensure_ascii=False)}\n\n'
+                last = snap
+            if snap['status'] in ('succeeded', 'failed', 'cancelled'):
+                return
+            await asyncio.sleep(1)
+
+    return StreamingResponse(gen(), media_type='text/event-stream')
 
 
 @router.get('/library')

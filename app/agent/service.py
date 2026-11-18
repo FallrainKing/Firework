@@ -183,6 +183,31 @@ async def create_run(body: RunCreate, state) -> dict:
     return view(repo.find_run(db, run_id))
 
 
+async def cancel_run(db, run_id: str, state) -> dict:
+    row = repo.find_run(db, run_id)
+    if row is None:
+        raise ServiceError(404, 'Task not found')
+    if row['status'] in ('succeeded', 'failed', 'cancelled'):
+        raise ServiceError(409, '任务已结束')
+    try:
+        async with runner_client.client() as c:
+            response = await c.post(f'/runs/{run_id}/cancel', timeout=10)
+            if response.status_code != 404:  # 404 = runner restarted; cancel locally
+                response.raise_for_status()
+    except httpx.HTTPError:
+        raise ServiceError(503, 'Runner 离线，无法取消')
+    repo.cancel_run(db, run_id)
+    db.commit()
+    return view(repo.find_run(db, run_id))
+
+
+def run_snapshot(db, run_id: str):
+    row = repo.find_run(db, run_id)
+    if row is None:
+        return None
+    return {'status': row['status'], 'progress': json.loads(row['progress_json'] or '{}')}
+
+
 async def execute_run(run_id: str, state):
     """Submit a runner job and consume its SSE progress until terminal.
 

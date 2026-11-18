@@ -202,9 +202,11 @@ export function useReaderOrchestrator(deps: Deps) {
     }
   }
 
+  function watchRun(runId: string) { chat?.watch(runId) }
+
   return {
     profile, doc, session, missingPdf, loading, loadError, noteContext, sidebarTab, annotationsVersion,
     registerChat, setTab, boot, activate, jump, selectionAction, saveInk, eraseAnnotation,
-    refreshAnnotations, savePosition, writePosition, flush, positionSnapshot,
+    refreshAnnotations, savePosition, writePosition, flush, positionSnapshot, watchRun,
   }
 }

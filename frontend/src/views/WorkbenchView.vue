@@ -69,7 +69,7 @@ async function createDomain() {
       <main class="work-main">
         <section v-show="wb.view === 'read'" class="reading-workspace">
           <PaperTabs @add="taskRequest = { mode: 'read' }" @home="goHome" />
-          <ReadingView v-if="wb.activePaperId !== null" :paper-id="wb.activePaperId" :session-id="activeSessionId()" />
+          <ReadingView v-if="wb.activePaperId !== null" :paper-id="wb.activePaperId" :session-id="activeSessionId()" @open-import="importOpen = true" />
           <WelcomeView
             v-else
             @start="q => (taskRequest = { mode: 'read', question: q })"

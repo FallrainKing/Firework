@@ -9,7 +9,10 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
-    proxy: { '/api': 'http://127.0.0.1:8600' },
+    proxy: Object.fromEntries(
+      ['/api', '/reader.html', '/manage.html', '/discover.html', '/reader', '/vendor', '/workbench', '/md.js', '/workspace.js', '/workspace.css', '/discovery.js', '/discovery.css']
+        .map(p => [p, 'http://127.0.0.1:8600']),
+    ),
   },
   test: {
     environment: 'jsdom',

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
 import { importsApi } from '@/api/imports'
@@ -17,6 +17,20 @@ const status = ref('')
 const results = ref<SearchPaper[]>([])
 const sessionId = ref<number | null>(null)
 const error = ref('')
+let stopped = false
+onUnmounted(() => { stopped = true })
+
+onMounted(async () => {
+  // 对照旧版 discovery.js boot：恢复上次搜索的会话链接与结果跟踪。
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('research-last-search') || 'null')
+    if (cached?.id) {
+      sessionId.value = cached.sid
+      status.value = '智能体正在检索…'
+      await watchSearch(cached.id)
+    }
+  } catch { /* ignore */ }
+})
 
 function renderResults(run: Run) {
   const unique = new Set<string>()
@@ -34,8 +48,9 @@ function renderResults(run: Run) {
 }
 
 async function watchSearch(id: string) {
-  for (;;) {
+  while (!stopped) {
     const run = await agentApi.getRun(id)
+    if (stopped) return
     if (['succeeded', 'failed', 'cancelled'].includes(run.status)) {
       renderResults(run)
       status.value = run.status === 'succeeded' ? '搜索结果已保存，可回到会话继续。' : run.status === 'cancelled' ? '搜索已取消。' : '搜索未完成：' + (run.error || '请查看会话')

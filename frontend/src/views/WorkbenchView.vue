@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { parseDeepLink } from '@/shared/deeplink'
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
 import PaperTabs from '@/components/PaperTabs.vue'
@@ -47,9 +49,21 @@ function openImport(paperId?: number) {
   importOpen.value = true
 }
 
+const route = useRoute()
+
+function openSessionInLibrary(sessionId: number) {
+  librarySession.value = sessionId
+  wb.setView('library')
+}
+
 onMounted(async () => {
   try {
     await Promise.all([wb.load(), lib.refresh()])
+    const deep = parseDeepLink(route)
+    if (deep) {
+      wb.openPaper(deep.paperId, deep.sessionId ?? undefined)
+      wb.setView('read')
+    }
   } catch (e) {
     showToast(e instanceof Error ? e.message : '工作台加载失败')
   }
@@ -116,7 +130,7 @@ async function createDomain() {
         </section>
         <CompareView v-if="wb.view === 'compare'" />
         <SchedulesView v-if="wb.view === 'schedules'" />
-        <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" @open-paper="(pid, sid) => { wb.openPaper(pid, sid); wb.setView('read') }" @open-import="openImport" />
+        <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" @open-paper="(pid, sid) => { wb.openPaper(pid, sid); wb.setView('read') }" @open-import="openImport" @open-session="openSessionInLibrary" />
       </main>
     </div>
     <div v-if="toast" class="work-toast" role="status">{{ toast }}</div>

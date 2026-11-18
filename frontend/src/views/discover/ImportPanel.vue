@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { importsApi } from '@/api/imports'
 import { papersApi } from '@/api/papers'
 import { uid32 } from '@/api/client'
@@ -19,23 +19,35 @@ const submitting = ref(false)
 const uploading = ref(false)
 const fileInput = ref<HTMLInputElement | null>(null)
 const tracking = new Set<string>()
+let stopped = false
+onUnmounted(() => { stopped = true })
 
 const STATUS_TEXT: Record<string, string> = { pending: '等待智能体执行', running: '正在下载、解析和索引', completed: '已入库', failed: '未完成' }
 
-async function track(item: ImportRequest) {
+function upsert(item: ImportRequest) {
   const i = imports.value.findIndex(x => x.id === item.id)
   if (i >= 0) imports.value[i] = item
   else imports.value.unshift(item)
   if (item.status === 'completed') emit('library-updated')
-  if (['completed', 'failed'].includes(item.status)) { tracking.delete(item.id); return }
-  if (tracking.has(item.id)) return
+}
+
+// 扁平循环替代递归跟踪：卸载即停，避免无终态任务下的无限轮询与 promise 链累积。
+async function track(item: ImportRequest) {
+  upsert(item)
+  if (['completed', 'failed'].includes(item.status) || tracking.has(item.id)) return
   tracking.add(item.id)
-  await new Promise(r => setTimeout(r, 2000))
   try {
-    await track(await importsApi.get(item.id))
+    let current = item
+    while (!stopped && !['completed', 'failed'].includes(current.status)) {
+      await new Promise(r => setTimeout(r, 2000))
+      if (stopped) break
+      current = await importsApi.get(item.id)
+      upsert(current)
+    }
   } catch (e) {
+    if (!stopped) error.value = e instanceof Error ? e.message : '状态获取失败'
+  } finally {
     tracking.delete(item.id)
-    error.value = e instanceof Error ? e.message : '状态获取失败'
   }
 }
 

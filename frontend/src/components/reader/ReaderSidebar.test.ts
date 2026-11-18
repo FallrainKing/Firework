@@ -13,7 +13,7 @@ function makeOrch() {
   return {
     setTab: vi.fn(), savePosition: vi.fn(), jump: vi.fn(), selectionAction: vi.fn(),
     watchRun: vi.fn(), refreshAnnotations: vi.fn(async () => {}),
-    noteContext: ref(null), profile: ref(profile), annotationsVersion: ref(0),
+    sidebarTab: ref('outline'), noteContext: ref(null), profile: ref(profile), annotationsVersion: ref(0),
     positionSnapshot: () => ({ page: 2 }),
   }
 }

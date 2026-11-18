@@ -23,8 +23,8 @@ const page = ref<'import' | 'search'>('import')
         <button :aria-current="page === 'search' ? 'page' : undefined" @click="page = 'search'">搜索</button>
       </div>
     </div>
-    <ImportPanel v-if="page === 'import'" :target-paper-id="props.targetPaperId" @open-paper="pid => emit('open-paper', pid)" @library-updated="emit('library-updated')" />
-    <SearchPanel v-else @open-session="sid => emit('open-session', sid)" @library-updated="emit('library-updated')" />
+    <ImportPanel v-show="page === 'import'" :target-paper-id="props.targetPaperId" @open-paper="pid => emit('open-paper', pid)" @library-updated="emit('library-updated')" />
+    <SearchPanel v-show="page === 'search'" @open-session="sid => emit('open-session', sid)" @library-updated="emit('library-updated')" />
   </div>
 </template>
 

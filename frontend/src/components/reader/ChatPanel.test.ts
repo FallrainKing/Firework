@@ -90,4 +90,17 @@ describe('ChatPanel', () => {
     const wrapper = await mountPanel()
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('起始问题')
   })
+
+  it('ask reuses the stored pending request_key for identical input', async () => {
+    const pending = { conversation_id: 5, prompt: '重复提交', contexts: [], purpose: 'chat', attachment_ids: [], request_key: 'a'.repeat(32) }
+    localStorage.setItem('reader-pending-5', JSON.stringify(pending))
+    const created: Array<{ request_key: string }> = []
+    vi.spyOn(agentApi, 'createRun').mockImplementation(async body => { created.push(body as never); return run({ status: 'queued' }) })
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue(run({ status: 'queued' }))
+    const wrapper = await mountPanel()
+    await wrapper.find('textarea').setValue('重复提交')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(created[0].request_key).toBe('a'.repeat(32))
+  })
 })

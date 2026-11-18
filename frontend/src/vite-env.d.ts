@@ -1,7 +1,7 @@
 /// <reference types="vite/client" />
 
 interface Window {
-  mdRender?: (text: string) => string
+  mdRender?: (text: string) => HTMLElement
 }
 
 declare module '*.vue' {

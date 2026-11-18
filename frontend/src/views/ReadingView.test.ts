@@ -53,12 +53,13 @@ describe('ReadingView KeepAlive pool', () => {
     expect(wrapper.findAll('.pane-stub').length).toBeLessThanOrEqual(3)
   })
 
-  it('session rebind creates a new keyed instance', async () => {
+  it('session rebind keeps the cached pane (key=paperId, rebind via activate)', async () => {
     const wrapper = await mountView(1, 10)
     await wrapper.setProps({ sessionId: 20 })
     await flushPromises()
-    expect(events).toContain('mount:1:20')
-    expect(events).toContain('deactivated:1')
+    // 自动绑定/切换会话不再重建面板（避免双启动与僵尸缓存槽）。
+    expect(events.filter(e => e.startsWith('mount:1'))).toHaveLength(1)
+    expect(events).not.toContain('unmount:1')
   })
 
   it('home (null paper) hides but keeps cache', async () => {

@@ -61,4 +61,22 @@ describe('SessionsManager', () => {
     await flushPromises()
     expect(sessionsApi.runs).toHaveBeenLastCalledWith(5, 42)
   })
+
+  it('busy is per-session: idle session composer stays enabled while another runs', async () => {
+    const sessionB = { ...session, id: 6, title: '空闲会话', paper_ids: [] }
+    vi.spyOn(sessionsApi, 'list').mockResolvedValue({ sessions: [session, sessionB] } as never)
+    vi.spyOn(sessionsApi, 'runs').mockImplementation(async (id: number) =>
+      id === 5 ? { runs: [{ ...run, status: 'running' }], has_more: false, next_before: null } as never : { runs: [], has_more: false, next_before: null } as never)
+    vi.spyOn(sessionsApi, 'get').mockImplementation(async (id: number) =>
+      ({ session: id === 5 ? session : sessionB, papers: [] }) as never)
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue({ ...run, status: 'running' } as never)
+    const wrapper = await mountManager()
+    const items = wrapper.findAll('button.session-item')
+    await items[0].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.composer textarea').attributes('disabled')).toBeDefined()
+    await items[1].trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.composer textarea').attributes('disabled')).toBeUndefined()
+  })
 })

@@ -10,6 +10,7 @@ interface Orch {
   selectionAction: (action: string, ctx: SelectionContext, color?: string) => Promise<void>
   watchRun: (runId: string) => void
   refreshAnnotations: () => Promise<void>
+  sidebarTab: { value: Position['tab'] }
   noteContext: { value: SelectionContext | null }
   profile: { value: { id: number; title: string; authors?: string[]; affiliations?: string[]; abstract?: string | null; summary?: string; doi?: string | null; affiliation_source?: string } | null }
   annotationsVersion: { value: number }
@@ -58,6 +59,8 @@ async function refresh() {
 }
 
 watch(() => orch?.annotationsVersion.value, () => { void refresh() })
+// 编排器侧的 tab 变更（恢复位置/高亮/翻译）同步到 UI，不回写位置。
+watch(() => orch?.sidebarTab.value, t => { if (t) tab.value = t })
 watch(() => props.doc, d => { if (d) void refresh() }, { immediate: true })
 watch(() => orch?.noteContext.value, ctx => { if (ctx) focusNote() })
 
@@ -125,7 +128,7 @@ function quoteToChat(a: Annotation) {
 }
 
 function renderMd(text: string): string {
-  if (window.mdRender) return window.mdRender(text)
+  if (window.mdRender) return window.mdRender(text).innerHTML
   return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 

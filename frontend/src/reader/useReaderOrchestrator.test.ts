@@ -109,4 +109,20 @@ describe('reader orchestrator', () => {
     await orch.selectionAction('highlight', { paper_id: 1, page: 2, file_version: 'v1', quote: 'q', rects: [[0.1, 0.1, 0.2, 0.02]] }, '#f5d76e')
     expect(readerApi.createAnnotation).toHaveBeenCalledWith(expect.objectContaining({ kind: 'highlight', color: '#f5d76e', conversation_id: 5 }))
   })
+
+  it('concurrent activates share one engine load and keep the last session', async () => {
+    const engine = fakeEngine()
+    let resolveLoad!: () => void
+    engine.load = vi.fn(() => new Promise<void>(r => { resolveLoad = r }))
+    vi.spyOn(sessionsApi, 'get').mockImplementation(async (id: number) => ({ session: { ...session, id }, papers: [] }) as never)
+    const toasts: string[] = []
+    const orch = useReaderOrchestrator({ paperId: 1, engine: engine as never, toast: m => toasts.push(m) })
+    const bootP = orch.boot() // boot 的 activate 停在 pending 的 engine.load
+    await vi.waitFor(() => expect(engine.load).toHaveBeenCalled())
+    const second = orch.activate(9)
+    resolveLoad()
+    await Promise.all([bootP, second])
+    expect(orch.session.value?.id).toBe(9)
+    expect(engine.load).toHaveBeenCalledTimes(1)
+  })
 })

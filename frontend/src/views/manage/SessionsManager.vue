@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { sessionsApi } from '@/api/sessions'
 import { agentApi } from '@/api/agent'
 import { uid32 } from '@/api/client'
@@ -23,7 +23,9 @@ const runs = ref<Run[]>([])
 const older = ref<number | null>(null)
 const hasMore = ref(false)
 const prompt = ref('')
-const busy = ref(false)
+// 对照旧版 S.busy：按会话 id 记录忙碌，避免跨会话串扰。
+const busySet = ref<Set<number>>(new Set())
+const busy = computed(() => !!current.value && busySet.value.has(current.value.id))
 const error = ref('')
 const templatesOpen = ref(false)
 const taskOpen = ref(false)
@@ -32,6 +34,18 @@ const renaming = ref(false)
 
 const STATES: Record<string, string> = { draft: '待开始', queued: '排队中', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const polling = new Set<string>()
+let stopped = false
+let openEpoch = 0
+
+function setBusy(id: number, on: boolean) {
+  const next = new Set(busySet.value)
+  if (on) next.add(id)
+  else next.delete(id)
+  busySet.value = next
+}
+
+onUnmounted(() => { stopped = true })
+watch(() => props.initialSessionId, sid => { if (sid) void openSession(sid) })
 
 async function loadSessions() {
   const params: Record<string, unknown> = { q: q.value, archived: showArchived.value }
@@ -49,13 +63,16 @@ onMounted(async () => {
 })
 
 async function openSession(id: number) {
+  const epoch = ++openEpoch
   error.value = ''
   const data = await sessionsApi.get(id)
+  if (epoch !== openEpoch) return
   current.value = data.session
   papers.value = data.papers
-  prompt.value = data.session.draft_prompt || ''
+  const pending = (() => { try { return JSON.parse(localStorage.getItem('research-pending-session-' + id) || 'null') } catch { return null } })()
+  prompt.value = pending?.prompt || data.session.draft_prompt || ''
   const result = await sessionsApi.runs(id)
-  if (current.value?.id !== id) return
+  if (epoch !== openEpoch) return
   runs.value = result.runs
   older.value = result.next_before
   hasMore.value = result.has_more
@@ -79,27 +96,26 @@ function upsertRun(r: Run) {
 async function poll(runId: string, sessionId: number) {
   if (polling.has(runId)) return
   polling.add(runId)
-  busy.value = true
+  setBusy(sessionId, true)
   try {
-    for (;;) {
+    while (!stopped) {
       const r = await agentApi.getRun(runId)
+      if (stopped) break
       if (current.value?.id === sessionId) upsertRun(r)
       if (['succeeded', 'failed', 'cancelled'].includes(r.status)) {
         localStorage.removeItem('research-pending-session-' + sessionId)
-        if (current.value?.id === sessionId) {
-          busy.value = false
-          current.value = (await sessionsApi.get(sessionId)).session
-        }
+        setBusy(sessionId, false)
+        if (current.value?.id === sessionId) current.value = (await sessionsApi.get(sessionId)).session
         await loadSessions()
         break
       }
       await new Promise(r => setTimeout(r, 2000))
     }
   } catch {
-    error.value = '任务状态暂时无法获取。重新打开会话会继续检查，不会自动重复调用。'
+    if (!stopped) error.value = '任务状态暂时无法获取。重新打开会话会继续检查，不会自动重复调用。'
   } finally {
     polling.delete(runId)
-    busy.value = false
+    setBusy(sessionId, false)
   }
 }
 
@@ -118,14 +134,14 @@ async function submit() {
     body = { conversation_id: id, prompt: text, request_key: uid32() }
   }
   localStorage.setItem(storage, JSON.stringify(body))
-  busy.value = true
+  setBusy(id, true)
   try {
     const run = await agentApi.createRun(body as never)
     if (current.value?.id === id) { upsertRun(run); prompt.value = '' }
     void poll(run.id, id)
     await loadSessions()
   } catch (e) {
-    busy.value = false
+    setBusy(id, false)
     error.value = e instanceof Error ? e.message : '发送失败'
   }
 }
@@ -156,7 +172,7 @@ function onCreated(session: Session, startingPrompt: string) {
 }
 
 function renderMd(text: string): string {
-  if (window.mdRender) return window.mdRender(text)
+  if (window.mdRender) return window.mdRender(text).innerHTML
   return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 </script>

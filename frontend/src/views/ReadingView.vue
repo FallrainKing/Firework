@@ -17,7 +17,7 @@ const emit = defineEmits<{
     <KeepAlive :max="3">
       <ReaderPane
         v-if="paperId !== null"
-        :key="paperId + ':' + (sessionId ?? 'new')"
+        :key="paperId"
         :paper-id="paperId"
         :session-id="sessionId"
         @open-paper="(pid, sid) => emit('open-paper', pid, sid)"

@@ -6,7 +6,7 @@ import PaperEditDialog from '@/components/manage/PaperEditDialog.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 import type { Session } from '@/api/types'
 
-const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number] }>()
+const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number] }>()
 
 const papers = ref<Paper[]>([])
 const collections = ref<Collection[]>([])
@@ -61,8 +61,10 @@ async function createCollection() {
   }
 }
 
-function onCreated(_session: Session, _prompt: string) {
+function onCreated(session: Session, _prompt: string) {
   task.value = null
+  // 对照旧版 createTask：创建后打开会话（起步要求保存在会话草稿中，可继续发送）。
+  emit('open-session', session.id)
 }
 
 function onSaved() {

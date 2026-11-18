@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
 import { workbenchApi } from '@/api/workbench'
@@ -30,6 +30,8 @@ let epoch = 0
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let saveQueue: Promise<unknown> = Promise.resolve()
 const watching = new Set<string>()
+let stopped = false
+onUnmounted(() => { stopped = true })
 let currentSession: Session | null = props.session
 
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
@@ -179,8 +181,9 @@ async function watchRun(id: string, sid = currentSession?.id) {
   watching.add(id)
   if (currentSession?.id === sid) busy.value = true
   try {
-    for (;;) {
+    while (!stopped) {
       const r = await agentApi.getRun(id)
+      if (stopped) break
       if (currentSession?.id === sid) upsertRun(r)
       if (['succeeded', 'failed', 'cancelled'].includes(r.status)) {
         localStorage.removeItem('reader-pending-' + sid)
@@ -195,7 +198,7 @@ async function watchRun(id: string, sid = currentSession?.id) {
       await new Promise(r => setTimeout(r, 2000))
     }
   } catch {
-    showToast('任务状态连接中断，重新打开会话可继续查看。')
+    if (!stopped) showToast('任务状态连接中断，重新打开会话可继续查看。')
   } finally {
     watching.delete(id)
   }
@@ -218,7 +221,7 @@ function progressText(run: Run): string {
 }
 
 function renderMd(text: string): string {
-  if (window.mdRender) return window.mdRender(text)
+  if (window.mdRender) return window.mdRender(text).innerHTML
   return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 

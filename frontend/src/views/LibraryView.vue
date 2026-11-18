@@ -5,10 +5,17 @@ import SessionsManager from './manage/SessionsManager.vue'
 
 // 论文库管理容器：论文库 / 任务会话两页（替代旧 manage.html iframe）。
 const props = withDefaults(defineProps<{ sessionId?: number | null }>(), { sessionId: null })
-const emit = defineEmits<{ 'open-paper': [paperId: number, sessionId?: number]; 'open-import': [paperId?: number] }>()
+const emit = defineEmits<{ 'open-paper': [paperId: number, sessionId?: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number] }>()
 
 const page = ref<'library' | 'sessions'>(props.sessionId ? 'sessions' : 'library')
-watch(() => props.sessionId, sid => { if (sid) page.value = 'sessions' })
+const openSessionId = ref<number | null>(props.sessionId)
+watch(() => props.sessionId, sid => { if (sid) { page.value = 'sessions'; openSessionId.value = sid } })
+
+function onOpenSession(sid: number) {
+  openSessionId.value = sid
+  page.value = 'sessions'
+  emit('open-session', sid)
+}
 </script>
 
 <template>
@@ -17,8 +24,8 @@ watch(() => props.sessionId, sid => { if (sid) page.value = 'sessions' })
       <button :aria-current="page === 'library' ? 'page' : undefined" @click="page = 'library'">论文库</button>
       <button :aria-current="page === 'sessions' ? 'page' : undefined" @click="page = 'sessions'">任务会话</button>
     </div>
-    <LibraryGrid v-if="page === 'library'" @open-paper="pid => emit('open-paper', pid)" @open-import="pid => emit('open-import', pid)" />
-    <SessionsManager v-else :initial-session-id="sessionId" @open-paper="(pid, sid) => emit('open-paper', pid, sid)" @open-import="emit('open-import')" />
+    <LibraryGrid v-if="page === 'library'" @open-paper="pid => emit('open-paper', pid)" @open-import="pid => emit('open-import', pid)" @open-session="onOpenSession" />
+    <SessionsManager v-else :initial-session-id="openSessionId" @open-paper="(pid, sid) => emit('open-paper', pid, sid)" @open-import="emit('open-import')" />
   </div>
 </template>
 

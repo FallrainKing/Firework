@@ -51,6 +51,7 @@ export function useReaderOrchestrator(deps: Deps) {
   let activation = 0
   let restoring = false
   let loadedOnce = false
+  let loadPromise: Promise<void> | null = null
   let stateTimer: ReturnType<typeof setTimeout> | null = null
 
   function registerChat(bridge: ChatBridge) { chat = bridge }
@@ -105,8 +106,18 @@ export function useReaderOrchestrator(deps: Deps) {
       engine.zoom = position.zoom
       engine.currentPage = position.page
       if (loadedOnce) engine.layout()
-      else { await engine.load(doc.value!, position); loadedOnce = true }
+      else {
+        // 并发 activate 共享同一个 load promise，避免双重 getDocument。
+        if (!loadPromise) loadPromise = engine.load(doc.value!, position).then(() => { loadedOnce = true })
+        await loadPromise
+        if (epoch !== activation) return
+        engine.currentPage = position.page
+        engine.zoom = position.zoom
+        engine.layout()
+      }
+      if (epoch !== activation) return
       await chat?.load(next)
+      if (epoch !== activation) return
       deps.onSessionBound?.(next.id)
     } catch (e) {
       toast(e instanceof Error ? e.message : '会话切换失败')
@@ -178,6 +189,8 @@ export function useReaderOrchestrator(deps: Deps) {
         sidebarTab.value = 'translations'
         if (result.cached && result.status === 'succeeded') toast('已复用保存的译文，没有新增模型调用')
         else { chat?.watch(result.run_id); toast('已交给当前智能体会话翻译') }
+        // 缓存命中也刷新侧栏列表（无 run → 无 annotationsVersion 触发）。
+        await refreshAnnotations()
       }
     } catch (e) {
       toast(e instanceof Error ? e.message : '操作失败')

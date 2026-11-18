@@ -220,10 +220,11 @@ def test_runner_rejects_search_without_real_tool_success(monkeypatch,tmp_path):
     monkeypatch.setattr(server,'load_environment',lambda:{})
     monkeypatch.setattr(server.asyncio,'create_subprocess_exec',spawn)
     with TestClient(server.app) as c:
-        r=c.post('/run',json={'run_id':'a'*32,'skill':'search_library','prompt':'search'})
-    assert r.status_code==200
-    assert r.json()['status']=='failed'
-    assert r.json()['usage']['input_tokens']==10
+        r=c.post('/runs',json={'run_id':'a'*32,'skill':'search_library','prompt':'search'})
+        assert r.status_code==202
+        result=c.get('/runs/'+'a'*32).json()['result']
+    assert result['status']=='failed'
+    assert result['usage']['input_tokens']==10
 
 def test_arxiv_search_falls_back_without_extra_model_call(monkeypatch):
     from agent_runner import tools

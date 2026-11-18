@@ -88,9 +88,16 @@ def test_runner_native_image_stream_preserves_session_scope(desk,monkeypatch,tmp
         return proc
     monkeypatch.setattr(server.asyncio,'create_subprocess_exec',spawn)
     with TestClient(server.app) as rc:
-        result=rc.post('/run',json={'run_id':'c'*32,'skill':'chat','prompt':'Describe','session_id':native,'paper_ids':[1],'attachment_ids':[image['id']]})
+        sub=rc.post('/runs',json={'run_id':'c'*32,'skill':'chat','prompt':'Describe','session_id':native,'paper_ids':[1],'attachment_ids':[image['id']]})
+        assert sub.status_code==202,sub.text
+        import time as _t
+        for _ in range(200):
+            got=rc.get('/runs/'+'c'*32).json()
+            if got['status'] in ('succeeded','failed','cancelled'):break
+            _t.sleep(0.01)
+        result=got['result']
     captured['message']=json.loads(captured['proc'].stdin.data)
-    assert result.status_code==200,result.text
+    assert result['status']=='succeeded',result
     assert '--input-format' in captured['args'] and '--verbose' in captured['args']
     assert captured['args'][captured['args'].index('--output-format')+1]=='stream-json'
     block=captured['message']['message']['content'][1];assert block['type']=='image' and block['source']['media_type']=='image/png'

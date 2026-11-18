@@ -247,17 +247,15 @@ def test_cancel_preserves_accumulated_usage(engine, monkeypatch):
     asyncio.run(main())
 
 
-def test_legacy_run_wrapper_and_http_protocol(runtime, monkeypatch):
+def test_http_protocol(runtime, monkeypatch):
     from agent_runner import server
     monkeypatch.setattr(server, 'RUNTIME', runtime)
     monkeypatch.setattr(server, 'load_environment', lambda: {})
     monkeypatch.setattr(cli.os, 'killpg', lambda pid, sig: None)
-    lines = [result_line('legacy answer')]
+    lines = [result_line('async answer')]
     monkeypatch.setattr(jobs_mod.asyncio, 'create_subprocess_exec', make_spawn(lines))
     with TestClient(server.app) as c:
-        r = c.post('/run', json={'run_id': '1' * 32, 'skill': 'chat', 'prompt': 'hi'})
-        assert r.status_code == 200 and r.json()['status'] == 'succeeded'
-        assert r.json()['answer'] == 'legacy answer'
+        assert c.post('/run', json={'run_id': '1' * 32, 'skill': 'chat', 'prompt': 'hi'}).status_code == 404
         h = c.get('/health').json()
         assert h['concurrency'] == 2 and 'queued' in h and 'running' in h
         sub = c.post('/runs', json={'run_id': '2' * 32, 'skill': 'chat', 'prompt': 'hi'})

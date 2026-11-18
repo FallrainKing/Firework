@@ -34,7 +34,6 @@ async def lifespan(app):
 
 
 app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
-_lock = asyncio.Lock()
 
 class RunRequest(BaseModel):
     run_id: str = Field(pattern=r'^[a-f0-9]{32}$')
@@ -63,7 +62,7 @@ def image_blocks(body):
 @app.get('/health')
 async def health():
     queued, running = engine.counts() if engine else (0, 0)
-    return {'status': 'ok', 'agent': 'claude_cli', 'model': current_model(load_environment()), 'busy': _lock.locked(), 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
+    return {'status': 'ok', 'agent': 'claude_cli', 'model': current_model(load_environment()), 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
 
 
 @app.post('/runs', status_code=202)
@@ -107,22 +106,3 @@ async def cancel_run(run_id: str):
     if got is None:
         raise HTTPException(404, 'Run not found')
     return got
-
-@app.post('/run')
-async def run(body: RunRequest):
-    """Legacy synchronous wrapper (rollback compatibility; removed in plan 3)."""
-    if body.skill not in SKILLS:
-        raise HTTPException(400, 'Unknown skill')
-    if _lock.locked():
-        raise HTTPException(429, 'Agent is busy')
-    async with _lock:
-        try:
-            await engine.submit(body.run_id, body.skill, body.model_dump())
-        except jobs.QueueFull:
-            raise HTTPException(429, 'Queue full; please wait')
-        job = engine._jobs[body.run_id]
-        await job['task']
-        payload = engine.get(body.run_id)['result']
-        if job.get('error_status') == 409:
-            raise HTTPException(409, payload['error'])
-        return payload

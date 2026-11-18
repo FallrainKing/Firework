@@ -129,8 +129,10 @@ def test_native_missing_transcript_is_not_silently_replayed(monkeypatch,tmp_path
     from agent_runner import server
     monkeypatch.setattr(server,'RUNTIME',tmp_path)
     with TestClient(server.app) as c:
-        r=c.post('/run',json={'run_id':'b'*32,'skill':'chat','prompt':'continue','session_id':str(uuid.uuid4()),'native_ready':True})
-    assert r.status_code==409
+        r=c.post('/runs',json={'run_id':'b'*32,'skill':'chat','prompt':'continue','session_id':str(uuid.uuid4()),'native_ready':True})
+        assert r.status_code==202
+        result=c.get('/runs/'+'b'*32).json()['result']
+    assert result['status']=='failed' and '原生会话文件缺失' in result['error']
 
 def test_draft_prompt_survives_reopen_without_execution(client):
     c,s=client
@@ -150,12 +152,17 @@ def test_native_resume_uses_same_workspace_and_session_id(monkeypatch,tmp_path):
     monkeypatch.setattr(server,'RUNTIME',tmp_path)
     monkeypatch.setattr(server,'load_environment',lambda:{})
     monkeypatch.setattr(server.asyncio,'create_subprocess_exec',spawn)
+    async def run_via_engine(eng,run_id,**kw):
+        body={'prompt':kw.get('prompt','p'),'history':[],'session_id':kw.get('session_id'),'native_ready':kw.get('native_ready',False),'contexts':[],'attachment_ids':[],'paper_ids':[],'import_request_id':None}
+        await eng.submit(run_id,'chat',body)
+        await eng._jobs[run_id]['task']
+        return eng.get(run_id)['result']
     async def probe():
         server.engine=jobs.JobEngine(tmp_path,concurrency=2,root=server.ROOT,env_loader=lambda rt:{})
         await server.engine.start()
         try:
-            a=await server.run(server.RunRequest(run_id='c'*32,session_id=sid,skill='chat',prompt='first'))
-            b=await server.run(server.RunRequest(run_id='d'*32,session_id=sid,native_ready=True,skill='chat',prompt='next'))
+            a=await run_via_engine(server.engine,'c'*32,session_id=sid,prompt='first')
+            b=await run_via_engine(server.engine,'d'*32,session_id=sid,native_ready=True,prompt='next')
         finally:
             await server.engine.close()
         return a,b

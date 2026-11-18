@@ -224,3 +224,51 @@ def test_settings_llm_providers_non_array_fails_fast(tmp_path, monkeypatch):
     with pytest.raises(ValueError) as excinfo:
         Settings.from_env()
     assert "array" in str(excinfo.value)
+
+
+def test_0008_preserves_rows_and_foreign_keys(tmp_path):
+    """Rebuilding agent_runs (CHECK + progress_json) must keep rows and FKs intact."""
+    from app.core import db as core_db
+
+    settings = Settings(data_dir=tmp_path, qdrant_url="unused")
+    raw = sqlite3.connect(settings.db_path)
+    raw.execute(
+        "CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)"
+    )
+    for path in sorted(core_db.MIGRATIONS_DIR.glob("*.sql")):
+        if path.name == "0008_agent_async.sql":
+            continue
+        core_db._apply_migration(raw, path)
+    raw.execute("INSERT INTO papers(id,title) VALUES (1,'P')")
+    raw.execute(
+        "INSERT INTO conversations(id,module,title,messages,skill,kind) VALUES (10,'agent','T','[]','chat','chat')"
+    )
+    raw.execute(
+        "INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status) VALUES ('r1','k1',10,'chat','p','succeeded')"
+    )
+    raw.execute("INSERT INTO research_schedules(title,conversation_id,prompt,last_run_id) VALUES ('S',10,'p','r1')")
+    raw.execute(
+        "INSERT INTO reader_translations(id,paper_id,conversation_id,page,file_version,quote,quote_hash,run_id) VALUES ('t1',1,10,1,'v','q','h','r1')"
+    )
+    raw.execute(
+        "INSERT INTO import_requests(id,request_key,channel,source_value,run_id) VALUES ('i1','ik1','arxiv','1234.56789','r1')"
+    )
+    raw.commit()
+    raw.close()
+
+    db = core_db.get_conn(settings)  # applies only 0008
+    try:
+        row = db.execute("SELECT * FROM agent_runs WHERE id='r1'").fetchone()
+        assert row["prompt"] == "p" and row["status"] == "succeeded"
+        assert row["progress_json"] == "{}"
+        assert db.execute("SELECT last_run_id FROM research_schedules").fetchone()[0] == "r1"
+        assert db.execute("SELECT run_id FROM reader_translations").fetchone()[0] == "r1"
+        assert db.execute("SELECT run_id FROM import_requests").fetchone()[0] == "r1"
+        assert db.execute("PRAGMA foreign_key_check").fetchall() == []
+        db.execute(
+            "INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status) VALUES ('r2','k2',10,'chat','p','cancelled')"
+        )
+        db.commit()
+        assert db.execute("SELECT count(*) FROM agent_runs").fetchone()[0] == 2
+    finally:
+        db.close()

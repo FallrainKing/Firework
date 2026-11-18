@@ -1,13 +1,20 @@
-"""Explicit registered capabilities shared by API and host Runner."""
+"""Explicit registered capabilities shared by API and host Runner.
+
+Budgets per skill: max_turns / max_output_tokens / timeout_s (None = no hard
+timeout) / max_budget_usd. Reading-class skills run long by design; the cost
+cap is the runaway guardrail, not a wall-clock kill.
+"""
+_SHORT = {'max_turns': 6, 'max_output_tokens': 1024, 'timeout_s': 120, 'max_budget_usd': 0.10}
+_READ = {'max_turns': 30, 'max_output_tokens': 8192, 'timeout_s': None, 'max_budget_usd': 1.00}
 SKILLS = {
- 'paper_discover': {'name':'多源论文搜索','tools':['paper_search'],'max_calls':2},
- 'paper_import': {'name':'论文入库','tools':['paper_import'],'max_calls':1},
- 'chat': {'name':'科研对话','tools':[],'max_calls':0},
- 'search_library': {'name':'搜索论文库','tools':['library_search'],'max_calls':2},
- 'search_arxiv': {'name':'搜索 arXiv','tools':['arxiv_search'],'max_calls':2},
- 'paper_read': {'name':'阅读论文','tools':['paper_read','paper_page','library_search'],'max_calls':4},
- 'paper_review': {'name':'审查论文','tools':['paper_read','paper_page','library_search'],'max_calls':4},
- 'paper_compare': {'name':'对比论文','tools':['paper_read','paper_page','library_search'],'max_calls':4},
+ 'paper_discover': {'name':'多源论文搜索','tools':['paper_search'],'max_calls':2, **_SHORT},
+ 'paper_import': {'name':'论文入库','tools':['paper_import'],'max_calls':1,'max_turns':6,'max_output_tokens':2048,'timeout_s':180,'max_budget_usd':0.20},
+ 'chat': {'name':'科研对话','tools':[],'max_calls':0, **_SHORT},
+ 'search_library': {'name':'搜索论文库','tools':['library_search'],'max_calls':2, **_SHORT},
+ 'search_arxiv': {'name':'搜索 arXiv','tools':['arxiv_search'],'max_calls':2, **_SHORT},
+ 'paper_read': {'name':'阅读论文','tools':['paper_read','paper_page','library_search'],'max_calls':4, **_READ},
+ 'paper_review': {'name':'审查论文','tools':['paper_read','paper_page','library_search'],'max_calls':4, **_READ},
+ 'paper_compare': {'name':'对比论文','tools':['paper_read','paper_page','library_search'],'max_calls':4, **_READ},
 }
 TEMPLATES = [
  {'id':'import','name':'导入论文','description':'从 PDF、arXiv、DOI 或公开链接添加材料。','kind':'import','skill':'paper_import','prompt':''},

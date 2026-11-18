@@ -32,6 +32,10 @@ def _apply_migration(conn: sqlite3.Connection, path: Path) -> None:
     """
     sql = path.read_text(encoding="utf-8")
     conn.commit()  # a pending transaction would make BEGIN IMMEDIATE fail
+    # Table-rebuild migrations (SQLite 12-step ALTER) must run with foreign
+    # keys OFF; the pragma is a no-op inside a transaction, so toggle it
+    # around the script. Migration scripts are trusted DDL.
+    conn.execute("PRAGMA foreign_keys=OFF")
     try:
         conn.executescript(f"BEGIN IMMEDIATE;\n{sql}")
         conn.execute(
@@ -41,6 +45,8 @@ def _apply_migration(conn: sqlite3.Connection, path: Path) -> None:
     except Exception:
         conn.rollback()  # undo every statement the script already ran
         raise
+    finally:
+        conn.execute("PRAGMA foreign_keys=ON")
 
 
 def _ensure_migrations(conn: sqlite3.Connection) -> None:

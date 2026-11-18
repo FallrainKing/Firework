@@ -192,3 +192,15 @@ def test_paper_search_crossref_uses_imports_sources(monkeypatch):
         return [{'title': 'Crossref paper', 'query': query}]
     monkeypatch.setattr(sources, 'crossref_search', fake_crossref)
     assert tools.paper_search('robotics', 'crossref') == [{'title': 'Crossref paper', 'query': 'robotics'}]
+
+def test_catalog_budgets():
+    from app.agent.catalog import SKILLS
+    c = SKILLS['chat']
+    assert (c['max_turns'], c['max_output_tokens'], c['timeout_s'], c['max_budget_usd']) == (6, 1024, 120, 0.10)
+    for k in ('search_library', 'search_arxiv', 'paper_discover'):
+        assert (SKILLS[k]['max_turns'], SKILLS[k]['max_output_tokens'], SKILLS[k]['timeout_s'], SKILLS[k]['max_budget_usd']) == (6, 1024, 120, 0.10)
+    i = SKILLS['paper_import']
+    assert (i['max_turns'], i['max_output_tokens'], i['timeout_s'], i['max_budget_usd']) == (6, 2048, 180, 0.20)
+    for k in ('paper_read', 'paper_review', 'paper_compare'):
+        r = SKILLS[k]
+        assert (r['max_turns'], r['max_output_tokens'], r['timeout_s'], r['max_budget_usd']) == (30, 8192, None, 1.00)

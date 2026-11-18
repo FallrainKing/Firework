@@ -7,7 +7,6 @@ import hmac
 import uuid
 from pathlib import Path
 
-from fastapi import HTTPException
 
 from ..agent import service as agent_service
 from ..core.errors import ServiceError
@@ -53,7 +52,7 @@ async def start_import(ident: str, db, state) -> dict:
         db.commit()
     try:
         run = await create_run(RunCreate(conversation_id=sid, prompt=f'请执行已授权的论文入库请求 {ident}。调用 paper_import 工具一次，按工具结果告知是否取得全文，不要编造。'), state)
-    except (HTTPException, ServiceError) as exc:
+    except ServiceError as exc:
         repo.set_failed(db, ident, str(exc.detail)[:250])
         db.commit()
         return import_view(repo.find_import(db, ident))

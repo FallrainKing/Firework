@@ -253,6 +253,15 @@ def test_paper_search_crossref_uses_imports_sources(monkeypatch):
     monkeypatch.setattr(sources, 'crossref_search', fake_crossref)
     assert tools.paper_search('robotics', 'crossref') == [{'title': 'Crossref paper', 'query': 'robotics'}]
 
+def test_services_are_framework_free():
+    from pathlib import Path
+    import app.imports.service as imports_service
+    import app.schedules.service as schedules_service
+    import app.workbench.service as workbench_service
+    for m in (imports_service, schedules_service, workbench_service):
+        assert 'fastapi' not in Path(m.__file__).read_text(), m.__name__
+
+
 def test_catalog_budgets():
     from app.agent.catalog import SKILLS
     c = SKILLS['chat']

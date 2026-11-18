@@ -177,7 +177,8 @@ def test_full_queue_keeps_import_visible_and_retryable(reading,monkeypatch):
     from fastapi import HTTPException
     from app.agent import service as agent
     c,s,sid,ctx=reading
-    async def full(*a,**kw):raise HTTPException(429,'Queue full; please wait')
+    from app.core.errors import ServiceError
+    async def full(*a,**kw):raise ServiceError(429,'Queue full; please wait')
     monkeypatch.setattr(agent,'create_run',full)
     r=c.post('/api/imports/source',json={'value':'10.1234/test','channel':'doi','request_key':'queue-full'})
     assert r.status_code==202 and r.json()['status']=='failed'

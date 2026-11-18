@@ -48,7 +48,8 @@ def save_workspace(db, ident: str, body: Workspace) -> dict:
     if len({t.paper_id for t in body.tabs}) != len(body.tabs):
         raise ServiceError(400, '同一论文不能重复打开')
     for t in body.tabs:
-        if not repo.paper_exists(db, t.paper_id):
+        from ..papers import service as papers_service
+        if not papers_service.paper_exists(db, t.paper_id):
             raise ServiceError(400, '论文不存在')
         if t.session_id is not None:
             linked(db, t.session_id, t.paper_id)

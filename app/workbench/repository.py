@@ -21,9 +21,6 @@ def upsert_workspace(db: sqlite3.Connection, ident: str, state_json: str) -> Non
     )
 
 
-def paper_exists(db: sqlite3.Connection, pid: int):
-    return db.execute('SELECT 1 FROM papers WHERE id=?', (pid,)).fetchone()
-
 
 def find_draft(db: sqlite3.Connection, sid: int, pid: int):
     return db.execute(

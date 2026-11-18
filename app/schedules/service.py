@@ -4,7 +4,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException
 
 from ..core.errors import ServiceError
 from ..sessions.service import require_session
@@ -70,5 +69,5 @@ async def schedule_loop(app):
             # Busy/full queues are normal refusals: skip, never hammer retries.
             try:
                 await fire_schedule(row['id'], db, app.state)
-            except (HTTPException, ServiceError):
+            except ServiceError:
                 pass

@@ -1,0 +1,60 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { useReaderLayout } from './useReaderLayout'
+import { useWorkbenchStore } from '@/stores/workbench'
+import { workbenchApi } from '@/api/workbench'
+
+beforeEach(() => {
+  localStorage.clear()
+  setActivePinia(createPinia())
+  vi.spyOn(workbenchApi, 'saveState').mockImplementation(async (_id, s) => s)
+})
+
+describe('useReaderLayout', () => {
+  it('nudge clamps width to 140-600 and persists via store', () => {
+    const wb = useWorkbenchStore()
+    const { nudge } = useReaderLayout()
+    nudge('left', 1000)
+    expect(wb.layout.left_width).toBe(600)
+    nudge('left', -1000)
+    expect(wb.layout.left_width).toBe(140)
+    nudge('right', 50)
+    expect(wb.layout.right_width).toBe(390)
+  })
+
+  it('toggle flips hidden flags', () => {
+    const wb = useWorkbenchStore()
+    const { toggle } = useReaderLayout()
+    toggle('left')
+    expect(wb.layout.left_hidden).toBe(true)
+    toggle('left')
+    expect(wb.layout.left_hidden).toBe(false)
+    toggle('right')
+    expect(wb.layout.right_hidden).toBe(true)
+  })
+
+  it('drag updates width with side-specific sign and clamps', () => {
+    const wb = useWorkbenchStore()
+    const { startDrag } = useReaderLayout()
+    const target = document.createElement('div')
+    target.setPointerCapture = vi.fn()
+    // jsdom 无 PointerEvent，用 MouseEvent 携带 pointerId 模拟。
+    const pe = (type: string, clientX: number, pointerId = 1) => Object.assign(new MouseEvent(type, { button: 0, clientX }), { pointerId })
+    startDrag('left', pe('pointerdown', 100) as never, target, 235)
+    window.dispatchEvent(pe('pointermove', 180))
+    expect(wb.layout.left_width).toBe(315)
+    window.dispatchEvent(pe('pointerup', 180))
+    // 右栏方向相反
+    startDrag('right', pe('pointerdown', 100, 2) as never, target, 340)
+    window.dispatchEvent(pe('pointermove', 150, 2))
+    expect(wb.layout.right_width).toBe(290)
+    window.dispatchEvent(pe('pointerup', 150, 2))
+  })
+
+  it('mobile mode switches partitions', () => {
+    const { mobileMode, setMobile } = useReaderLayout()
+    expect(mobileMode.value).toBe('pdf')
+    setMobile('chat')
+    expect(mobileMode.value).toBe('chat')
+  })
+})

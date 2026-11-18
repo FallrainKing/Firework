@@ -41,39 +41,24 @@ def test_lifespan_raises_after_rag_retries_exhausted(tmp_path, monkeypatch):
     assert excinfo.value.__cause__ is not None
 
 
-def test_lifespan_marks_stale_import_jobs_failed(tmp_path, monkeypatch, embedder):
-    """Jobs left pending/running by a previous process are marked failed at
-    startup; already-finished job rows are untouched."""
+def test_lifespan_starts_without_legacy_job_sweep(tmp_path, monkeypatch, embedder):
+    """Startup no longer touches the retired import_jobs table; the app must
+    come up healthy with legacy rows left untouched."""
     import app.main as main
 
-    monkeypatch.setattr(
-        main, "Embedder", lambda model_name="BAAI/bge-m3": embedder
-    )
+    monkeypatch.setattr(main, "Embedder", lambda model_name="BAAI/bge-m3": embedder)
     settings = Settings(data_dir=tmp_path, qdrant_url=":memory:")
     conn = get_conn(settings)
-    conn.execute(
-        "INSERT INTO import_jobs (path, total, status) VALUES ('/a', 1, 'running')"
-    )
-    conn.execute(
-        "INSERT INTO import_jobs (path, total, status) VALUES ('/b', 1, 'pending')"
-    )
-    conn.execute(
-        "INSERT INTO import_jobs (path, total, status) VALUES ('/c', 1, 'completed')"
-    )
+    conn.execute("INSERT INTO import_jobs (path, total, status) VALUES ('/a', 1, 'running')")
     conn.commit()
     conn.close()
-
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("QDRANT_URL", ":memory:")
     with TestClient(create_app()) as client:
         assert client.get("/health").status_code == 200
-
+    import sqlite3
     conn = sqlite3.connect(settings.db_path)
-    conn.row_factory = sqlite3.Row
     try:
-        statuses = [row["status"] for row in conn.execute(
-            "SELECT status FROM import_jobs ORDER BY id"
-        )]
+        assert conn.execute("SELECT status FROM import_jobs").fetchone()[0] == "running"
     finally:
         conn.close()
-    assert statuses == ["failed", "failed", "completed"]

@@ -14,7 +14,7 @@ import pytest
 
 import app.ingest.pipeline as pipeline
 from app.ingest.metadata import PaperMeta
-from app.ingest.pipeline import ingest_arxiv, ingest_from_upload, ingest_paper
+from app.ingest.pipeline import ingest_arxiv, ingest_paper
 from app.rag.pdf_parser import extract_pages
 from app.rag.vector_store import ChunkPoint, VectorStore, VectorStoreError
 
@@ -163,95 +163,10 @@ def test_reingest_replaces_old_chunks(sample_pdf, ingest_stack):
     )
 
 
-class _FakeGateway:
-    """Deterministic LLM stand-in: returns a canned reply or raises."""
-
-    def __init__(self, text: str | None = None, error: Exception | None = None):
-        self._text = text
-        self._error = error
-        self.calls = 0
-
-    async def chat(self, messages, tier="fast", **kwargs):
-        self.calls += 1
-        assert tier == "fast", "metadata extraction must use the fast tier"
-        if self._error is not None:
-            raise self._error
-        return {
-            "text": self._text,
-            "thinking": "",
-            "provider": "fake",
-            "model": "fake",
-            "usage": {"input": 1, "output": 1},
-        }
-
-
-def _upload(pdf_bytes, filename, gateway, stack):
-    db, store, data_dir, embedder = stack
-    return asyncio.run(
-        ingest_from_upload(
-            pdf_bytes,
-            filename,
-            gateway=gateway,
-            db=db,
-            embedder=embedder,
-            store=store,
-            data_dir=data_dir,
-        )
-    )
-
-
-def test_upload_good_json_metadata(sample_pdf, ingest_stack):
-    db, store, data_dir, embedder = ingest_stack
-    gateway = _FakeGateway(
-        text='{"title": "Sample Research Paper",'
-        ' "authors": ["Author One", "Author Two"],'
-        ' "abstract": "LLM-extracted abstract."}'
-    )
-
-    paper_id = _upload(
-        Path(sample_pdf).read_bytes(), "uploaded.pdf", gateway, ingest_stack
-    )
-
-    assert gateway.calls == 1  # exactly one fast-tier call
-    row = _row(db, paper_id)
-    assert row["title"] == "Sample Research Paper"
-    assert json.loads(row["authors"]) == ["Author One", "Author Two"]
-    assert row["abstract"] == "LLM-extracted abstract."
-    assert row["source"] == "upload"
-    assert _chunk_count(db, paper_id) > 0
-
-
-def _assert_filename_fallback(db, paper_id, sample_pdf):
-    row = _row(db, paper_id)
-    assert row["title"] == "my paper"  # filename minus extension
-    assert json.loads(row["authors"]) == []
-    expected_abstract = extract_pages(sample_pdf)[0].text[:500].strip()
-    assert row["abstract"] == expected_abstract
-    assert _chunk_count(db, paper_id) > 0  # paper still fully ingested
-
-
-def test_upload_bad_json_falls_back_to_filename(sample_pdf, ingest_stack):
-    db, store, data_dir, embedder = ingest_stack
-    gateway = _FakeGateway(text="Sorry, I cannot produce JSON.")
-
-    paper_id = _upload(
-        Path(sample_pdf).read_bytes(), "my paper.pdf", gateway, ingest_stack
-    )
-
-    assert gateway.calls == 1  # the gateway was tried before falling back
-    _assert_filename_fallback(db, paper_id, sample_pdf)
-
-
-def test_upload_gateway_error_falls_back_to_filename(sample_pdf, ingest_stack):
-    db, store, data_dir, embedder = ingest_stack
-    gateway = _FakeGateway(error=RuntimeError("LLM down"))
-
-    paper_id = _upload(
-        Path(sample_pdf).read_bytes(), "my paper.pdf", gateway, ingest_stack
-    )
-
-    assert gateway.calls == 1
-    _assert_filename_fallback(db, paper_id, sample_pdf)
+def test_ingest_module_has_no_llm():
+    assert not hasattr(pipeline, "ingest_from_upload")
+    assert not hasattr(pipeline, "_extract_metadata")
+    assert not hasattr(pipeline, "_METADATA_PROMPT")
 
 
 class _UpsertFails(VectorStore):

@@ -193,37 +193,10 @@ def test_foreign_key_enforced(conn):
 def test_settings_from_env(tmp_path, monkeypatch):
     monkeypatch.setenv("DATA_DIR", str(tmp_path))
     monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
-    monkeypatch.setenv("LLM_PROVIDERS", '[{"name": "p1", "api_key": "k"}]')
-    monkeypatch.setenv("LLM_FAST", "p1")
-    monkeypatch.setenv("LLM_STRONG", "p2")
     s = Settings.from_env()
     assert s.data_dir == tmp_path
     assert s.qdrant_url == "http://localhost:6333"
-    assert s.llm_providers == [{"name": "p1", "api_key": "k"}]
-    assert s.llm_fast == "p1" and s.llm_strong == "p2"
-
-
-def test_settings_invalid_llm_providers_json_fails_fast(tmp_path, monkeypatch):
-    # a typo'd LLM_PROVIDERS must abort startup, not silently mean "no providers"
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
-    monkeypatch.setenv("LLM_PROVIDERS", '{"name": "p1",')  # truncated JSON
-    with pytest.raises(ValueError) as excinfo:
-        Settings.from_env()
-    message = str(excinfo.value)
-    assert "LLM_PROVIDERS" in message
-    # the original parser error travels along for diagnosis
-    assert excinfo.value.__cause__ is not None
-    assert "Expecting" in str(excinfo.value.__cause__)
-
-
-def test_settings_llm_providers_non_array_fails_fast(tmp_path, monkeypatch):
-    monkeypatch.setenv("DATA_DIR", str(tmp_path))
-    monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
-    monkeypatch.setenv("LLM_PROVIDERS", '{"name": "p1"}')  # object, not array
-    with pytest.raises(ValueError) as excinfo:
-        Settings.from_env()
-    assert "array" in str(excinfo.value)
+    assert not hasattr(s, "llm_providers")  # LLM config retired with the gateway
 
 
 def test_0008_preserves_rows_and_foreign_keys(tmp_path):

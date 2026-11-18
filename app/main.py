@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
-from .legacy import api_papers, api_notes, api_qa, api_study, api_import
 from .imports.router import router as imports_router, internal as imports_internal
 from .papers.router import router as papers_router
 from .schedules.router import router as schedules_router
@@ -24,7 +23,6 @@ from .sessions.router import router as sessions_router
 from .core.config import Settings
 from .core.db import get_conn
 from .core.errors import register_error_handlers
-from .legacy.gateway import LLMGateway
 from .rag.embedder import Embedder
 from .rag.vector_store import VectorStore
 
@@ -77,15 +75,12 @@ async def _init_rag_stack(settings: Settings) -> tuple[Embedder, VectorStore]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize settings/db/gateway/embedder/store onto ``app.state``."""
+    """Initialize settings/db/embedder/store onto ``app.state``."""
     settings = Settings.from_env()
     app.state.settings = settings
     db = get_conn(settings)
     app.state.db = db
-    app.state.gateway = LLMGateway(settings)
 
-    from .ingest.batch import fail_interrupted_jobs
-    fail_interrupted_jobs(db)
 
     embedder, store = await _init_rag_stack(settings)
     app.state.embedder = embedder
@@ -110,11 +105,6 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Research Assistant", lifespan=lifespan)
     register_error_handlers(app)
 
-    app.include_router(api_papers.router)
-    app.include_router(api_notes.router)
-    app.include_router(api_qa.router)
-    app.include_router(api_import.router)
-    app.include_router(api_study.router)
     app.include_router(agent_router)
     app.include_router(sessions_router)
     app.include_router(papers_router)

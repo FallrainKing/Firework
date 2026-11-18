@@ -15,9 +15,11 @@ ingest's vectors (``store.delete_paper``): if the run then fails, the old
 points are gone while SQLite still describes them — accepted because a
 re-ingest restores them, and a duplicate entry never gets this far.
 
-Entry points dedupe before doing any work: ``ingest_from_upload`` and
-``ingest_arxiv`` return the existing paper_id when the paper is already in
-the library (see :func:`app.ingest.dedup.find_duplicate`).
+Entry points dedupe before doing any work: ``ingest_arxiv`` returns the
+existing paper_id when the paper is already in the library (see
+:func:`app.ingest.dedup.find_duplicate`). Upload metadata is deterministic
+(pymupdf embedded metadata / filename fallback) in ``app.imports.pipeline``;
+no LLM is involved in ingestion.
 """
 
 from __future__ import annotations
@@ -25,12 +27,10 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import re
 import shutil
 import sqlite3
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import httpx
 
@@ -41,8 +41,6 @@ from ..rag.vector_store import ChunkPoint, VectorStore
 from .dedup import find_duplicate, normalize_title
 from .metadata import extract_arxiv_id, fetch_arxiv_metadata
 
-if TYPE_CHECKING:
-    from ..legacy.gateway import LLMGateway
 
 logger = logging.getLogger(__name__)
 
@@ -51,9 +49,6 @@ ARXIV_PDF_URL = "https://arxiv.org/pdf/{id}"
 ARXIV_PDF_TIMEOUT = httpx.Timeout(60.0)
 ARXIV_PDF_MAX_BYTES = 50 * 1024 * 1024
 
-# First-page snippet sent to the LLM for metadata extraction.
-_FIRST_PAGE_CHARS = 1500
-_FALLBACK_ABSTRACT_CHARS = 500
 
 
 class PdfTooLargeError(RuntimeError):
@@ -70,13 +65,6 @@ def _parse_and_embed(
     # one batch call for the whole paper, never per-chunk
     vectors = embedder.embed([chunk.text for chunk in chunks])
     return chunks, vectors
-
-_METADATA_PROMPT = (
-    "You are given the beginning of a research paper. Extract its "
-    "bibliographic metadata. Reply with ONLY a strict JSON object of the "
-    'exact form {"title": "...", "authors": ["..."], "abstract": "..."} '
-    "— no markdown, no code fences, no commentary, no extra keys."
-)
 
 
 async def download_arxiv_pdf(arxiv_id: str) -> bytes:
@@ -237,97 +225,6 @@ async def ingest_paper(
         if staged is not None:
             staged.unlink(missing_ok=True)
         raise
-
-
-async def _extract_metadata(
-    gateway: "LLMGateway", first_page_text: str, filename: str
-) -> tuple[str, list[str], str]:
-    """(title, authors, abstract) for an uploaded PDF, via the fast LLM tier.
-
-    The first ~1500 characters of page 1 are sent with a strict-JSON prompt.
-    Any failure — request error, non-JSON reply, missing/ill-typed fields —
-    falls back to filename-derived metadata rather than rejecting the paper.
-    """
-    fallback = (
-        Path(filename).stem or "untitled",
-        [],
-        first_page_text[:_FALLBACK_ABSTRACT_CHARS].strip(),
-    )
-    if not first_page_text.strip():
-        return fallback  # nothing for the LLM to read (e.g. scanned PDF)
-
-    try:
-        reply = await gateway.chat(
-            [
-                {"role": "system", "content": _METADATA_PROMPT},
-                {"role": "user", "content": first_page_text[:_FIRST_PAGE_CHARS]},
-            ],
-            tier="fast",
-        )
-        raw = str(reply["text"]).strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```[\w+-]*\s*|\s*```$", "", raw)
-        data = json.loads(raw)
-        if not isinstance(data, dict):
-            raise ValueError("reply is not a JSON object")
-        title = data.get("title")
-        authors = data.get("authors")
-        abstract = data.get("abstract")
-        if not isinstance(title, str) or not title.strip():
-            raise ValueError("missing title")
-        if not isinstance(authors, list):
-            raise ValueError("missing authors")
-        if not isinstance(abstract, str):
-            raise ValueError("missing abstract")
-        return title.strip(), [str(a) for a in authors], abstract.strip()
-    except Exception as exc:  # noqa: BLE001 — any LLM hiccup degrades to fallback
-        logger.warning("metadata extraction fell back for %r: %s", filename, exc)
-        return fallback
-
-
-async def ingest_from_upload(
-    pdf_bytes: bytes,
-    filename: str,
-    *,
-    gateway: "LLMGateway",
-    db: sqlite3.Connection,
-    embedder: Embedder,
-    store: VectorStore,
-    data_dir: Path,
-) -> int:
-    """Ingest a user-uploaded PDF; returns an existing id on a dedup hit."""
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
-        tmp.write(pdf_bytes)
-        tmp_path = Path(tmp.name)
-    try:
-        # PDF text extraction is CPU-bound — off the event loop
-        pages = await asyncio.to_thread(extract_pages, tmp_path)
-        first_page_text = pages[0].text if pages else ""
-        title, authors, abstract = await _extract_metadata(
-            gateway, first_page_text, filename
-        )
-
-        duplicate = await find_duplicate(
-            title, embedder=embedder, store=store, db=db
-        )
-        if duplicate is not None:
-            return duplicate["id"]
-
-        return await ingest_paper(
-            tmp_path,
-            source="upload",
-            arxiv_id=None,
-            title=title,
-            authors=authors,
-            abstract=abstract,
-            categories=[],
-            db=db,
-            embedder=embedder,
-            store=store,
-            data_dir=data_dir,
-        )
-    finally:
-        tmp_path.unlink(missing_ok=True)
 
 
 async def ingest_arxiv(

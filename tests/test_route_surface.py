@@ -21,3 +21,9 @@ def test_create_app_registers_every_domain():
               '/api/internal/imports/{ident}/execute', '/api/workbench/states/{ident}',
               '/api/workbench/drafts/{sid}/{pid}', '/api/workbench/images'):
         assert p in paths, p
+
+
+def test_legacy_routes_retired():
+    paths = create_app().openapi()['paths']
+    for p in paths:
+        assert not p.startswith(('/api/qa', '/api/study', '/api/notes', '/api/papers', '/api/import/')), p

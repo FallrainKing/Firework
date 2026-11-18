@@ -20,4 +20,7 @@ export const papersApi = {
   createCollection(name: string): Promise<Collection> {
     return api('/api/library/collections', { body: { name } })
   },
+  refreshCard(id: number): Promise<Paper> {
+    return api(`/api/library/papers/${id}/refresh-card`, { method: 'POST', body: {} })
+  },
 }

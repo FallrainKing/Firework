@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import ActivityPanel from './ActivityPanel.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
 
@@ -65,6 +66,7 @@ function openPaper(paperId: number) {
     </div>
 
     <button class="side-schedule" @click="wb.setView('schedules')">◷ 定时任务</button>
+    <ActivityPanel />
     <p class="muted sidebar-tip">阅读位置与会话自动保存<br />切换标签不会调用智能体</p>
   </aside>
 </template>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
 import PaperTabs from '@/components/PaperTabs.vue'
@@ -12,6 +12,7 @@ import CompareView from './CompareView.vue'
 import SchedulesView from './SchedulesView.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
+import { useActivityStore } from '@/stores/activity'
 import type { Session, Template } from '@/api/types'
 
 const wb = useWorkbenchStore()
@@ -23,6 +24,17 @@ const taskRequest = ref<null | { mode: 'read' | 'compare' | 'chat' | 'review'; q
 const domainOpen = ref(false)
 const domainName = ref('')
 const domainError = ref('')
+const toast = ref('')
+const activity = useActivityStore()
+let toastTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(() => activity.lastTerminal, t => {
+  if (!t) return
+  const label = t.status === 'succeeded' ? '任务完成' : t.status === 'cancelled' ? '任务已取消' : '任务失败'
+  toast.value = label + (t.error ? '：' + t.error : '')
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = '' }, 5000)
+})
 
 onMounted(async () => {
   await Promise.all([wb.load(), lib.refresh()])
@@ -86,6 +98,7 @@ async function createDomain() {
         <LibraryView v-if="wb.view === 'library'" />
       </main>
     </div>
+    <div v-if="toast" class="work-toast" role="status">{{ toast }}</div>
     <ImportOverlay v-if="importOpen" @close="importOpen = false" />
     <div v-if="taskRequest" class="dialog-overlay" @click.self="taskRequest = null">
       <TaskDialog
@@ -122,4 +135,5 @@ async function createDomain() {
 .domain-dialog h2 { margin: 0; font-size: 16px; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .form-error { color: var(--danger); margin: 0; }
+.work-toast { position: fixed; bottom: var(--space-5); left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: var(--space-2) var(--space-4); border-radius: var(--radius); z-index: 60; max-width: 80vw; }
 </style>

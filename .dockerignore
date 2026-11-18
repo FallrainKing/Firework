@@ -8,3 +8,7 @@ data/
 backups/
 .superpowers/
 .pytest_cache/
+
+# frontend build artifacts (v2 dist is copied to app/web/v2; plan 5 adds multi-stage build)
+frontend/node_modules/
+frontend/dist/

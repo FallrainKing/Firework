@@ -103,7 +103,7 @@ app/
 
 ## 9.1 计划一遗留债务（计划二前置）
 
-- 跨域只读 JOIN 仍留在部分 repository（sessions/reader→agent_runs，agent→papers/conversations/import_requests，schedules→conversations/papers，workbench→papers）。计划二改动 `agent_runs` 结构前，把这些读取收敛到属主域 service。
+- ~~跨域 agent_runs 读取~~ 已在计划二 Task 1 收敛到 agent.service（sessions/reader 不再触碰 agent_runs）。其余跨域只读 JOIN（agent→papers/conversations/import_requests，schedules→conversations/papers，workbench→papers）仍在，后续计划逐步收敛。
 - imports/schedules service 仍 import `fastapi.HTTPException` 用于捕获过渡期错误，计划二/三移除。
 - workbench.service 自带 `repo.paper_exists`，与 papers.service.paper_exists 不一致，顺手对齐。
 - 部署后须补跑 `scripts/smoke_test.py`（计划一在 worktree 执行，未对运行镜像冒烟）。

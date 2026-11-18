@@ -4,6 +4,6 @@ import { createRouter, createWebHistory } from 'vue-router'
 export const router = createRouter({
   history: createWebHistory('/v2/'),
   routes: [
-    { path: '/', name: 'workbench', component: () => import('@/views/HomeView.vue') },
+    { path: '/', name: 'workbench', component: () => import('@/views/WorkbenchView.vue') },
   ],
 })

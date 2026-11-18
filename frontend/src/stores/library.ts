@@ -8,15 +8,21 @@ export const useLibraryStore = defineStore('library', {
     recent: [] as RecentRead[],
     collections: [] as Collection[],
     papersByCollection: {} as Record<number, Paper[]>,
+    papersById: {} as Record<number, Paper>,
     loading: false,
   }),
   actions: {
     async refresh() {
       this.loading = true
       try {
-        const [recent, collections] = await Promise.all([workbenchApi.recent(), papersApi.collections()])
+        const [recent, collections, papers] = await Promise.all([
+          workbenchApi.recent(),
+          papersApi.collections(),
+          papersApi.list({ limit: 100 }),
+        ])
         this.recent = recent.recent
         this.collections = collections.collections
+        this.papersById = Object.fromEntries(papers.papers.map(p => [p.id, p]))
       } finally {
         this.loading = false
       }

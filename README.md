@@ -33,3 +33,13 @@ python -m venv .venv
 .venv/bin/pip install -r requirements.txt
 HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest
 ```
+
+### Vue 工作台（/v2）
+
+```bash
+cd frontend
+npm install
+npm run dev        # 开发服务器，/api 与旧页面代理到 127.0.0.1:8600
+npm test           # Vitest 组件/store 测试
+npm run build      # 产物 dist/，拷贝到 app/web/v2/ 后由 FastAPI 挂载 /v2
+```

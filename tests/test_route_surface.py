@@ -29,6 +29,19 @@ def test_legacy_routes_retired():
         assert not p.startswith(('/api/qa', '/api/study', '/api/notes', '/api/papers', '/api/import/')), p
 
 
+def test_v2_mount_when_dist_present(tmp_path, monkeypatch):
+    import app.main as main
+    (tmp_path / 'index.html').write_text('<html></html>')
+    monkeypatch.setattr(main, 'V2_DIR', tmp_path)
+    assert '/v2' in [getattr(r, 'path', None) for r in main.create_app().routes]
+
+
+def test_v2_absent_without_dist(tmp_path, monkeypatch):
+    import app.main as main
+    monkeypatch.setattr(main, 'V2_DIR', tmp_path / 'missing')
+    assert '/v2' not in [getattr(r, 'path', None) for r in main.create_app().routes]
+
+
 def test_smoke_workspace_step_dry_run(tmp_path, monkeypatch, embedder):
     """The deploy-gate smoke script's workspace step must work against the real app."""
     import importlib.util

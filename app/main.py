@@ -29,6 +29,9 @@ from .rag.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+# Vue 工作台构建产物（frontend/ → vite build → app/web/v2）。
+# 存在时挂 /v2，与旧界面并存；计划五切换根路径。
+V2_DIR = WEB_DIR / "v2"
 
 # Bounded startup retry for the RAG stack (qdrant being unreachable at boot
 # is normally a race with the container starting). 10 attempts × 10s covers
@@ -117,6 +120,9 @@ def create_app() -> FastAPI:
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok"}
+
+    if V2_DIR.is_dir():
+        app.mount("/v2", StaticFiles(directory=V2_DIR, html=True), name="v2")
 
     # mounted last so the explicit routes above (and /health) win
     app.mount(

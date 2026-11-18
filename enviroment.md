@@ -120,6 +120,7 @@ Runner 由用户级 systemd 服务管理：
 ## 6. 前端与业务入口
 
 - 主工作台：`app/web/index.html`、`app/web/workbench/`。
+- Vue 工作台：`frontend/`（Vue 3 + Vite + TS），构建产物 `app/web/v2/` 挂 `/v2`；开发 `cd frontend && npm run dev`（proxy 指向 8600），测试 `npm test`，构建 `npm run build` 后拷贝 `dist/` 到 `app/web/v2/`。
 - 阅读页面：`app/web/reader.html`、`app/web/reader/`。
 - 论文管理兼容页面：`app/web/manage.html`。
 - 搜索与导入：`app/web/discover.html`。
@@ -127,7 +128,7 @@ Runner 由用户级 systemd 服务管理：
 - Skill 注册表：`app/agent/catalog.py`。
 - Skill 说明：`skills/<skill>/SKILL.md`。
 
-当前新版为原生 HTML/CSS/JavaScript，不需要额外运行前端开发服务器。
+旧界面为原生 HTML/CSS/JavaScript，无需前端开发服务器；Vue 工作台（/v2）开发需要 Node（服务器已装 v24）与 `frontend/` 的 npm 依赖。
 
 ## 7. 备份与回退位置
 

@@ -1,24 +1,37 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-// 搜索/导入：沿用现有 discover.html（计划五 Vue 化）。
+import { ref } from 'vue'
+import ImportPanel from '@/views/discover/ImportPanel.vue'
+import SearchPanel from '@/views/discover/SearchPanel.vue'
+
+// 搜索/导入容器（替代旧 discover.html iframe）。
 const props = withDefaults(defineProps<{ targetPaperId?: number | null }>(), { targetPaperId: null })
-const emit = defineEmits<{ close: [] }>()
-const src = computed(() =>
-  props.targetPaperId !== null ? '/discover.html?target_paper_id=' + props.targetPaperId : '/discover.html',
-)
+const emit = defineEmits<{
+  close: []
+  'open-paper': [paperId: number]
+  'open-session': [sessionId: number]
+  'library-updated': []
+}>()
+const page = ref<'import' | 'search'>('import')
 </script>
 
 <template>
   <div class="import-overlay">
     <div class="import-bar">
       <button @click="emit('close')">← 返回工作台</button>
+      <div class="import-tabs">
+        <button :aria-current="page === 'import' ? 'page' : undefined" @click="page = 'import'">导入</button>
+        <button :aria-current="page === 'search' ? 'page' : undefined" @click="page = 'search'">搜索</button>
+      </div>
     </div>
-    <iframe class="import-frame" :src="src" title="搜索、导入与会话" />
+    <ImportPanel v-if="page === 'import'" :target-paper-id="props.targetPaperId" @open-paper="pid => emit('open-paper', pid)" @library-updated="emit('library-updated')" />
+    <SearchPanel v-else @open-session="sid => emit('open-session', sid)" @library-updated="emit('library-updated')" />
   </div>
 </template>
 
 <style scoped>
 .import-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 40; display: flex; flex-direction: column; }
-.import-bar { padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
-.import-frame { flex: 1; width: 100%; border: none; }
+.import-bar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+.import-tabs { display: flex; gap: var(--space-1); }
+.import-tabs button[aria-current='page'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.import-overlay > :deep(*) { flex: 1; min-height: 0; }
 </style>

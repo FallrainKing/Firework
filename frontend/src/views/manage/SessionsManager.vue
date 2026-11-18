@@ -7,6 +7,7 @@ import type { Category, Run, Session } from '@/api/types'
 import TemplateManager from '@/components/manage/TemplateManager.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 
+const props = withDefaults(defineProps<{ initialSessionId?: number | null }>(), { initialSessionId: null })
 const emit = defineEmits<{ 'open-paper': [paperId: number, sessionId: number]; 'open-import': [] }>()
 
 const sessions = ref<Session[]>([])
@@ -44,6 +45,7 @@ onMounted(async () => {
   kinds.value = t.kinds
   categories.value = c.categories
   await loadSessions()
+  if (props.initialSessionId) await openSession(props.initialSessionId)
 })
 
 async function openSession(id: number) {

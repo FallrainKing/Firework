@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { attachBridge } from '@/shared/bridge'
+import { onMounted, ref, watch } from 'vue'
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
 import PaperTabs from '@/components/PaperTabs.vue'
@@ -30,7 +29,6 @@ const importTarget = ref<number | null>(null)
 const librarySession = ref<number | null>(null)
 const activity = useActivityStore()
 let toastTimer: ReturnType<typeof setTimeout> | null = null
-let detachShell: (() => void) | null = null
 
 function showToast(message: string) {
   toast.value = message
@@ -50,22 +48,12 @@ function openImport(paperId?: number) {
 }
 
 onMounted(async () => {
-  // shell 级桥接：覆盖阅读池 + 论文库 + 导入 iframe（origin/source 校验在 bridge 内）。
-  detachShell = attachBridge(() => Array.from(document.querySelectorAll('iframe')), {
-    onOpenPaper: (pid, sid) => { wb.openPaper(pid, sid); wb.setView('read') },
-    onOpenImport: pid => openImport(pid),
-    onNavigate: view => wb.setView(view as 'read' | 'compare' | 'schedules' | 'library'),
-    onSession: (pid, sid) => wb.setTabSession(pid, sid),
-    onLibraryUpdated: () => void lib.refresh(),
-  })
   try {
     await Promise.all([wb.load(), lib.refresh()])
   } catch (e) {
     showToast(e instanceof Error ? e.message : '工作台加载失败')
   }
 })
-
-onBeforeUnmount(() => detachShell?.())
 
 function goHome() {
   wb.activePaperId = null
@@ -128,11 +116,11 @@ async function createDomain() {
         </section>
         <CompareView v-if="wb.view === 'compare'" />
         <SchedulesView v-if="wb.view === 'schedules'" />
-        <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" />
+        <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" @open-paper="(pid, sid) => { wb.openPaper(pid, sid); wb.setView('read') }" @open-import="openImport" />
       </main>
     </div>
     <div v-if="toast" class="work-toast" role="status">{{ toast }}</div>
-    <ImportOverlay v-if="importOpen" :target-paper-id="importTarget" @close="importOpen = false" />
+    <ImportOverlay v-if="importOpen" :target-paper-id="importTarget" @close="importOpen = false" @open-paper="pid => { wb.openPaper(pid); wb.setView('read'); importOpen = false }" @open-session="sid => { librarySession = sid; wb.setView('library'); importOpen = false }" @library-updated="lib.refresh()" />
     <div v-if="taskRequest" class="dialog-overlay" @click.self="taskRequest = null">
       <TaskDialog
         :mode="taskRequest.mode"

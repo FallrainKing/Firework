@@ -27,3 +27,25 @@ def test_legacy_routes_retired():
     paths = create_app().openapi()['paths']
     for p in paths:
         assert not p.startswith(('/api/qa', '/api/study', '/api/notes', '/api/papers', '/api/import/')), p
+
+
+def test_smoke_workspace_step_dry_run(tmp_path, monkeypatch, embedder):
+    """The deploy-gate smoke script's workspace step must work against the real app."""
+    import importlib.util
+    import re
+    from pathlib import Path
+
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+
+    script = Path(__file__).resolve().parents[1] / 'scripts' / 'smoke_test.py'
+    spec = importlib.util.spec_from_file_location('smoke_test', script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    assert re.fullmatch(r'[a-f0-9]{32}', mod.PROBE_ID)
+    monkeypatch.setenv('DATA_DIR', str(tmp_path))
+    monkeypatch.setenv('QDRANT_URL', ':memory:')
+    monkeypatch.setattr(main, 'Embedder', lambda model_name='BAAI/bge-m3': embedder)
+    with TestClient(main.create_app()) as c:
+        mod.check_workspace(c)

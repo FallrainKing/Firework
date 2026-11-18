@@ -222,7 +222,11 @@ def test_runner_rejects_search_without_real_tool_success(monkeypatch,tmp_path):
     with TestClient(server.app) as c:
         r=c.post('/runs',json={'run_id':'a'*32,'skill':'search_library','prompt':'search'})
         assert r.status_code==202
-        result=c.get('/runs/'+'a'*32).json()['result']
+        for _ in range(200):
+            got=c.get('/runs/'+'a'*32).json()
+            if got['status'] in ('succeeded','failed','cancelled'):break
+            time.sleep(0.01)
+        result=got['result']
     assert result['status']=='failed'
     assert result['usage']['input_tokens']==10
 

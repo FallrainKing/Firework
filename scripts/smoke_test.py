@@ -24,12 +24,29 @@ import time
 import httpx
 
 BASE_URL = "http://127.0.0.1:8600"
-PROBE_ID = "smokeprobe00000000000000000000"  # 32 位 hex 探针工作区
+PROBE_ID = "deadbeefdeadbeefdeadbeefdeadbeef"  # 32 位 hex 探针工作区
 
 
 def fail(step: str, detail: str) -> None:
     print(f"FAIL [{step}] {detail}")
     sys.exit(1)
+
+
+def check_workspace(client: httpx.Client) -> None:
+    """步骤 4：探针工作区写入/读回/恢复（幂等）。"""
+    original = client.get(f"/api/workbench/states/{PROBE_ID}").json()
+    probe = {"layout": {"left_width": 235, "right_width": 340, "left_hidden": False, "right_hidden": False},
+             "tabs": [], "active_paper_id": None, "view": "read"}
+    try:
+        r = client.put(f"/api/workbench/states/{PROBE_ID}", json=probe)
+        if r.status_code != 200:
+            fail("workspace", f"PUT {r.status_code} {r.text[:200]}")
+        back = client.get(f"/api/workbench/states/{PROBE_ID}").json()
+        if back != probe:
+            fail("workspace", "读回与写入不一致")
+    finally:
+        # 即使比对失败也恢复原值；首次运行会留下一条默认状态探针行（无害）。
+        client.put(f"/api/workbench/states/{PROBE_ID}", json=original)
 
 
 def wait_health(client: httpx.Client) -> None:
@@ -60,16 +77,7 @@ def main() -> None:
             fail("templates", f"缺少内置模板: {ids}")
         print("ok [3/5] templates")
 
-        original = client.get(f"/api/workbench/states/{PROBE_ID}").json()
-        probe = {"layout": {"left_width": 235, "right_width": 340, "left_hidden": False, "right_hidden": False},
-                 "tabs": [], "active_paper_id": None, "view": "read"}
-        r = client.put(f"/api/workbench/states/{PROBE_ID}", json=probe)
-        if r.status_code != 200:
-            fail("workspace", f"PUT {r.status_code} {r.text[:200]}")
-        back = client.get(f"/api/workbench/states/{PROBE_ID}").json()
-        if back != probe:
-            fail("workspace", "读回与写入不一致")
-        client.put(f"/api/workbench/states/{PROBE_ID}", json=original)
+        check_workspace(client)
         print("ok [4/5] workspace")
 
         r = client.get("/api/agent/status")

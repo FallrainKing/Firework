@@ -131,7 +131,12 @@ def test_native_missing_transcript_is_not_silently_replayed(monkeypatch,tmp_path
     with TestClient(server.app) as c:
         r=c.post('/runs',json={'run_id':'b'*32,'skill':'chat','prompt':'continue','session_id':str(uuid.uuid4()),'native_ready':True})
         assert r.status_code==202
-        result=c.get('/runs/'+'b'*32).json()['result']
+        import time as _t
+        for _ in range(200):
+            got=c.get('/runs/'+'b'*32).json()
+            if got['status'] in ('succeeded','failed','cancelled'):break
+            _t.sleep(0.01)
+        result=got['result']
     assert result['status']=='failed' and '原生会话文件缺失' in result['error']
 
 def test_draft_prompt_survives_reopen_without_execution(client):

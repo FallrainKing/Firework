@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
@@ -29,9 +30,20 @@ from .rag.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
-# Vue 工作台构建产物（frontend/ → vite build → app/web/v2）。
-# 存在时挂 /v2，与旧界面并存；计划五切换根路径。
-V2_DIR = WEB_DIR / "v2"
+# Vue 工作台构建产物（frontend/ → vite build → app/web/，Docker 多阶段构建拷入；
+# 本地开发手动拷贝 dist）。vendor/（PDF.js）保留在仓库中。
+
+
+class SPAStaticFiles(StaticFiles):
+    """Static files with SPA fallback: extension-less 404s serve index.html."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code == 404 and not Path(path).suffix:
+                return await super().get_response("index.html", scope)
+            raise
 
 # Bounded startup retry for the RAG stack (qdrant being unreachable at boot
 # is normally a race with the container starting). 10 attempts × 10s covers
@@ -121,13 +133,10 @@ def create_app() -> FastAPI:
     def health() -> dict:
         return {"status": "ok"}
 
-    if V2_DIR.is_dir():
-        app.mount("/v2", StaticFiles(directory=V2_DIR, html=True), name="v2")
-
     # mounted last so the explicit routes above (and /health) win
     app.mount(
         "/",
-        StaticFiles(directory=WEB_DIR, html=True),
+        SPAStaticFiles(directory=WEB_DIR, html=True),
         name="web",
     )
     return app

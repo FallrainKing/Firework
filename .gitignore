@@ -21,3 +21,8 @@ __pycache__/
 frontend/node_modules/
 frontend/dist/
 app/web/v2/
+
+# vue build artifacts copied into app/web at build time
+app/web/index.html
+app/web/assets/
+app/web/md.js

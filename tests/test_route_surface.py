@@ -29,17 +29,21 @@ def test_legacy_routes_retired():
         assert not p.startswith(('/api/qa', '/api/study', '/api/notes', '/api/papers', '/api/import/')), p
 
 
-def test_v2_mount_when_dist_present(tmp_path, monkeypatch):
-    import app.main as main
-    (tmp_path / 'index.html').write_text('<html></html>')
-    monkeypatch.setattr(main, 'V2_DIR', tmp_path)
-    assert '/v2' in [getattr(r, 'path', None) for r in main.create_app().routes]
+def test_spa_fallback_for_deep_links(tmp_path, monkeypatch):
+    """Root serves the Vue SPA; extension-less deep links fall back to index.html."""
+    from fastapi.testclient import TestClient
 
-
-def test_v2_absent_without_dist(tmp_path, monkeypatch):
     import app.main as main
-    monkeypatch.setattr(main, 'V2_DIR', tmp_path / 'missing')
-    assert '/v2' not in [getattr(r, 'path', None) for r in main.create_app().routes]
+
+    (tmp_path / 'index.html').write_text('<html>vue-app</html>')
+    monkeypatch.setattr(main, 'WEB_DIR', tmp_path)
+    client = TestClient(main.create_app())
+    r = client.get('/reader/1')
+    assert r.status_code == 200 and 'vue-app' in r.text
+    assert client.get('/health').json()['status'] == 'ok'
+    # 旧页面已退役：带扩展名的路径不回退
+    assert client.get('/reader.html').status_code == 404
+    assert client.get('/manage.html').status_code == 404
 
 
 def test_smoke_workspace_step_dry_run(tmp_path, monkeypatch, embedder):

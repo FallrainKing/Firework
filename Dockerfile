@@ -1,3 +1,12 @@
+# Stage 1: build the Vue workbench (frontend/ → dist).
+FROM node:24-alpine AS frontend
+WORKDIR /build
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci --no-audit --no-fund
+COPY frontend/ ./
+RUN npm run build
+
+# Stage 2: the Python app.
 FROM python:3.12-slim
 
 ENV PYTHONUNBUFFERED=1 \
@@ -24,6 +33,8 @@ RUN pip install --no-cache-dir \
 
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY app ./app
+# Vue 构建产物覆盖到 app/web（vendor/ 已在仓库中，dist 不含 vendor）。
+COPY --from=frontend /build/dist/ ./app/web/
 
 # The bge-m3 embedding model (~2.3GB) is deliberately NOT downloaded at build
 # time (slow, and a failed retry busts the whole layer). docker-compose.yml

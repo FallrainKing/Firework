@@ -147,7 +147,7 @@ def get_import(db, ident: str) -> dict:
     out = import_view(row)
     if row['run_id']:
         run = agent_service.run_row(db, row['run_id'])
-        if run and run['status'] == 'failed' and row['status'] not in ('completed', 'running'):
+        if run and run['status'] in ('failed', 'cancelled') and row['status'] not in ('completed', 'running'):
             out.update(status='failed', error=row['error'] or run['error'])
     return out
 

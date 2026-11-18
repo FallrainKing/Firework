@@ -92,12 +92,15 @@ async def lifespan(app: FastAPI):
     app.state.store = store
 
     agent_service.init_agent_state(app)
+    # Stop runner jobs orphaned by a previous app crash/restart (best-effort).
+    orphan_cleanup=asyncio.create_task(agent_service.cancel_orphaned_runner_jobs(app.state))
     try:
         scheduler=asyncio.create_task(schedules_service.schedule_loop(app))
         yield
     finally:
         scheduler.cancel()
-        await asyncio.gather(scheduler,return_exceptions=True)
+        orphan_cleanup.cancel()
+        await asyncio.gather(scheduler,orphan_cleanup,return_exceptions=True)
         await agent_service.close_agent_state(app)
         db.close()
 

@@ -14,13 +14,16 @@ def result_line(text='done', **kw):
                        'usage': {'input_tokens': 5, 'output_tokens': 2}, **kw})
 
 
-def make_spawn(lines, delays=None, hang=False, capture=None):
+def make_spawn(lines, delays=None, hang=False, capture=None, stderr_bytes=b''):
     delays = delays or {}
 
     async def spawn(*args, **kwargs):
         if capture is not None:
             capture.update(args=args, kwargs=kwargs)
-        reader = asyncio.StreamReader()
+        reader = asyncio.StreamReader(limit=kwargs.get('limit', 64 * 1024))
+        err = asyncio.StreamReader(limit=kwargs.get('limit', 64 * 1024))
+        err.feed_data(stderr_bytes)
+        err.feed_eof()
 
         class Stdin:
             data = b''
@@ -32,7 +35,7 @@ def make_spawn(lines, delays=None, hang=False, capture=None):
             pid = 4242
             returncode = None
             stdout = reader
-            stderr = asyncio.StreamReader()
+            stderr = err
             stdin = Stdin()
             async def wait(self):
                 await self._feed
@@ -182,6 +185,63 @@ def test_restart_marks_interrupted_failed(engine, runtime):
         await engine.start()
         got = engine.get('e' * 32)
         assert got['status'] == 'failed' and 'restart' in got['result']['error'].lower()
+        await engine.close()
+
+    asyncio.run(main())
+
+
+def test_large_stderr_and_long_lines_do_not_hang(engine, monkeypatch):
+    big_line = json.dumps({'type': 'user', 'message': {'content': [{'type': 'tool_result', 'text': 'x' * 70000}]}})
+    capture = {}
+    monkeypatch.setattr(jobs_mod.asyncio, 'create_subprocess_exec',
+                        make_spawn([big_line, result_line('ok')], capture=capture, stderr_bytes=b'e' * 200000))
+
+    async def main():
+        await engine.start()
+        await engine.submit('a' * 32, 'chat', body())
+        frames = [f async for f in engine.events('a' * 32)]
+        assert frames[-1]['result']['status'] == 'succeeded'
+        assert capture['kwargs'].get('limit', 0) >= 1024 * 1024
+        await engine.close()
+
+    asyncio.run(main())
+
+
+def test_close_marks_running_failed_not_cancelled(engine, monkeypatch):
+    monkeypatch.setattr(jobs_mod.asyncio, 'create_subprocess_exec', make_spawn([], hang=True))
+
+    async def main():
+        await engine.start()
+        await engine.submit('b' * 32, 'chat', body())
+        for _ in range(100):
+            if engine.get('b' * 32)['status'] == 'running':
+                break
+            await asyncio.sleep(0.01)
+        await engine.close()
+        got = engine.get('b' * 32)
+        assert got['status'] == 'failed' and 'interrupted' in got['result']['error'].lower()
+
+    asyncio.run(main())
+
+
+def test_cancel_preserves_accumulated_usage(engine, monkeypatch):
+    monkeypatch.setattr(cli.os, 'killpg', lambda pid, sig: None)
+    assistant = json.dumps({'type': 'assistant', 'message': {'usage': {'input_tokens': 100, 'output_tokens': 20}, 'content': [{'type': 'text', 'text': 'hi'}]}})
+    monkeypatch.setattr(jobs_mod.asyncio, 'create_subprocess_exec', make_spawn([assistant], hang=True))
+
+    async def main():
+        await engine.start()
+        await engine.submit('c' * 32, 'chat', body())
+        for _ in range(200):
+            got = engine.get('c' * 32)
+            if got['status'] == 'running' and got['progress']:
+                break
+            await asyncio.sleep(0.01)
+        await engine.cancel('c' * 32)
+        frames = [f async for f in engine.events('c' * 32)]
+        payload = frames[-1]['result']
+        assert payload['status'] == 'cancelled'
+        assert payload['usage']['input_tokens'] == 100 and payload['usage']['output_tokens'] == 20
         await engine.close()
 
     asyncio.run(main())

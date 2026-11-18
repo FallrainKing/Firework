@@ -251,3 +251,37 @@ def test_upload_oversized_invalid_pdf_reports_magic_400(reading):
     big=b'not pdf'+b'\0'*MAX_PDF_BYTES
     r=c.post('/api/imports/upload',data={'request_key':'big-bad'},files={'file':('x.pdf',big)})
     assert r.status_code==400 and '有效 PDF' in r.json()['detail']
+
+def test_cancelled_import_request_terminates(reading, monkeypatch):
+    from types import SimpleNamespace
+    import httpx
+    from app.agent import service as agent_service, runner_client
+    from app.core.db import get_conn
+    from test_agent_mvp import runner_mock, CANNED_RESULT
+    c,s,sid,ctx=reading
+    db=get_conn(s)
+    run_id='d'*32
+    db.execute("INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status) VALUES (?,?,?,?,?,'running')", (run_id,'k-import',sid,'paper_import','p'))
+    db.execute("INSERT INTO import_requests(id,request_key,channel,source_value,conversation_id,run_id,status) VALUES ('imp1','ik1','doi','10.1/x',?,?,'running')", (sid,run_id))
+    db.commit()
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock(CANNED_RESULT)),base_url='http://test'))
+    state=SimpleNamespace(settings=s,db=db,agent_jobs=set())
+    asyncio.run(agent_service.cancel_run(db,run_id,state))
+    row=db.execute("SELECT status,error FROM import_requests WHERE id='imp1'").fetchone()
+    assert row['status']=='failed' and row['error']=='已取消'
+    db.close()
+
+def test_translation_retry_after_cancel_creates_new_run(reading, monkeypatch):
+    import httpx
+    from app.agent import runner_client
+    from test_agent_mvp import runner_mock, CANNED_RESULT
+    c,s,sid,ctx=reading
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock(CANNED_RESULT,hang=True)),base_url='http://test'))
+    first=c.post('/api/reader/translations',json={**ctx,'conversation_id':sid}).json()
+    assert not first['cached']
+    for _ in range(200):
+        if c.get('/api/agent/runs/'+first['run_id']).json()['status']=='running':break
+        import time as _t;_t.sleep(0.01)
+    assert c.post('/api/agent/runs/'+first['run_id']+'/cancel').status_code==200
+    second=c.post('/api/reader/translations',json={**ctx,'conversation_id':sid}).json()
+    assert not second['cached'] and second['run_id']!=first['run_id']

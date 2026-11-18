@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import time
@@ -42,12 +43,36 @@ def init_agent_state(app):
     app.state.agent_jobs = set()
     # This MVP deployment runs one web worker. Interrupted runs are marked
     # explicitly; never auto-retry a possibly billed model request.
+    app.state.interrupted_run_ids = [r['id'] for r in db.execute("SELECT id FROM agent_runs WHERE status IN ('queued','running')").fetchall()]
     repo.fail_interrupted_runs(db)
     repo.fail_orphan_imports(db)
     db.commit()
 
 
+async def _cancel_runner_jobs(db, run_ids):
+    """Best-effort: stop runner jobs the app no longer owns (shutdown/restart).
+
+    Prevents orphaned billing and concurrent CLI runs on one native session.
+    """
+    if not run_ids:
+        return
+    try:
+        async with runner_client.client() as c:
+            for rid in run_ids:
+                with contextlib.suppress(httpx.HTTPError):
+                    await c.post(f'/runs/{rid}/cancel', timeout=3)
+    except httpx.HTTPError:
+        pass
+
+
+async def cancel_orphaned_runner_jobs(state):
+    await _cancel_runner_jobs(state.db, getattr(state, 'interrupted_run_ids', []))
+
+
 async def close_agent_state(app):
+    db = app.state.db
+    active = [r['id'] for r in db.execute("SELECT id FROM agent_runs WHERE status IN ('queued','running')").fetchall()]
+    await _cancel_runner_jobs(db, active)
     jobs = list(app.state.agent_jobs)
     for job in jobs:
         job.cancel()
@@ -197,6 +222,7 @@ async def cancel_run(db, run_id: str, state) -> dict:
     except httpx.HTTPError:
         raise ServiceError(503, 'Runner 离线，无法取消')
     repo.cancel_run(db, run_id)
+    repo.fail_imports_for_run(db, run_id, '已取消')
     db.commit()
     return view(repo.find_run(db, run_id))
 
@@ -230,10 +256,18 @@ async def execute_run(run_id: str, state):
             history.extend([{'role': 'user', 'content': entry['prompt']}, {'role': 'assistant', 'content': entry['answer']}])
         repo.set_run_status(db, run_id, 'running')
         db.commit()
+        # Cancel may have landed while this task was starting: never submit a
+        # run the user already cancelled (it would be billed and discarded).
+        if repo.find_run(db, run_id)['status'] not in ('queued', 'running'):
+            return
         try:
             async with runner_client.client() as c:
                 sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None})
                 sub.raise_for_status()
+                if repo.find_run(db, run_id)['status'] not in ('queued', 'running'):
+                    with contextlib.suppress(httpx.HTTPError):
+                        await c.post(f'/runs/{run_id}/cancel', timeout=5)
+                    return
                 result = None
                 last_write = 0.0
                 async with c.stream('GET', f'/runs/{run_id}/events', timeout=httpx.Timeout(10.0, read=None)) as response:
@@ -261,6 +295,8 @@ async def execute_run(run_id: str, state):
         except (httpx.HTTPError, ValueError):
             result = {'status': 'failed', 'error': 'Agent connection failed or timed out; retry manually. No automatic retry was made.'}
         repo.finish_run(db, run_id, result['status'], str(result.get('answer') or ''), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
+        if result['status'] == 'cancelled':
+            repo.fail_imports_for_run(db, run_id, str(result.get('error') or '已取消'))
         if result.get('session_id') == session['native_session_id'] and result.get('native_ready'):
             repo.set_native_ready(db, session['id'])
         repo.touch_conversation(db, row['conversation_id'])

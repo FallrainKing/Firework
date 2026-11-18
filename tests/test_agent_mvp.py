@@ -329,3 +329,59 @@ def test_app_sse_emits_terminal(client):
     assert ev.status_code == 200 and ev.headers['content-type'].startswith('text/event-stream')
     assert 'data: ' in ev.text and '"succeeded"' in ev.text
     assert c.get('/api/agent/runs/missing/events').status_code == 404
+
+def _insert_queued_run(s, run_id, skill='chat'):
+    from app.core.db import get_conn
+    db = get_conn(s)
+    db.execute("INSERT INTO conversations(module,title,messages,skill,kind,native_session_id) VALUES ('agent','t','[]',?,'chat',?)", (skill, '11111111-1111-1111-1111-111111111111'))
+    sid = db.execute('SELECT last_insert_rowid()').fetchone()[0]
+    db.execute("INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status) VALUES (?,?,?,?,?,'queued')", (run_id, 'k-'+run_id, sid, skill, 'p'))
+    db.commit()
+    return db, sid
+
+def test_cancel_before_submit_never_bills(client, monkeypatch):
+    c,s = client
+    run_id = 'a'*32
+    db,sid = _insert_queued_run(s, run_id)
+    state = SimpleNamespace(settings=s, db=db, agent_jobs=set())
+    base = runner_mock(CANNED_RESULT)
+    async def not_found(request):
+        if request.url.path.endswith('/cancel'):
+            return httpx.Response(404)
+        return await base(request)
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(not_found),base_url='http://test'))
+    asyncio.run(agent.cancel_run(db, run_id, state))
+    assert db.execute('SELECT status FROM agent_runs WHERE id=?', (run_id,)).fetchone()[0] == 'cancelled'
+    submits = []
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock(CANNED_RESULT,capture=submits)),base_url='http://test'))
+    asyncio.run(agent.execute_run(run_id, state))
+    assert submits == []  # cancelled before submit: no runner job, no billing
+    db.close()
+
+def test_close_cancels_runner_jobs(client, monkeypatch):
+    c,s = client
+    run_id = 'b'*32
+    db,sid = _insert_queued_run(s, run_id)
+    cancels = []
+    async def handler(request):
+        if request.url.path.endswith('/cancel'):
+            cancels.append(request.url.path)
+            return httpx.Response(200, json={'run_id':run_id,'status':'cancelled'})
+        return httpx.Response(200, json={'status':'ok'})
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))
+    fake = SimpleNamespace(state=SimpleNamespace(db=db, agent_jobs=set()))
+    asyncio.run(agent.close_agent_state(fake))
+    assert cancels == ['/runs/'+run_id+'/cancel']
+    db.close()
+
+def test_late_result_cannot_overwrite_cancel(client):
+    c,s = client
+    run_id = 'c'*32
+    db,sid = _insert_queued_run(s, run_id)
+    from app.agent import repository as repo
+    repo.cancel_run(db, run_id)
+    repo.finish_run(db, run_id, 'succeeded', 'late answer', None, '{}', '[]', '{}', None, None)
+    db.commit()
+    row = db.execute('SELECT status,answer FROM agent_runs WHERE id=?', (run_id,)).fetchone()
+    assert row['status'] == 'cancelled' and row['answer'] == ''
+    db.close()

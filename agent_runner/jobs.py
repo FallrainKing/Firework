@@ -103,7 +103,7 @@ class JobEngine:
         queued, running = self.counts()
         if queued + running >= MAX_ACTIVE:
             raise QueueFull()
-        job = {'run_id': run_id, 'skill': skill_id, 'body': body, 'status': 'queued', 'progress': None, 'result': None, 'subs': set(), 'proc': None, 'result_event': None, 'error_status': None}
+        job = {'run_id': run_id, 'skill': skill_id, 'body': body, 'status': 'queued', 'progress': None, 'result': None, 'subs': set(), 'proc': None, 'result_event': None, 'error_status': None, 'usage_acc': {}, 'shutdown': False}
         self._jobs[run_id] = job
         self._write_status(folder, 'queued')
         job['task'] = asyncio.create_task(self._run_job(job))
@@ -172,6 +172,11 @@ class JobEngine:
             job['subs'].discard(q)
 
     async def close(self):
+        # Graceful shutdown is a restart, not a user cancel: interrupted runs
+        # must read as failed, never as "已取消".
+        for j in self._jobs.values():
+            if j['status'] not in TERMINAL:
+                j['shutdown'] = True
         tasks = [j['task'] for j in self._jobs.values() if not j['task'].done()]
         for t in tasks:
             t.cancel()
@@ -242,23 +247,47 @@ class JobEngine:
                 args = cli.build_args(skill, model, session_id, resume, mcp, skill_md, bool(blocks))
                 history = [{'role': h.get('role'), 'content': str(h.get('content', ''))[:2000]} for h in body.get('history') or [] if h.get('role') in ('user', 'assistant')]
                 input_bytes = cli.build_input(req, history, resume, blocks)
-                proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=sfolder, env=env, start_new_session=True)
+                # Large stream limit: CJK tool results can exceed the 64KiB
+                # default in a single stream-json line. stderr must be drained
+                # concurrently or a chatty CLI deadlocks once the pipe fills.
+                proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=sfolder, env=env, start_new_session=True, limit=10 * 1024 * 1024)
                 job['proc'] = proc
 
                 async def monitor():
                     proc.stdin.write(input_bytes)
                     await proc.stdin.drain()
                     proc.stdin.write_eof()
-                    async for raw in proc.stdout:
-                        line = raw.decode().strip()
-                        if not line:
-                            continue
-                        event = json.loads(line)
-                        if event.get('type') == 'result':
-                            job['result_event'] = event
-                        elif event.get('type') in ('assistant', 'user', 'system'):
-                            self._progress(job, _subset(event))
-                    await proc.wait()
+
+                    async def drain_stderr():
+                        try:
+                            async for _ in proc.stderr:
+                                pass
+                        except Exception:
+                            pass  # diagnostics are expendable; never kill the job
+
+                    drainer = asyncio.create_task(drain_stderr())
+                    try:
+                        async for raw in proc.stdout:
+                            line = raw.decode().strip()
+                            if not line:
+                                continue
+                            event = json.loads(line)
+                            if event.get('type') == 'result':
+                                job['result_event'] = event
+                            elif event.get('type') in ('assistant', 'user', 'system'):
+                                if event.get('type') == 'assistant':
+                                    usage = (event.get('message') or {}).get('usage') or {}
+                                    for k, v in usage.items():
+                                        if isinstance(v, (int, float)):
+                                            job['usage_acc'][k] = job['usage_acc'].get(k, 0) + v
+                                self._progress(job, _subset(event))
+                        await proc.wait()
+                    finally:
+                        drainer.cancel()
+                        try:
+                            await drainer
+                        except asyncio.CancelledError:
+                            pass
 
                 if timeout_s is None:
                     await monitor()
@@ -270,11 +299,15 @@ class JobEngine:
         except asyncio.TimeoutError:
             if proc:
                 await cli.stop_process(proc)
-            self._terminal(job, {'status': 'failed', 'error': f'Agent timed out after {timeout_s} seconds; no automatic retry', 'answer': '', 'usage': (job['result_event'] or {}).get('usage') or {}, 'tool_calls': [], 'metadata': {}})
+            self._terminal(job, {'status': 'failed', 'error': f'Agent timed out after {timeout_s} seconds; no automatic retry', 'answer': '', 'usage': (job['result_event'] or {}).get('usage') or job['usage_acc'], 'tool_calls': [], 'metadata': {}})
         except asyncio.CancelledError:
             if proc:
                 await cli.stop_process(proc)
-            self._terminal(job, {'status': 'cancelled', 'error': '已取消', 'answer': '', 'usage': (job['result_event'] or {}).get('usage') or {}, 'tool_calls': [], 'metadata': {}})
+            usage = (job['result_event'] or {}).get('usage') or job['usage_acc']
+            if job.get('shutdown'):
+                self._terminal(job, {'status': 'failed', 'error': 'Runner restarted; run interrupted', 'answer': '', 'usage': usage, 'tool_calls': [], 'metadata': {}})
+            else:
+                self._terminal(job, {'status': 'cancelled', 'error': '已取消', 'answer': '', 'usage': usage, 'tool_calls': [], 'metadata': {}})
         except Exception as exc:
             if proc:
                 await cli.stop_process(proc)

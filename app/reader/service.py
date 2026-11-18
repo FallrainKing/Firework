@@ -125,7 +125,7 @@ async def translate(db: sqlite3.Connection, settings, body: Translation, state) 
 
         run = agent_service.runs_by_ids(db, [row['run_id']])[row['run_id']]
         old = {**dict(row), 'status': run['status'], 'answer': run['answer']}
-    if old and old['status'] != 'failed':
+    if old and old['status'] not in ('failed', 'cancelled'):
         repo.undelete_translation(db, old['id'])
         db.commit()
         return {**old, 'deleted': 0, 'cached': True}

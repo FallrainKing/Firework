@@ -197,5 +197,12 @@ def fail_interrupted_runs(db: sqlite3.Connection) -> None:
 
 def fail_orphan_imports(db: sqlite3.Connection) -> None:
     db.execute(
-        "UPDATE import_requests SET status='failed',error='服务重启，请手动重试' WHERE status IN ('pending','running') AND run_id IN (SELECT id FROM agent_runs WHERE status='failed')"
+        "UPDATE import_requests SET status='failed',error='服务重启，请手动重试' WHERE status IN ('pending','running') AND run_id IN (SELECT id FROM agent_runs WHERE status IN ('failed','cancelled'))"
+    )
+
+
+def fail_imports_for_run(db: sqlite3.Connection, run_id: str, error: str) -> None:
+    db.execute(
+        "UPDATE import_requests SET status='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE run_id=? AND status IN ('pending','running')",
+        (error, run_id),
     )

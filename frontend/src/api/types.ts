@@ -203,3 +203,63 @@ export interface RecentRead {
   conversation_id: number
   updated_at: string
 }
+
+export interface ReaderDoc {
+  paper_id: number
+  title: string
+  file_version: string
+  page_count: number
+  width: number
+  height: number
+  outline: Array<{ level: number; title: string; page: number }>
+  pdf_url: string
+}
+
+export interface Annotation {
+  id: string
+  paper_id: number
+  conversation_id: number | null
+  file_version: string
+  page: number
+  kind: 'highlight' | 'note' | 'ink'
+  quote: string
+  content: string
+  color: string
+  rects: number[][]
+  points: number[][]
+  deleted: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AnnotationCreate extends SelectionContext {
+  kind?: 'highlight' | 'note' | 'ink'
+  content?: string
+  color?: string
+  conversation_id?: number | null
+  points?: number[][]
+}
+
+export interface Position {
+  conversation_id: number
+  page: number
+  zoom: 'fit' | '1' | '1.25' | '1.5' | '2'
+  tab: 'outline' | 'notes' | 'highlights' | 'translations' | 'info'
+}
+
+export interface TranslationRecord {
+  id: string
+  paper_id: number
+  conversation_id: number
+  page: number
+  file_version: string
+  quote: string
+  quote_hash: string
+  language: string
+  run_id: string
+  deleted: number
+  created_at: string
+  status: string
+  answer: string
+  error: string | null
+}

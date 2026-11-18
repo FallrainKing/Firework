@@ -107,9 +107,9 @@ function onSaved() {
           </label>
         </div>
         <div class="paper-content">
-          <h2 class="paper-title">{{ p.title }}</h2>
-          <p class="paper-authors">{{ p.authors.length ? p.authors.join(' · ') : '作者待补全' }}</p>
-          <p class="paper-units">{{ p.affiliations.length ? p.affiliations.join(' · ') : '作者单位待补全' }}</p>
+          <h2 class="paper-title" :title="p.title">{{ p.title }}</h2>
+          <p class="paper-authors" :title="p.authors.join(' · ')">{{ p.authors.length ? p.authors.join(' · ') : '作者待补全' }}</p>
+          <p class="paper-units" :title="p.affiliations.join(' · ')">{{ p.affiliations.length ? p.affiliations.join(' · ') : '作者单位待补全' }}</p>
           <p class="paper-summary muted">{{ p.summary || '摘要待补全' }}</p>
           <div class="badges">
             <span v-for="c in p.collections" :key="c.id" class="badge">{{ c.name }}</span>
@@ -151,13 +151,13 @@ function onSaved() {
 .library-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .library-toolbar form { display: flex; gap: var(--space-1); }
 .spacer { flex: 1; }
-.paper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); }
+.paper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: var(--space-3); }
 .paper-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
-.paper-visual { position: relative; background: var(--bg); min-height: 120px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); }
-.paper-visual img { width: 100%; max-height: 200px; object-fit: contain; }
-.image-caption { position: absolute; bottom: var(--space-1); left: var(--space-2); font-size: 11px; }
+.paper-visual { position: relative; background: var(--bg); height: 180px; flex: 0 0 180px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); }
+.paper-visual img { width: 100%; height: 100%; object-fit: contain; }
+.image-caption { max-width:calc(100% - 16px); background:var(--bg); padding:0 4px; border-radius:4px; position: absolute; bottom: var(--space-1); left: var(--space-2); font-size: 11px; }
 .paper-checkbox { position: absolute; top: var(--space-1); right: var(--space-2); display: flex; gap: var(--space-1); align-items: center; font-size: 12px; background: var(--bg); padding: 2px var(--space-1); border-radius: var(--radius); }
-.paper-content { padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
+.paper-content { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
 .paper-title { font-size: 15px; margin: 0; }
 .paper-authors, .paper-units { font-size: 12px; margin: 0; color: var(--text-muted); }
 .paper-summary { font-size: 12px; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
@@ -172,4 +172,13 @@ function onSaved() {
 .name-dialog h2 { margin: 0; font-size: 16px; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
 .form-error { color: var(--danger); }
+.library-grid-view { min-width:0; }
+.library-toolbar form { flex:1 1 250px; min-width:0; }
+.library-toolbar form input { flex:1; width:100%; min-width:0; }
+.library-toolbar select { max-width:100%; }
+.paper-title,.paper-authors,.paper-units { display:-webkit-box; -webkit-box-orient:vertical; overflow:hidden; }
+.paper-title { -webkit-line-clamp:3; }
+.paper-authors,.paper-units { -webkit-line-clamp:2; }
+.badges { margin-top:auto; padding-top:8px; }
+@media(max-width:600px) { .library-grid-view { padding:12px; } .library-toolbar form { flex-basis:100%; } .library-toolbar button,.library-toolbar select { font-size:12px; padding:7px 10px; } .spacer { display:none; } }
 </style>

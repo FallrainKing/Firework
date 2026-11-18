@@ -24,14 +24,16 @@ function onOpenSession(sid: number) {
       <button :aria-current="page === 'library' ? 'page' : undefined" @click="page = 'library'">论文库</button>
       <button :aria-current="page === 'sessions' ? 'page' : undefined" @click="page = 'sessions'">任务会话</button>
     </div>
+    <div class="manage-content">
     <LibraryGrid v-if="page === 'library'" @open-paper="pid => emit('open-paper', pid)" @open-import="pid => emit('open-import', pid)" @open-session="onOpenSession" />
     <SessionsManager v-else :initial-session-id="openSessionId" @open-paper="(pid, sid) => emit('open-paper', pid, sid)" @open-import="emit('open-import')" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.manage-view { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.manage-nav { display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
+.manage-view { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: hidden; }
+.manage-nav { flex: 0 0 auto; display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
 .manage-nav button[aria-current='page'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.manage-view > :deep(*) { flex: 1; min-height: 0; }
+.manage-content { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
 </style>

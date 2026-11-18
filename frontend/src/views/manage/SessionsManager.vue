@@ -269,7 +269,7 @@ function renderMd(text: string): string {
 
 <style scoped>
 .sessions-manager { display: flex; height: 100%; min-height: 0; }
-.sessions-list-pane { width: 300px; border-right: 1px solid var(--border); background: var(--surface); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; }
+.sessions-list-pane { flex:0 0 280px; min-width:0; width:280px; border-right: 1px solid var(--border); background: var(--surface); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; }
 .list-toolbar { display: flex; flex-direction: column; gap: var(--space-1); }
 .list-toolbar .checkbox { flex-direction: row; display: flex; gap: var(--space-1); align-items: center; font-size: 12px; }
 .list-actions { display: flex; gap: var(--space-1); }
@@ -285,16 +285,23 @@ function renderMd(text: string): string {
 .rename-row { display: flex; gap: var(--space-1); }
 .associated-papers { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .paper-chip { font-size: 12px; padding: var(--space-1) var(--space-2); }
-.messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
+.messages { flex: 1; min-height:0; overflow-wrap:anywhere; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
 .message { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
 .message-head { font-size: 11px; }
 .user-prompt { font-weight: 600; }
 .tool-error { color: var(--danger); }
 .usage { font-size: 11px; }
 .composer { display: flex; gap: var(--space-2); align-items: flex-end; }
-.composer textarea { flex: 1; }
+.composer textarea { flex: 1; min-width:0; }
 .welcome { margin: auto; text-align: center; }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }
 .form-error { color: var(--danger); }
 .archive-notice { margin: 0; }
+.session-item { min-width:0; overflow-wrap:anywhere; }
+.conversation-header { overflow-wrap:anywhere; }
+@media(max-width:760px) {
+  .sessions-manager { flex-direction:column; overflow-y:auto; }
+  .sessions-list-pane { flex:0 0 auto; width:100%; max-height:230px; border-right:0; border-bottom:1px solid var(--border); }
+  .conversation-pane { flex:1 0 320px; min-height:320px; }
+}
 </style>

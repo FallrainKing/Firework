@@ -141,22 +141,24 @@ def test_draft_prompt_survives_reopen_without_execution(client):
 
 def test_native_resume_uses_same_workspace_and_session_id(monkeypatch,tmp_path):
     import asyncio
-    from agent_runner import server
+    from agent_runner import server, jobs
+    from test_agent_mvp import stream_proc
     sid=str(uuid.uuid4());captured=[]
-    class Proc:
-        returncode=0
-        async def communicate(self,value):
-            return json.dumps({'subtype':'success','result':'ok','session_id':sid,'usage':{'input_tokens':5}}).encode(),b''
     async def spawn(*args,**kwargs):
         captured.append((args,kwargs))
         folder=tmp_path/'claude-config/projects/test';folder.mkdir(parents=True,exist_ok=True);(folder/(sid+'.jsonl')).write_text('native transcript')
-        return Proc()
+        return stream_proc([json.dumps({'type':'result','subtype':'success','result':'ok','session_id':sid,'usage':{'input_tokens':5}})])
     monkeypatch.setattr(server,'RUNTIME',tmp_path)
     monkeypatch.setattr(server,'load_environment',lambda:{})
     monkeypatch.setattr(server.asyncio,'create_subprocess_exec',spawn)
     async def probe():
-        a=await server.run(server.RunRequest(run_id='c'*32,session_id=sid,skill='chat',prompt='first'))
-        b=await server.run(server.RunRequest(run_id='d'*32,session_id=sid,native_ready=True,skill='chat',prompt='next'))
+        server.engine=jobs.JobEngine(tmp_path,concurrency=2,root=server.ROOT,env_loader=lambda rt:{})
+        await server.engine.start()
+        try:
+            a=await server.run(server.RunRequest(run_id='c'*32,session_id=sid,skill='chat',prompt='first'))
+            b=await server.run(server.RunRequest(run_id='d'*32,session_id=sid,native_ready=True,skill='chat',prompt='next'))
+        finally:
+            await server.engine.close()
         return a,b
     a,b=asyncio.run(probe())
     assert '--session-id' in captured[0][0] and '--resume' in captured[1][0]

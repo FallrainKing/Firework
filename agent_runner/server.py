@@ -5,22 +5,35 @@ older app images; removed in plan 3). The async job engine lands in jobs.py.
 """
 from __future__ import annotations
 import asyncio
+from contextlib import asynccontextmanager
 import json
 import os
 from pathlib import Path
-import sys
-import uuid
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent.catalog import SKILLS
-from . import cli
+from . import cli, jobs
 
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = ROOT / 'data' / 'agent'
-TIMEOUT = 120
 
-app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, openapi_url=None)
+engine: jobs.JobEngine | None = None
+
+
+@asynccontextmanager
+async def lifespan(app):
+    global engine
+    engine = jobs.JobEngine(RUNTIME, concurrency=int(os.getenv('RESEARCH_AGENT_CONCURRENCY', '2')), root=ROOT, env_loader=lambda rt: load_environment())
+    await engine.start()
+    try:
+        yield
+    finally:
+        await engine.close()
+
+
+app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 _lock = asyncio.Lock()
 
 class RunRequest(BaseModel):
@@ -49,57 +62,67 @@ def image_blocks(body):
 
 @app.get('/health')
 async def health():
-    return {'status': 'ok', 'agent': 'claude_cli', 'model': current_model(load_environment()), 'busy': _lock.locked(), 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
+    queued, running = engine.counts() if engine else (0, 0)
+    return {'status': 'ok', 'agent': 'claude_cli', 'model': current_model(load_environment()), 'busy': _lock.locked(), 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
+
+
+@app.post('/runs', status_code=202)
+async def submit_run(body: RunRequest):
+    if body.skill not in SKILLS:
+        raise HTTPException(400, 'Unknown skill')
+    try:
+        return await engine.submit(body.run_id, body.skill, body.model_dump())
+    except jobs.QueueFull:
+        raise HTTPException(429, 'Queue full; please wait')
+
+
+@app.get('/runs/{run_id}')
+async def get_run(run_id: str):
+    got = engine.get(run_id)
+    if got is None:
+        raise HTTPException(404, 'Run not found')
+    return got
+
+
+@app.get('/runs/{run_id}/events')
+async def run_events(run_id: str):
+    if engine.get(run_id) is None:
+        raise HTTPException(404, 'Run not found')
+
+    def gen():
+        async def stream():
+            try:
+                async for frame in engine.events(run_id):
+                    yield f'data: {json.dumps(frame, ensure_ascii=False)}\n\n'
+            except KeyError:
+                return
+        return stream()
+
+    return StreamingResponse(gen(), media_type='text/event-stream')
+
+
+@app.post('/runs/{run_id}/cancel')
+async def cancel_run(run_id: str):
+    got = await engine.cancel(run_id)
+    if got is None:
+        raise HTTPException(404, 'Run not found')
+    return got
 
 @app.post('/run')
 async def run(body: RunRequest):
+    """Legacy synchronous wrapper (rollback compatibility; removed in plan 3)."""
     if body.skill not in SKILLS:
         raise HTTPException(400, 'Unknown skill')
     if _lock.locked():
         raise HTTPException(429, 'Agent is busy')
     async with _lock:
-        skill = SKILLS[body.skill]
-        run_folder = RUNTIME / 'runs' / body.run_id
-        run_folder.mkdir(parents=True, mode=0o700, exist_ok=False)
-        session_id = body.session_id or str(uuid.uuid4())
-        folder = RUNTIME / 'sessions' / session_id
-        folder.mkdir(parents=True, mode=0o700, exist_ok=True)
-        config_dir=RUNTIME/'claude-config';config_dir.mkdir(parents=True,mode=0o700,exist_ok=True)
-        def transcript_exists():
-            return any((config_dir/'projects').glob('*/'+session_id+'.jsonl'))
-        resume=transcript_exists()
-        if body.native_ready and not resume:
-            raise HTTPException(409,'原生会话文件缺失；请恢复备份或明确创建新会话，不能静默丢失上下文')
-        log_path = run_folder / 'tools.jsonl'
-        allowed = skill['tools']
-        env = load_environment()
-        env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(skill['max_output_tokens'])
-        mcp = {'mcpServers': {}}
-        if allowed:
-            mcp['mcpServers']['research'] = {'command': sys.executable, 'args': [str(ROOT / 'agent_runner/tools.py')], 'env': {'RESEARCH_DB_PATH': str(ROOT / 'data/app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS':json.dumps(body.paper_ids), 'RESEARCH_MAX_TOOL_CALLS':str(skill['max_calls']), 'RESEARCH_IMPORT_ID':body.import_request_id or '', 'RESEARCH_RUN_ID':body.run_id, 'RESEARCH_TOKEN_FILE':str(RUNTIME/'internal-token')}}
-        if body.skill=='paper_import':
-            token=RUNTIME/'internal-token'
-            if not token.exists():
-                import secrets
-                fd=os.open(token,os.O_WRONLY|os.O_CREAT|os.O_EXCL,0o600)
-                with os.fdopen(fd,'w') as f:f.write(secrets.token_urlsafe(32))
-        model=current_model(env,vision=bool(body.attachment_ids))
-        skill_md = (ROOT / 'skills' / body.skill / 'SKILL.md').read_text()
-        blocks = image_blocks(body) if body.attachment_ids else []
-        args = cli.build_args(skill, model, session_id, resume, mcp, skill_md, bool(blocks))
-        history = [{'role': h.get('role'), 'content': str(h.get('content', ''))[:2000]} for h in body.history if h.get('role') in ('user', 'assistant')]
-        input_bytes = cli.build_input(body, history, resume, blocks)
-        proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=folder, env=env, start_new_session=True)
         try:
-            stdout, _stderr = await asyncio.wait_for(proc.communicate(input_bytes), TIMEOUT)
-        except (asyncio.TimeoutError, asyncio.CancelledError) as exc:
-            await stop_process(proc)
-            if isinstance(exc, asyncio.CancelledError):
-                raise
-            raise HTTPException(504, 'Agent timed out after 120 seconds; no automatic retry')
-        try:
-            result = cli.parse_result(stdout)
-        except (ValueError, UnicodeDecodeError):
-            raise HTTPException(502, 'Agent returned invalid JSON; inspect host service status')
-        calls = [json.loads(line) for line in log_path.read_text().splitlines()] if log_path.exists() else []
-        return cli.build_payload(result, model=model, session_id=session_id, resume=resume, history=history, calls=calls, allowed=allowed, skill_id=body.skill, returncode=proc.returncode, native_ready=transcript_exists())
+            await engine.submit(body.run_id, body.skill, body.model_dump())
+        except jobs.QueueFull:
+            raise HTTPException(429, 'Queue full; please wait')
+        job = engine._jobs[body.run_id]
+        await job['task']
+        payload = engine.get(body.run_id)['result']
+        if job.get('error_status') == 409:
+            raise HTTPException(409, payload['error'])
+        return payload

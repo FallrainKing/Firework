@@ -80,15 +80,16 @@ def test_runner_native_image_stream_preserves_session_scope(desk,monkeypatch,tmp
     monkeypatch.setattr(server,'RUNTIME',s.data_dir/'agent')
     monkeypatch.setattr(server,'load_environment',lambda:{})
     captured={}
-    class Proc:
-        returncode=0
-        async def communicate(self,content):
-            captured['message']=json.loads(content)
-            return json.dumps({'type':'result','subtype':'success','result':'Red square','usage':{}}).encode(),b''
-    async def spawn(*args,**kw):captured['args']=args;return Proc()
+    from test_agent_mvp import stream_proc
+    async def spawn(*args,**kw):
+        captured['args']=args
+        proc=stream_proc([json.dumps({'type':'result','subtype':'success','result':'Red square','usage':{}})])
+        captured['proc']=proc
+        return proc
     monkeypatch.setattr(server.asyncio,'create_subprocess_exec',spawn)
     with TestClient(server.app) as rc:
         result=rc.post('/run',json={'run_id':'c'*32,'skill':'chat','prompt':'Describe','session_id':native,'paper_ids':[1],'attachment_ids':[image['id']]})
+    captured['message']=json.loads(captured['proc'].stdin.data)
     assert result.status_code==200,result.text
     assert '--input-format' in captured['args'] and '--verbose' in captured['args']
     assert captured['args'][captured['args'].index('--output-format')+1]=='stream-json'

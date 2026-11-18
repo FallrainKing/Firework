@@ -147,16 +147,32 @@ def test_tool_permissions_do_not_allow_arbitrary_execution():
     result=subprocess.run([sys.executable,str(script)],input=json.dumps(req)+'\n',capture_output=True,text=True,check=True)
     assert 'not allowed' in json.loads(result.stdout)['error']['message']
 
+def stream_proc(lines):
+    """Streaming fake CLI process: stdout fed with stream-json lines."""
+    import asyncio as _aio
+    reader=_aio.StreamReader()
+    for line in lines: reader.feed_data(line.encode()+b'\n')
+    reader.feed_eof()
+    class Stdin:
+        data=b''
+        def write(self,b): self.data+=b
+        async def drain(self): pass
+        def write_eof(self): pass
+    class Proc:
+        pid=4242
+        returncode=0
+        stdout=reader
+        stderr=_aio.StreamReader()
+        stdin=Stdin()
+        async def wait(self): return 0
+    return Proc()
+
 def test_runner_rejects_search_without_real_tool_success(monkeypatch,tmp_path):
     from agent_runner import server
-    class Proc:
-        returncode=0
-        async def communicate(self,_):
-            return json.dumps({'subtype':'success','result':'invented result','usage':{'input_tokens':10}}).encode(),b''
     async def spawn(*args,**kwargs):
         assert '--restricted' in args and '--bare' in args
         assert '--tools' in args and args[args.index('--tools')+1]==''
-        return Proc()
+        return stream_proc([json.dumps({'type':'result','subtype':'success','result':'invented result','usage':{'input_tokens':10}})])
     monkeypatch.setattr(server,'RUNTIME',tmp_path)
     monkeypatch.setattr(server,'load_environment',lambda:{})
     monkeypatch.setattr(server.asyncio,'create_subprocess_exec',spawn)

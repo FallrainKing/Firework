@@ -67,7 +67,7 @@ app/
 - 跨域循环依赖（reader↔agent）用函数内局部导入化解。
 - 测试 monkeypatch 的模块属性（`client`、`create_run`、`os` 等）搬移后仍须通过模块属性在调用时解析。
 
-## 6. 执行模型（计划二交付）
+## 6. 执行模型（计划二已交付，2026-11-18）
 
 - Runner 新协议：`POST /runs` 提交即返回；`GET /runs/{id}` 查状态；
   `GET /runs/{id}/events` SSE 进度（CLI stream-json 的 tool_use/文本增量）；`POST /runs/{id}/cancel` 取消。
@@ -77,7 +77,7 @@ app/
 - app 侧 `agent_runs` 增加进度字段与 `cancelled` 状态（迁移 0008）；重启中断标记失败、不自动重放；幂等键沿用。
 - 前端会话内展示排队/运行/进度/取消；旧同步接口在新前端切换后移除。
 
-## 7. LLM 统一（计划三交付）
+## 7. LLM 统一（计划三已交付，2026-11-18）
 
 - 移除 `legacy/gateway.py`、study 引擎与旧路由；`/legacy.html` 退役。
 - 能力映射：论文库问答→`search_library`；精读→`paper_read`（强化 SKILL.md 提示词）；比较→`paper_compare`。
@@ -103,15 +103,15 @@ app/
 
 ## 9.1 计划一遗留债务（计划二前置）
 
-- ~~跨域 agent_runs 读取~~ 已在计划二 Task 1 收敛到 agent.service（sessions/reader 不再触碰 agent_runs）。其余跨域只读 JOIN（agent→papers/conversations/import_requests，schedules→conversations/papers，workbench→papers）仍在，后续计划逐步收敛。
-- imports/schedules service 仍 import `fastapi.HTTPException` 用于捕获过渡期错误，计划二/三移除。
-- workbench.service 自带 `repo.paper_exists`，与 papers.service.paper_exists 不一致，顺手对齐。
-- 部署后须补跑 `scripts/smoke_test.py`（计划一在 worktree 执行，未对运行镜像冒烟）。
+- ~~跨域 agent_runs 读取~~ 已在计划二 Task 1 收敛到 agent.service。~~workbench→papers~~ 已在计划三对齐。其余跨域只读 JOIN（agent→papers/conversations/import_requests，schedules→conversations/papers）仍在，后续计划逐步收敛。
+- ~~imports/schedules service 的 fastapi.HTTPException~~ 已在计划三移除（服务层无框架 import，测试钉住）。
+- ~~workbench.service 自有 paper_exists~~ 已在计划三改经 papers.service。
+- 部署后须补跑 `scripts/smoke_test.py`（已重写为零模型调用管理链路冒烟；尚未对运行镜像执行）。
 
 ## 10. 计划路线
 
-1. `2026-11-17-backend-domain-refactor.md` — 后端功能域三层重组（纯重构，行为不变）。
-2. 计划二：Runner 异步执行模型 + app 运行编排 + SSE。
-3. 计划三：LLM 统一到 Claude，legacy 退役。
+1. ✅ `2026-11-17-backend-domain-refactor.md` — 后端功能域三层重组（已合并）。
+2. ✅ `2026-11-18-runner-async-execution.md` — Runner 异步执行模型（已合并）。
+3. ✅ `2026-11-18-llm-unification-legacy-retirement.md` — LLM 统一、legacy 退役（已合并待发布）。
 4. 计划四：Vue 前端骨架 + 主题 + 工作台。
 5. 计划五：阅读/管理/发现页迁移 + 部署切换 + 最终回归。

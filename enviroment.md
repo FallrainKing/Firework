@@ -123,7 +123,6 @@ Runner 由用户级 systemd 服务管理：
 - 阅读页面：`app/web/reader.html`、`app/web/reader/`。
 - 论文管理兼容页面：`app/web/manage.html`。
 - 搜索与导入：`app/web/discover.html`。
-- 历史页面：`app/web/legacy.html`。
 - 内置 PDF.js：`app/web/vendor/pdfjs/`，版本 `6.5.438`。
 - Skill 注册表：`app/agent/catalog.py`。
 - Skill 说明：`skills/<skill>/SKILL.md`。

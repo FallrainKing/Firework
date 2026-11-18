@@ -19,10 +19,12 @@ def require_session(db: sqlite3.Connection, session_id: int):
 
 
 def session_view(db: sqlite3.Connection, row) -> dict:
+    from ..agent import service as agent_service  # late import: agent.service imports this module
+
     out = {k: row[k] for k in ('id', 'title', 'kind', 'skill', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
     out['paper_ids'] = repo.paper_ids(db, row['id'])
-    out['run_count'] = repo.run_count(db, row['id'])
-    last = repo.last_run(db, row['id'])
+    out['run_count'] = agent_service.run_count(db, row['id'])
+    last = agent_service.last_run_summary(db, row['id'])
     out['last_status'] = last['status'] if last else 'draft'
     out['preview'] = (last['answer'] or last['prompt'])[:160] if last else ''
     return out
@@ -64,7 +66,10 @@ def create_category(db: sqlite3.Connection, body: Name) -> dict:
 
 
 def list_sessions(db, *, q='', kind=None, paper_id=None, category_id=None, archived=False, limit=100) -> dict:
-    rows = repo.search_sessions(db, q=q, kind=kind, paper_id=paper_id, category_id=category_id, archived=archived, limit=limit)
+    from ..agent import service as agent_service
+
+    run_match_ids = agent_service.conversation_ids_matching(db, q) if q else ()
+    rows = repo.search_sessions(db, q=q, kind=kind, paper_id=paper_id, category_id=category_id, archived=archived, limit=limit, run_match_ids=run_match_ids)
     return {'sessions': [session_view(db, r) for r in rows]}
 
 
@@ -113,18 +118,20 @@ def session_detail(db: sqlite3.Connection, session_id: int) -> dict:
 
 
 def session_runs(db: sqlite3.Connection, session_id: int, before: int | None = None, limit: int = 50) -> dict:
-    from ..agent.service import view
+    from ..agent import service as agent_service
 
     require_session(db, session_id)
-    rows = repo.session_runs(db, session_id, before, limit + 1)
+    rows = agent_service.session_runs(db, session_id, before, limit + 1)
     more = len(rows) > limit
     rows = rows[:limit]
-    return {'runs': [view(r) for r in reversed(rows)], 'has_more': more, 'next_before': rows[-1]['sequence'] if rows else None}
+    return {'runs': [agent_service.view(r) for r in reversed(rows)], 'has_more': more, 'next_before': rows[-1]['sequence'] if rows else None}
 
 
 def update_session(db: sqlite3.Connection, session_id: int, body: SessionPatch) -> dict:
+    from ..agent import service as agent_service
+
     require_session(db, session_id)
-    if body.archived and repo.has_active_run(db, session_id):
+    if body.archived and agent_service.has_active_run(db, session_id):
         raise ServiceError(409, '执行中的会话暂不能归档')
     changes = body.model_dump(exclude_unset=True)
     if changes.get('title') is not None:

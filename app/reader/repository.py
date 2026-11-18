@@ -54,14 +54,14 @@ def upsert_state(db: sqlite3.Connection, sid: int, pid: int, page: int, zoom: st
 
 def list_translations(db: sqlite3.Connection, pid: int):
     return db.execute(
-        'SELECT t.*,r.status,r.answer,r.error FROM reader_translations t JOIN agent_runs r ON r.id=t.run_id WHERE t.paper_id=? AND t.deleted=0 ORDER BY t.created_at DESC',
+        'SELECT t.* FROM reader_translations t WHERE t.paper_id=? AND t.deleted=0 ORDER BY t.created_at DESC',
         (pid,),
     ).fetchall()
 
 
 def find_cached_translation(db: sqlite3.Connection, pid: int, file_version: str, quote_hash: str, language: str):
     return db.execute(
-        'SELECT t.*,r.status,r.answer FROM reader_translations t JOIN agent_runs r ON r.id=t.run_id WHERE t.paper_id=? AND t.file_version=? AND t.quote_hash=? AND t.language=?',
+        'SELECT t.* FROM reader_translations t WHERE t.paper_id=? AND t.file_version=? AND t.quote_hash=? AND t.language=?',
         (pid, file_version, quote_hash, language),
     ).fetchone()
 

@@ -98,8 +98,12 @@ async def save_state(db: sqlite3.Connection, settings, paper_id: int, body: Posi
 
 
 def translations(db: sqlite3.Connection, paper_id: int) -> dict:
+    from ..agent import service as agent_service  # late import: agent.service imports this module
+
     paper(db, paper_id)
-    return {'translations': [dict(r) for r in repo.list_translations(db, paper_id)]}
+    rows = repo.list_translations(db, paper_id)
+    runs = agent_service.runs_by_ids(db, [r['run_id'] for r in rows])
+    return {'translations': [{**dict(r), **runs[r['run_id']]} for r in rows]}
 
 
 async def translate(db: sqlite3.Connection, settings, body: Translation, state) -> dict:
@@ -114,11 +118,17 @@ async def translate(db: sqlite3.Connection, settings, body: Translation, state) 
     except ValueError as e:
         raise ServiceError(409, str(e))
     digest = str(body.page) + ':' + hashlib.sha256(body.quote.strip().encode()).hexdigest()
-    old = repo.find_cached_translation(db, body.paper_id, body.file_version, digest, 'zh-CN')
+    row = repo.find_cached_translation(db, body.paper_id, body.file_version, digest, 'zh-CN')
+    old = None
+    if row:
+        from ..agent import service as agent_service
+
+        run = agent_service.runs_by_ids(db, [row['run_id']])[row['run_id']]
+        old = {**dict(row), 'status': run['status'], 'answer': run['answer']}
     if old and old['status'] != 'failed':
         repo.undelete_translation(db, old['id'])
         db.commit()
-        return {**dict(old), 'deleted': 0, 'cached': True}
+        return {**old, 'deleted': 0, 'cached': True}
     run = await create_run(RunCreate(conversation_id=body.conversation_id, prompt='请把本次选中的原文准确翻译成简体中文，只输出译文，保留专业术语、数字与公式。', contexts=[context], purpose='translate'), state)
     ident = old['id'] if old else uuid.uuid4().hex
     repo.upsert_translation(db, ident, body.paper_id, body.conversation_id, body.page, body.file_version, body.quote, digest, run['id'])

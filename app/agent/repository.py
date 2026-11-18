@@ -65,12 +65,14 @@ def clear_draft(db: sqlite3.Connection, conv_id: int) -> None:
 
 
 def set_run_status(db: sqlite3.Connection, run_id: str, status: str) -> None:
-    db.execute('UPDATE agent_runs SET status=? WHERE id=?', (status, run_id))
+    # Guard: a run cancelled while queued must not be revived.
+    db.execute("UPDATE agent_runs SET status=? WHERE id=? AND status IN ('queued','running')", (status, run_id))
 
 
 def finish_run(db, run_id, status, answer, model, usage_json, tool_calls_json, metadata_json, cost, error) -> None:
+    # Guard: terminal writes never overwrite a cancellation (or any terminal state).
     db.execute(
-        'UPDATE agent_runs SET status=?,answer=?,model=?,usage_json=?,tool_calls_json=?,metadata_json=?,cli_estimated_cost_usd=?,error=?,finished_at=CURRENT_TIMESTAMP WHERE id=?',
+        "UPDATE agent_runs SET status=?,answer=?,model=?,usage_json=?,tool_calls_json=?,metadata_json=?,cli_estimated_cost_usd=?,error=?,finished_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('queued','running')",
         (status, answer, model, usage_json, tool_calls_json, metadata_json, cost, error, run_id),
     )
 
@@ -84,9 +86,45 @@ def fail_run_if_active(db: sqlite3.Connection, run_id: str, error: str) -> None:
 
 def fail_run(db: sqlite3.Connection, run_id: str, error: str) -> None:
     db.execute(
-        "UPDATE agent_runs SET status='failed',error=?,finished_at=CURRENT_TIMESTAMP WHERE id=?",
+        "UPDATE agent_runs SET status='failed',error=?,finished_at=CURRENT_TIMESTAMP WHERE id=? AND status IN ('queued','running')",
         (error, run_id),
     )
+
+
+def run_count(db: sqlite3.Connection, conv_id: int) -> int:
+    return db.execute('SELECT count(*) FROM agent_runs WHERE conversation_id=?', (conv_id,)).fetchone()[0]
+
+
+def last_run(db: sqlite3.Connection, conv_id: int):
+    return db.execute(
+        'SELECT status,answer,prompt FROM agent_runs WHERE conversation_id=? ORDER BY rowid DESC LIMIT 1',
+        (conv_id,),
+    ).fetchone()
+
+
+def session_runs(db: sqlite3.Connection, conv_id: int, before: int | None, limit: int):
+    sql = 'SELECT rowid AS sequence,* FROM agent_runs WHERE conversation_id=?'
+    args = [conv_id]
+    if before is not None:
+        sql += ' AND rowid<?'
+        args.append(before)
+    return db.execute(sql + ' ORDER BY rowid DESC LIMIT ?', args + [limit]).fetchall()
+
+
+def conversation_ids_matching(db: sqlite3.Connection, q: str) -> list[int]:
+    return [r[0] for r in db.execute(
+        "SELECT DISTINCT c.id FROM conversations c WHERE c.module='agent' AND EXISTS(SELECT 1 FROM agent_runs r WHERE r.conversation_id=c.id AND (instr(lower(r.prompt),lower(?))>0 OR instr(lower(r.answer),lower(?))>0))",
+        (q, q),
+    )]
+
+
+def runs_by_ids(db: sqlite3.Connection, ids) -> dict:
+    ids = list(ids)
+    if not ids:
+        return {}
+    placeholders = ','.join('?' * len(ids))
+    rows = db.execute(f'SELECT id,status,answer,error FROM agent_runs WHERE id IN ({placeholders})', ids).fetchall()
+    return {r['id']: {'status': r['status'], 'answer': r['answer'], 'error': r['error']} for r in rows}
 
 
 def conversation_paper_ids(db: sqlite3.Connection, conv_id: int) -> list[int]:

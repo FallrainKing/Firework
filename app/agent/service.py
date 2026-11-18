@@ -82,6 +82,30 @@ def run_row(db, run_id: str):
     return repo.find_run(db, run_id)
 
 
+def run_count(db, sid: int) -> int:
+    return repo.run_count(db, sid)
+
+
+def last_run_summary(db, sid: int):
+    return repo.last_run(db, sid)
+
+
+def has_active_run(db, sid: int) -> bool:
+    return bool(repo.has_active_run(db, sid))
+
+
+def session_runs(db, sid: int, before: int | None, limit: int):
+    return repo.session_runs(db, sid, before, limit)
+
+
+def conversation_ids_matching(db, q: str) -> list[int]:
+    return repo.conversation_ids_matching(db, q)
+
+
+def runs_by_ids(db, ids) -> dict:
+    return repo.runs_by_ids(db, ids)
+
+
 def search_library(db, q: str = '') -> dict:
     # Management lookup only. Agent performs research searches via MCP.
     return {'papers': [dict(row) for row in repo.search_papers(db, q)]}

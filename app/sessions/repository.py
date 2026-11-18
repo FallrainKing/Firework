@@ -20,19 +20,6 @@ def paper_ids(db: sqlite3.Connection, sid: int) -> list[int]:
     ]
 
 
-def run_count(db: sqlite3.Connection, sid: int) -> int:
-    return db.execute(
-        'SELECT count(*) FROM agent_runs WHERE conversation_id=?', (sid,)
-    ).fetchone()[0]
-
-
-def last_run(db: sqlite3.Connection, sid: int):
-    return db.execute(
-        'SELECT status,answer,prompt FROM agent_runs WHERE conversation_id=? ORDER BY rowid DESC LIMIT 1',
-        (sid,),
-    ).fetchone()
-
-
 def list_templates(db: sqlite3.Connection):
     return db.execute('SELECT * FROM task_templates ORDER BY builtin DESC,rowid').fetchall()
 
@@ -62,7 +49,7 @@ def category_exists(db: sqlite3.Connection, ident: int):
     return db.execute('SELECT 1 FROM session_categories WHERE id=?', (ident,)).fetchone()
 
 
-def search_sessions(db, *, q, kind, paper_id, category_id, archived, limit):
+def search_sessions(db, *, q, kind, paper_id, category_id, archived, limit, run_match_ids=()):
     sql = "SELECT c.* FROM conversations c WHERE c.module='agent' AND c.archived=?"
     args = [int(archived)]
     if paper_id is not None:
@@ -76,8 +63,12 @@ def search_sessions(db, *, q, kind, paper_id, category_id, archived, limit):
         if category_id:
             args.append(category_id)
     if q:
-        sql += ' AND (instr(lower(c.title),lower(?))>0 OR EXISTS(SELECT 1 FROM agent_runs r WHERE r.conversation_id=c.id AND (instr(lower(r.prompt),lower(?))>0 OR instr(lower(r.answer),lower(?))>0)))'
-        args.extend([q, q, q])
+        # Run-content matches are resolved by agent.service (owns agent_runs).
+        ids = list(run_match_ids)
+        placeholders = ','.join('?' * len(ids)) if ids else 'NULL'
+        sql += f' AND (instr(lower(c.title),lower(?))>0 OR c.id IN ({placeholders}))'
+        args.append(q)
+        args.extend(ids)
     return db.execute(
         sql + ' ORDER BY c.pinned DESC,c.updated_at DESC,c.id DESC LIMIT ?', args + [limit]
     ).fetchall()
@@ -106,22 +97,6 @@ def session_papers(db: sqlite3.Connection, sid: int):
         'SELECT p.id,p.title FROM papers p JOIN conversation_papers x ON x.paper_id=p.id WHERE x.conversation_id=?',
         (sid,),
     ).fetchall()
-
-
-def session_runs(db: sqlite3.Connection, sid: int, before: int | None, limit: int):
-    sql = 'SELECT rowid AS sequence,* FROM agent_runs WHERE conversation_id=?'
-    args = [sid]
-    if before is not None:
-        sql += ' AND rowid<?'
-        args.append(before)
-    return db.execute(sql + ' ORDER BY rowid DESC LIMIT ?', args + [limit]).fetchall()
-
-
-def has_active_run(db: sqlite3.Connection, sid: int):
-    return db.execute(
-        "SELECT 1 FROM agent_runs WHERE conversation_id=? AND status IN ('queued','running')",
-        (sid,),
-    ).fetchone()
 
 
 def update_session_field(db: sqlite3.Connection, sid: int, key: str, value) -> None:

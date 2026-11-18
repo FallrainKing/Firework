@@ -1,21 +1,13 @@
-## 任务会话与图文论文库（2026-11-17）
-
-新版首页支持阅读/对比/审查等起步模板、分类会话、Claude 原生会话恢复、论文图文卡片与多分类管理。部署与恢复见 [docs/TASK-SESSIONS.md](docs/TASK-SESSIONS.md)。
-
-## Agent 最小交互版本（2026-11-17）
-
-新首页已接入服务器已有 Claude Code：科研对话、论文库检索、arXiv 检索，结果和 token 用量保存 SQLite。原有导入/精读/比较页面位于 `/legacy.html`。
-
-运行、限额、测试与回滚见 [docs/AGENT-MVP.md](docs/AGENT-MVP.md)。本阶段先验证链路，复杂科研 Skills 后续完善。
-
 # 个人 AI 科研助手（research-assistant）
 
-个人论文库 + RAG 问答：上传 PDF / 导入 arXiv / 批量导入文件夹 → bge-m3 向量检索 → LLM 带页码引用的中文问答。Web UI 为免构建原生 JS 单页应用。
+论文发现/导入/分类 + 三栏 PDF 阅读工作台 + 任务会话。所有模型调用统一经服务器已有的 Claude Code（私有 Runner）；bge-m3 + Qdrant 提供原文检索。Web UI 为免构建原生 JS（Vue 工作台迁移见 `docs/superpowers/specs/2026-11-17-modular-refactor-design.md`）。
+
+架构与接口见 [架构.md](架构.md)；环境与运维见 [enviroment.md](enviroment.md)；会话/论文库细节见 [docs/TASK-SESSIONS.md](docs/TASK-SESSIONS.md)、[docs/AGENT-MVP.md](docs/AGENT-MVP.md)。
 
 ## 部署（Docker Compose，3 步）
 
 1. 安装 Docker Engine 与 Compose 插件（本仓库 `ops/install-docker.sh` 可在 Debian 系主机一键安装）。
-2. `cp .env.example .env`，填入 `LLM_PROVIDERS` 各条的 `api_key`/`model`（`LLM_FAST`/`LLM_STRONG` 指向其中条目名）。**`.env` 含密钥，永不提交。**
+2. `cp .env.example .env`（只需基础路径项；**模型凭据由宿主机 Claude 配置提供，app 无需 LLM 密钥**）。Runner 由用户级 systemd 服务 `research-agent-runner` 管理，见 enviroment.md。
 3. `docker compose up -d --build`，然后浏览器打开 `http://127.0.0.1:8600`（局域网/手机为 `http://100.64.0.7:8600`，按本机网卡 IP 调整）。
 
 注意事项：
@@ -31,7 +23,7 @@ docker compose up -d
 .venv/bin/python scripts/smoke_test.py
 ```
 
-依次验证 `/health`、上传 fixture PDF、问答（answer 与 citations 非空）、批量导入 job done；任一步失败退出码 1。全程幂等，可重复运行。
+依次验证 `/health`、论文库、任务模板、工作区读写、Runner 在线；**零模型调用**，任一步失败退出码 1，全程幂等。智能体执行链路用最小材料单独验证，避免重复计费。
 
 ## 本地开发与测试
 
@@ -39,5 +31,5 @@ docker compose up -d
 python -m venv .venv
 .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
 .venv/bin/pip install -r requirements.txt
-.venv/bin/python -m pytest        # 51 tests
+HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest
 ```

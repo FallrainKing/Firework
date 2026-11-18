@@ -16,3 +16,7 @@ __pycache__/
 
 # worktrees
 .worktrees/
+
+# frontend
+frontend/node_modules/
+frontend/dist/

@@ -1,0 +1,76 @@
+/* 研知主题 tokens — 白色简约（浅色默认），深色预留。 */
+:root {
+  --bg: #ffffff;
+  --surface: #fafafa;
+  --border: #e5e7eb;
+  --text: #111827;
+  --text-muted: #6b7280;
+  --accent: #2563eb;
+  --accent-soft: #eff6ff;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --success: #16a34a;
+  --radius: 8px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.06);
+}
+
+/* 深色主题占位：计划四仅预留切换接口，完整深色设计后续补充。 */
+[data-theme='dark'] {
+  --bg: #111827;
+  --surface: #1f2937;
+  --border: #374151;
+  --text: #f9fafb;
+  --text-muted: #9ca3af;
+  --accent: #60a5fa;
+  --accent-soft: #1e3a5f;
+  --danger: #f87171;
+  --danger-soft: #3f1d1d;
+  --success: #4ade80;
+  --shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.primary:hover { opacity: 0.9; color: #fff; }
+button.danger { color: var(--danger); border-color: var(--danger); }
+
+input, textarea, select {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+
+.muted { color: var(--text-muted); }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }

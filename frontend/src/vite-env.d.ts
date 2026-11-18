@@ -1,5 +1,9 @@
 /// <reference types="vite/client" />
 
+interface Window {
+  mdRender?: (text: string) => string
+}
+
 declare module '*.vue' {
   import type { DefineComponent } from 'vue'
   const component: DefineComponent<{}, {}, any>

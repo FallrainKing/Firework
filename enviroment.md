@@ -1,8 +1,8 @@
 # 当前开发与运行环境
 
-记录日期：2026-11-17（Asia/Shanghai）。文件名沿用请求中的 `enviroment.md`。
+记录日期：2026-11-17；工作台/部署信息补充于 2026-11-18（Asia/Shanghai）。文件名沿用请求中的 `enviroment.md`。
 
-本文件用于后续开发交接。只记录环境和配置位置，不保存密钥、密码、令牌或认证文件内容。本次仅读取基础版本与 Git 信息，没有重新运行功能测试。
+本文件用于后续开发交接。只记录环境和配置位置，不保存密钥、密码、令牌或认证文件内容。基础环境版本保留原记录；本轮重建了前端镜像，完成前端测试、服务冒烟与浏览器阅读/图片输入验证。
 
 ## 1. 服务器与项目
 
@@ -24,11 +24,14 @@ SSH 私钥只引用调用端路径，不属于项目文件，也不应复制或�
 
 ## 2. Git 状态与交付文档
 
-- 当前分支：`feat/reading-workbench-tabs`。
-- 本文件提交前的功能提交：`11d7efa`。
-- 功能提交说明：`feat: add reading workbench, persistent tabs, image inputs and translation removal`。
-- 本文件随后作为独立文档提交；提交编号以 Git 日志为准。
-- 本轮为服务器本地 Git 提交，未执行远程推送。
+2026-11-18 阅读工作台更新：
+
+- 当前交付分支：`feat/vue-reading-workbench`，从另一智能体重构后的 `ac86b9c` 建立。
+- 前端：Vue 3 + TypeScript + Vite + Pinia；生产沿用 Docker 内 Node 24 构建；本机 Node 26 测试需要 `NODE_OPTIONS=--no-experimental-webstorage`，避免原生 localStorage 与 jsdom 冲突。
+- 本轮未变更后端迁移、Runner 服务及其模型配置，仅读取状态和执行一笔最小图片验证。
+- 发布前保留镜像：`research-assistant-app:before-reading-workbench-20261118`；执行了已有数据备份脚本。
+- 本轮为服务器本地 Git 提交，未远程推送；具体提交号见 Git 日志。
+- 历史 `feat/reading-workbench-tabs` 和 `11d7efa` 属于前一轮原生页面交付，不能代表当前 Vue 架构。
 
 项目根目录的交接文档：
 

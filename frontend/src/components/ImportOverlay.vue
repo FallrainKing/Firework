@@ -33,5 +33,6 @@ const page = ref<'import' | 'search'>('import')
 .import-bar { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
 .import-tabs { display: flex; gap: var(--space-1); }
 .import-tabs button[aria-current='page'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.import-overlay > :deep(*) { flex: 1; min-height: 0; }
+.import-bar { flex: 0 0 auto; }
+.import-overlay > :deep(.import-panel), .import-overlay > :deep(.search-panel) { flex: 1; min-height: 0; overflow-y:auto; }
 </style>

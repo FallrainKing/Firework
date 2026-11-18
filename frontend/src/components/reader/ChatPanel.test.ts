@@ -72,7 +72,31 @@ describe('ChatPanel', () => {
     expect(vi.mocked(workbenchApi.saveDraft).mock.calls[0][2]).toMatchObject({ prompt: '一二' })
   })
 
-  it('rejects more than 3 images', async () => {
+  it('enables sending when a session arrives after mounting', async () => {
+    const wrapper = mount(ChatPanel, { props: { session: null, paperId: 1 } })
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    await wrapper.setProps({ session })
+    await flushPromises()
+    await wrapper.find('textarea').setValue('理解这段原文')
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
+  it('submits text, image attachment and quoted original in one run', async () => {
+    vi.spyOn(agentApi, 'createRun').mockResolvedValue(run())
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue(run())
+    const wrapper = await mountPanel()
+    const vm = wrapper.vm as unknown as { attachments: unknown[]; bridge: { setContext: (c: unknown) => void } }
+    vm.attachments = [{ id: 'image-1', url: '/image', filename: '图1.png' }]
+    vm.bridge.setContext({ paper_id: 1, page: 3, file_version: 'v', quote: '原文', rects: [] })
+    await wrapper.find('textarea').setValue('解释图中方法')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(agentApi.createRun).toHaveBeenCalledWith(expect.objectContaining({ conversation_id: 5, prompt: '解释图中方法', attachment_ids: ['image-1'], contexts: [expect.objectContaining({ page: 3, quote: '原文' })] }))
+    wrapper.unmount()
+  })
+
+  it('rejects more than 3 images' , async () => {
     const wrapper = await mountPanel()
     const vm = wrapper.vm as unknown as { attachments: unknown[]; uploadFiles: (files: File[]) => Promise<void> }
     vm.attachments = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]

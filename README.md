@@ -1,6 +1,6 @@
 # 个人 AI 科研助手（research-assistant）
 
-论文发现/导入/分类 + 三栏 PDF 阅读工作台 + 任务会话。所有模型调用统一经服务器已有的 Claude Code（私有 Runner）；bge-m3 + Qdrant 提供原文检索。Web UI 为免构建原生 JS（Vue 工作台迁移见 `docs/superpowers/specs/2026-11-17-modular-refactor-design.md`）。
+论文发现/导入/分类 + 三栏 PDF 阅读工作台 + 任务会话。所有模型调用统一经服务器已有的 Claude Code（私有 Runner）；bge-m3 + Qdrant 提供原文检索。Web UI 已迁移为 Vue 3 + TypeScript + Pinia 的阅读工作台，由 Vite 构建并随 Docker 镜像发布。原生静态页面与 iframe 结构已退役。
 
 架构与接口见 [架构.md](架构.md)；环境与运维见 [enviroment.md](enviroment.md)；会话/论文库细节见 [docs/TASK-SESSIONS.md](docs/TASK-SESSIONS.md)、[docs/AGENT-MVP.md](docs/AGENT-MVP.md)。
 

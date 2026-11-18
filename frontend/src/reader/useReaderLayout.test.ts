@@ -51,7 +51,16 @@ describe('useReaderLayout', () => {
     window.dispatchEvent(pe('pointerup', 150, 2))
   })
 
-  it('mobile mode switches partitions', () => {
+  it('restored layout remains reactive after replacing the workspace layout', () => {
+    const wb = useWorkbenchStore()
+    const { layout, toggle } = useReaderLayout()
+    wb.layout = { left_width: 310, right_width: 410, left_hidden: false, right_hidden: true }
+    expect(layout.value.left_width).toBe(310)
+    toggle('right')
+    expect(layout.value.right_hidden).toBe(false)
+  })
+
+  it('mobile mode switches partitions' , () => {
     const { mobileMode, setMobile } = useReaderLayout()
     expect(mobileMode.value).toBe('pdf')
     setMobile('chat')

@@ -1,4 +1,5 @@
 import { ref } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useWorkbenchStore } from '@/stores/workbench'
 
 export type MobileMode = 'left' | 'pdf' | 'chat'
@@ -9,6 +10,7 @@ const clampWidth = (v: number) => Math.max(140, Math.min(600, Math.round(v)))
 // 对照旧 reader/layout.js：拖动/键盘 ±20/收起；持久化改经工作区 store（后端 Layout 140–600）。
 export function useReaderLayout() {
   const wb = useWorkbenchStore()
+  const { layout } = storeToRefs(wb)
   const mobileMode = ref<MobileMode>('pdf')
 
   function widthKey(side: Side): 'left_width' | 'right_width' {
@@ -56,5 +58,5 @@ export function useReaderLayout() {
     mobileMode.value = name
   }
 
-  return { layout: wb.layout, mobileMode, nudge, toggle, startDrag, onResizerKey, setMobile }
+  return { layout, mobileMode, nudge, toggle, startDrag, onResizerKey, setMobile }
 }

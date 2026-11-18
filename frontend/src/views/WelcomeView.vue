@@ -6,17 +6,21 @@ import type { Template } from '@/api/types'
 const emit = defineEmits<{
   start: [question: string]
   'open-import': []
+  'open-picker': []
   'use-template': [template: Template]
   compare: []
   discuss: []
 }>()
 
 const question = ref('')
+const templateError = ref('')
 const templates = ref<Template[]>([])
 
 onMounted(async () => {
-  const { templates: list } = await sessionsApi.templates()
-  templates.value = list.filter(t => t.builtin)
+  try {
+    const { templates: list } = await sessionsApi.templates()
+    templates.value = list.filter(t => t.builtin && ['paper_read', 'paper_review', 'paper_compare', 'chat'].includes(t.skill)).slice(0, 6)
+  } catch { templateError.value = '模板暂时无法载入，你仍可选择论文开始阅读。' }
 })
 
 function submit() {
@@ -27,22 +31,25 @@ function submit() {
 
 <template>
   <section class="work-welcome">
-    <p class="eyebrow">YOUR RESEARCH, CONTINUED</p>
-    <h1>打开一篇论文，继续你的研究</h1>
-    <p class="muted">从左侧选择论文开始阅读，或创建一个新的研究任务。</p>
+    <div class="welcome-mark" aria-hidden="true">▤</div>
+    <p class="eyebrow">RESEARCH WORKSPACE</p>
+    <h1>从一篇论文，开始新的发现</h1>
+    <p class="muted">打开原文，与智能体一起阅读、提问和整理思路。上次的进度会为你保留。</p>
     <form @submit.prevent="submit">
       <label class="sr-only" for="work-question">这次想研究什么</label>
       <textarea id="work-question" v-model="question" rows="3" maxlength="3000" placeholder="例如：阅读这篇论文，解释核心方法，并帮我检查实验结论…" />
       <div class="start-actions">
-        <button type="button" @click="emit('open-import')">选择 / 导入论文</button>
+        <button type="button" @click="emit('open-picker')">＋ 选择 / 导入论文</button>
         <button class="primary" :disabled="!question.trim()">开始阅读 →</button>
       </div>
     </form>
+    <p class="input-hint muted">先选择阅读材料，再开始会话。选择论文和模板不会调用智能体。</p>
     <div class="welcome-templates">
       <h2>常用任务模板</h2>
+      <p v-if="templateError" class="muted" role="status">{{ templateError }}</p>
       <div class="template-grid">
         <button v-for="t in templates" :key="t.id" class="template-card" @click="emit('use-template', t)">
-          <strong>{{ t.name }}</strong>
+          <span class="template-symbol" aria-hidden="true">{{ t.skill === 'paper_compare' ? '⇄' : t.skill === 'paper_review' ? '✓' : t.skill === 'chat' ? '✧' : '▤' }}</span><strong>{{ t.name }}</strong>
           <span class="muted">{{ t.description }}</span>
         </button>
       </div>
@@ -55,15 +62,27 @@ function submit() {
 </template>
 
 <style scoped>
-.work-welcome { padding: var(--space-6); max-width: 760px; margin: 0 auto; }
-.eyebrow { color: var(--accent); font-size: 11px; letter-spacing: 0.12em; margin: 0 0 var(--space-2); }
-h1 { margin: 0 0 var(--space-2); font-size: 26px; }
-form { margin: var(--space-5) 0; display: flex; flex-direction: column; gap: var(--space-3); }
-textarea { width: 100%; resize: vertical; }
-.start-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
-.welcome-templates h2 { font-size: 14px; color: var(--text-muted); }
-.template-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: var(--space-3); }
-.template-card { display: flex; flex-direction: column; gap: var(--space-1); align-items: flex-start; text-align: left; padding: var(--space-3); background: var(--surface); }
-.template-card span { font-size: 12px; }
-.welcome-foot { display: flex; gap: var(--space-2); margin-top: var(--space-5); }
+.work-welcome { width:100%; max-width:900px; padding:clamp(24px,4vh,40px) 48px 24px; margin:0 auto; overflow-y:auto; }
+.welcome-mark { width:36px; height:36px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); border-radius:10px; font-size:21px; margin-bottom:12px; }
+.eyebrow { color:var(--accent); font-size:10px; letter-spacing:.16em; font-weight:600; margin:0 0 10px; }
+h1 { margin:0 0 10px; font-size:clamp(24px,2.6vw,32px); letter-spacing:-.04em; font-weight:650; }
+.work-welcome > .muted { font-size:13px; line-height:1.9; }
+form { margin:20px 0 10px; padding:18px; border:1px solid var(--border); border-radius:16px; background:var(--bg); box-shadow:0 6px 24px rgb(26 58 44 / .04); }
+form:focus-within { border-color:var(--accent); }
+textarea { width:100%; padding:4px; min-height:80px; border:0; outline:none!important; resize:vertical; line-height:1.8; font-size:14px; }
+.start-actions { display:flex; align-items:center; gap:8px; justify-content:space-between; margin-top:12px; }
+.start-actions button { font-size:12px; }
+.start-actions button:first-child { border:0; background:var(--surface); }
+.input-hint { font-size:11px; margin:0 4px 22px; }
+.welcome-templates h2 { font-size:12px; font-weight:500; color:var(--text-muted); margin:0 0 14px; }
+.template-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+.template-card { display:flex; flex-direction:column; gap:8px; align-items:flex-start; text-align:left; padding:14px; background:var(--bg); border-radius:12px; }
+.template-card:hover { background:var(--accent-soft); }
+.template-symbol { color:var(--accent); font-size:18px; }
+.template-card strong { font-size:13px; font-weight:600; }
+.template-card .muted { font-size:11px; line-height:1.8; }
+.welcome-foot { display:flex; justify-content:center; gap:16px; margin-top:18px; }
+.welcome-foot button { font-size:12px; border:0; background:none; color:var(--text-muted); padding:4px 0; }
+@media(max-width:1000px) { .work-welcome { padding:32px 24px; } .template-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:480px) { .work-welcome { padding:24px 18px; } .template-grid { grid-template-columns:1fr 1fr; gap:8px; } .template-card { padding:12px; } .start-actions { align-items:stretch; } }
 </style>

@@ -1,12 +1,13 @@
 /* 研知主题 tokens — 白色简约（浅色默认），深色预留。 */
 :root {
   --bg: #ffffff;
-  --surface: #fafafa;
-  --border: #e5e7eb;
-  --text: #111827;
+  --surface: #f6f8f7;
+  --canvas: #e9eeec;
+  --border: #dfe7e3;
+  --text: #233b34;
   --text-muted: #6b7280;
-  --accent: #2563eb;
-  --accent-soft: #eff6ff;
+  --accent: #24745f;
+  --accent-soft: #eaf4ef;
   --danger: #dc2626;
   --danger-soft: #fef2f2;
   --success: #16a34a;
@@ -25,11 +26,12 @@
 [data-theme='dark'] {
   --bg: #111827;
   --surface: #1f2937;
+  --canvas: #141c27;
   --border: #374151;
   --text: #f9fafb;
   --text-muted: #9ca3af;
-  --accent: #60a5fa;
-  --accent-soft: #1e3a5f;
+  --accent: #7bcbb1;
+  --accent-soft: #203d35;
   --danger: #f87171;
   --danger-soft: #3f1d1d;
   --success: #4ade80;
@@ -56,6 +58,8 @@ button {
   padding: var(--space-2) var(--space-4);
   cursor: pointer;
 }
+button, input, textarea, select { transition: border-color .15s, background-color .15s; }
+button:focus-visible, [role='tab']:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:hover { border-color: var(--accent); color: var(--accent); }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }

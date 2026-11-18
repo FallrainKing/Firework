@@ -184,6 +184,9 @@ export class PDFReader extends EventTarget {
       const ratio = Math.min(window.devicePixelRatio || 1, 1.5)
       canvas.width = Math.ceil(viewport.width * ratio)
       canvas.height = Math.ceil(viewport.height * ratio)
+      // Backing pixels improve sharpness; CSS pixels must match text/annotations.
+      canvas.style.width = viewport.width + 'px'
+      canvas.style.height = viewport.height + 'px'
       holder.prepend(canvas)
       task.render = page.render({ canvasContext: canvas.getContext('2d'), viewport, transform: ratio === 1 ? null : [ratio, 0, 0, ratio, 0, 0] })
       await task.render.promise

@@ -45,6 +45,7 @@ let pages: HTMLElement
 beforeEach(() => {
   vi.stubGlobal('IntersectionObserver', IOStub)
   vi.stubGlobal('ResizeObserver', ROStub)
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as never)
   IOStub.instances = []
   pdfState.numPages = 3
   pdfState.pending = []
@@ -60,6 +61,7 @@ beforeEach(() => {
 afterEach(() => {
   root.remove()
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
 })
 
 async function makeReader() {
@@ -75,7 +77,19 @@ describe('PDFReader engine', () => {
     reader.destroy()
   })
 
-  it('render queue runs at most 2 concurrent renders', async () => {
+  it('keeps canvas CSS dimensions aligned with the PDF page on high-DPI screens', async () => {
+    vi.stubGlobal('devicePixelRatio', 2)
+    const reader = await makeReader()
+    reader.enqueue(1)
+    await new Promise(r => setTimeout(r, 0))
+    const canvas = pages.querySelector('canvas')!
+    expect(canvas.style.width).toBe(pages.querySelector<HTMLElement>('.pdf-page')!.style.width)
+    expect(canvas.width).toBe(Math.ceil(parseFloat(canvas.style.width) * 1.5))
+    expect(canvas.style.height).toBe(pages.querySelector<HTMLElement>('.pdf-page')!.style.height)
+    reader.destroy()
+  })
+
+  it('render queue runs at most 2 concurrent renders' , async () => {
     pdfState.autoResolve = false
     const reader = await makeReader()
     reader.enqueue(1)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
+import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { PDFReader } from '@/reader/pdf-engine'
 import { useReaderOrchestrator } from '@/reader/useReaderOrchestrator'
 import { useReaderLayout } from '@/reader/useReaderLayout'
@@ -122,7 +122,8 @@ onMounted(async () => {
 
 watch(() => props.sessionId, sid => { if (sid && sid !== orch.session.value?.id) void orch.activate(sid) })
 
-onDeactivated(() => { void flush() })
+onActivated(() => { if (engine?.pdf) { void nextTick(() => engine?.layout()) } })
+onDeactivated(() => { selected.value = null; void flush() })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
   void flush()
@@ -135,19 +136,15 @@ defineExpose({ flush, orchestrator: orch })
 <template>
   <div
     class="reading-layout"
-    :class="{ 'hide-left': layout.layout.left_hidden, 'hide-chat': layout.layout.right_hidden }"
+    :class="{ 'hide-left': layout.layout.value.left_hidden, 'hide-chat': layout.layout.value.right_hidden }"
     :data-mobile="layout.mobileMode.value"
-    :style="{ '--aux-width': layout.layout.left_width + 'px', '--chat-width': layout.layout.right_width + 'px' }"
+    :style="{ '--aux-width': layout.layout.value.left_width + 'px', '--chat-width': layout.layout.value.right_width + 'px' }"
   >
     <div class="reader-top">
       <span class="reader-title">{{ orch.profile.value?.title ?? '论文阅读' }}</span>
-      <select class="reader-session" :value="orch.session.value?.id" aria-label="当前会话" @change="onSessionChange(Number(($event.target as HTMLSelectElement).value))">
-        <option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.title }}</option>
-      </select>
-      <button class="new-session" @click="dialogOpen = true">＋ 新会话</button>
       <div class="page-controls">
         <button aria-label="上一页" @click="engine?.jump(pageInput - 1)">‹</button>
-        <input v-model.number="pageInput" type="number" min="1" :max="orch.doc.value?.page_count ?? 1" aria-label="页码" @change="engine?.jump(pageInput)" />
+        <input v-model.number="pageInput" type="number" min="1" :max="orch.doc.value?.page_count ?? 1" aria-label="页码" @change="engine?.jump(pageInput)" @keydown.enter="engine?.jump(pageInput)" />
         <span class="muted">/ {{ orch.doc.value?.page_count ?? '—' }}</span>
         <button aria-label="下一页" @click="engine?.jump(pageInput + 1)">›</button>
       </div>
@@ -173,18 +170,18 @@ defineExpose({ flush, orchestrator: orch })
         <ReaderSidebar ref="sidebarRef" :doc="orch.doc.value" :session="orch.session.value" :orchestrator="orch" />
       </aside>
       <div
-        class="resizer" role="separator" tabindex="0" aria-label="调整侧栏宽度"
-        :aria-valuenow="layout.layout.left_width" aria-valuemin="140" aria-valuemax="600"
-        @pointerdown="layout.startDrag('left', $event, $event.currentTarget as HTMLElement, layout.layout.left_width)"
+        class="resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="调整侧栏宽度"
+        :aria-valuenow="layout.layout.value.left_width" aria-valuemin="140" aria-valuemax="600"
+        @pointerdown="layout.startDrag('left', $event, $event.currentTarget as HTMLElement, layout.layout.value.left_width)"
         @keydown="layout.onResizerKey('left', $event)"
       ></div>
       <main class="pdf-pane">
         <div ref="scrollEl" class="pdf-scroll">
           <div ref="pagesEl" class="pdf-pages"></div>
         </div>
-        <div v-if="orch.missingPdf.value" class="pdf-error">
-          <p>{{ orch.loadError.value }}</p>
-          <button class="primary" @click="emit('open-import', paperId)">补充 PDF 全文</button>
+        <div v-if="orch.loading.value || orch.loadError.value" class="pdf-error" role="status">
+          <strong>{{ orch.loading.value ? '正在打开论文…' : '暂时无法打开全文' }}</strong><p>{{ orch.loadError.value }}</p>
+          <button v-if="orch.missingPdf.value" class="primary" @click="emit('open-import', paperId)">补充 PDF 全文</button>
         </div>
         <div v-if="selected" class="selection-actions" :style="popupStyle" @pointerdown.prevent>
           <button data-selection="explain" @click="runAction('explain')">解释</button>
@@ -195,13 +192,17 @@ defineExpose({ flush, orchestrator: orch })
         </div>
       </main>
       <div
-        class="resizer" role="separator" tabindex="0" aria-label="调整会话宽度"
-        :aria-valuenow="layout.layout.right_width" aria-valuemin="140" aria-valuemax="600"
-        @pointerdown="layout.startDrag('right', $event, $event.currentTarget as HTMLElement, layout.layout.right_width)"
+        class="resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="调整会话宽度"
+        :aria-valuenow="layout.layout.value.right_width" aria-valuemin="140" aria-valuemax="600"
+        @pointerdown="layout.startDrag('right', $event, $event.currentTarget as HTMLElement, layout.layout.value.right_width)"
         @keydown="layout.onResizerKey('right', $event)"
       ></div>
       <aside class="chat-pane">
-        <ChatPanel ref="chatRef" :session="orch.session.value" :paper-id="paperId" :orchestrator="orch" />
+        <ChatPanel ref="chatRef" :session="orch.session.value" :paper-id="paperId" :paper-title="orch.profile.value?.title" :orchestrator="orch"><template #session-controls><div class="session-controls">      <select class="reader-session" :value="orch.session.value?.id" aria-label="当前会话" @change="onSessionChange(Number(($event.target as HTMLSelectElement).value))">
+        <option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.title }}</option>
+      </select>
+      <button class="new-session" @click="dialogOpen = true">＋ 新会话</button>
+</div></template></ChatPanel>
       </aside>
     </div>
 
@@ -219,24 +220,27 @@ defineExpose({ flush, orchestrator: orch })
 
 <style scoped>
 .reading-layout { display: flex; flex-direction: column; height: 100%; min-height: 0; }
-.reader-top { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
-.reader-title { font-weight: 600; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.reader-session { max-width: 180px; }
+.reader-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; min-height:50px; flex-shrink:0; }
+.reader-title { font-weight: 500; font-size:12px; margin-right:auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-controls { display:flex; gap:6px; min-width:0; }
+.reader-session { flex:1; min-width:0; max-width:100%; font-size:11px; padding:5px; }
+.new-session { flex-shrink:0; font-size:11px; padding:5px 8px; }
+.reader-top button,.reader-top select { padding:4px 7px; font-size:12px; }
 .page-controls { display: flex; align-items: center; gap: var(--space-1); }
 .page-controls input { width: 64px; }
 .tools { display: flex; gap: var(--space-1); align-items: center; }
 .tools button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .tools input[type='color'] { width: 32px; height: 32px; padding: 2px; }
 .reader-body { display: flex; flex: 1; min-height: 0; }
-.left-pane { width: var(--aux-width); overflow-y: auto; border-right: 1px solid var(--border); background: var(--surface); }
-.chat-pane { width: var(--chat-width); overflow-y: auto; border-left: 1px solid var(--border); background: var(--surface); }
+.left-pane { width: min(var(--aux-width), 28%); min-width:140px; flex-shrink:0; overflow:hidden; border-right: 1px solid var(--border); background: var(--surface); }
+.chat-pane { width: min(var(--chat-width), 42%); min-width:240px; flex-shrink:0; overflow:hidden; border-left: 1px solid var(--border); background: var(--surface); }
 .hide-left .left-pane, .hide-left .resizer:first-of-type { display: none; }
 .hide-chat .chat-pane, .hide-chat .resizer:last-of-type { display: none; }
-.resizer { width: 6px; cursor: col-resize; background: transparent; flex-shrink: 0; }
-.resizer:hover, .resizer:focus { background: var(--accent-soft); outline: none; }
+.resizer { width: 6px; cursor: col-resize; touch-action:none; background:var(--surface); flex-shrink: 0; }
+.resizer:hover, .resizer:focus { background: var(--accent); outline: none; }
 .pdf-pane { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
-.pdf-scroll { flex: 1; overflow: auto; background: var(--surface); padding: var(--space-3) 0; }
-.pdf-pages { display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
+.pdf-scroll { flex: 1; overflow: auto; background: var(--canvas); padding:20px 16px; }
+.pdf-pages { min-width:100%; width:max-content; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
 .pdf-error { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); background: var(--bg); }
 .selection-actions { position: fixed; display: flex; gap: var(--space-1); padding: var(--space-1); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 30; }
 .selection-actions button { padding: var(--space-1) var(--space-2); font-size: 12px; }
@@ -245,6 +249,9 @@ defineExpose({ flush, orchestrator: orch })
 .mobile-switch button[aria-pressed='true'] { color: var(--accent); background: var(--accent-soft); }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }
 @media (max-width: 760px) {
+  .reader-title { display:none; }
+  .reader-top { gap:5px; padding:6px; }
+  .left-pane,.chat-pane { min-width:0; max-width:none; }
   .reader-body > .left-pane, .reader-body > .chat-pane, .reader-body > .pdf-pane, .resizer { display: none; }
   .reading-layout[data-mobile='left'] .left-pane { display: block; width: 100%; }
   .reading-layout[data-mobile='pdf'] .pdf-pane { display: flex; }

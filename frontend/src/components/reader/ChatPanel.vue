@@ -6,7 +6,7 @@ import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
 
-const props = defineProps<{ session: Session | null; paperId: number; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
+const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
 
 const QUICK: Template[] = [
   { id: 'quick_overview', name: '快速概览', description: '', kind: 'reading', skill: 'chat', prompt: '请概述当前论文的研究问题、方法、主要结论与材料覆盖范围。', builtin: 0 },
@@ -32,23 +32,23 @@ let saveQueue: Promise<unknown> = Promise.resolve()
 const watching = new Set<string>()
 let stopped = false
 onUnmounted(() => { stopped = true })
-let currentSession: Session | null = props.session
+const currentSession = ref<Session | null>(props.session)
 
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
-const canSend = computed(() => !busy.value && !uploading.value && !!currentSession && !currentSession.archived)
-const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
+const canSend = computed(() => !loading.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
+const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
 
 function showToast(m: string) { toast.value = m; setTimeout(() => { toast.value = '' }, 5000) }
 function scroll() { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }
 
 async function loadTemplates() {
   const data = await sessionsApi.templates()
-  templates.value = [...data.templates.filter(t => t.skill === currentSession?.skill || t.skill === 'chat'), ...QUICK]
+  templates.value = [...data.templates.filter(t => t.skill === currentSession.value?.skill || t.skill === 'chat'), ...QUICK]
 }
 
 async function load(session: Session) {
   const e = ++epoch
-  currentSession = session
+  currentSession.value = session
   loading.value = true
   busy.value = false
   context.value = null
@@ -67,26 +67,26 @@ async function load(session: Session) {
 }
 
 async function restoreDraft() {
-  if (loading.value || !currentSession) return
-  const sid = currentSession.id
+  if (loading.value || !currentSession.value) return
+  const sid = currentSession.value.id
   const draft = await workbenchApi.getDraft(sid, props.paperId)
-  if (currentSession?.id !== sid) return
+  if (currentSession.value?.id !== sid) return
   question.value = draft.prompt
   context.value = draft.context
   attachments.value = draft.attachments ?? []
 }
 
 function scheduleDraft() {
-  if (loading.value || !currentSession) return
+  if (loading.value || !currentSession.value) return
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => { void flushDraft().catch(e => showToast('草稿尚未保存：' + (e instanceof Error ? e.message : ''))) }, 400)
 }
 
 function flushDraft(): Promise<unknown> {
   if (saveTimer) clearTimeout(saveTimer)
-  if (loading.value || !currentSession) return saveQueue
+  if (loading.value || !currentSession.value) return saveQueue
   const snapshot = { prompt: question.value, context: context.value, attachment_ids: attachments.value.map(a => a.id) }
-  const sid = currentSession.id
+  const sid = currentSession.value.id
   saveQueue = saveQueue.catch(() => {}).then(() => workbenchApi.saveDraft(sid, props.paperId, snapshot))
   return saveQueue
 }
@@ -102,10 +102,10 @@ function removeAttachment(id: string) {
 }
 
 async function uploadFiles(files: File[]) {
-  if (!files.length || !currentSession) return
+  if (!files.length || !currentSession.value) return
   if (files.length + attachments.value.length > 3) throw new Error('每次提问最多 3 张图片')
   if (files.some(f => f.size > 5 * 1024 * 1024)) throw new Error('每张图片不超过 5MB')
-  const sid = currentSession.id
+  const sid = currentSession.value.id
   uploading.value = true
   try {
     for (const file of files) {
@@ -114,7 +114,7 @@ async function uploadFiles(files: File[]) {
       form.append('conversation_id', String(sid))
       form.append('paper_id', String(props.paperId))
       const a = await workbenchApi.uploadImage(form)
-      if (currentSession?.id === sid) {
+      if (currentSession.value?.id === sid) {
         attachments.value.push(a)
         await flushDraft()
       } else {
@@ -146,9 +146,9 @@ function upsertRun(r: Run) {
 }
 
 async function ask(prompt: string, contexts: SelectionContext[] = [], purpose = 'chat') {
-  if (!prompt.trim() || !currentSession) return
+  if (!prompt.trim() || !currentSession.value) return
   if (busy.value || uploading.value) throw new Error('当前会话仍在处理，请稍候')
-  const sid = currentSession.id
+  const sid = currentSession.value.id
   const storage = 'reader-pending-' + sid
   const attachment_ids = attachments.value.map(a => a.id)
   let body: Record<string, unknown> | null = null
@@ -161,7 +161,7 @@ async function ask(prompt: string, contexts: SelectionContext[] = [], purpose = 
   busy.value = true
   try {
     const run = await agentApi.createRun(body as never)
-    if (currentSession?.id === sid) {
+    if (currentSession.value?.id === sid) {
       upsertRun(run)
       question.value = ''
       attachments.value = []
@@ -176,20 +176,21 @@ async function ask(prompt: string, contexts: SelectionContext[] = [], purpose = 
   }
 }
 
-async function watchRun(id: string, sid = currentSession?.id) {
+async function watchRun(id: string, sid = currentSession.value?.id) {
   if (watching.has(id)) return
   watching.add(id)
-  if (currentSession?.id === sid) busy.value = true
+  if (currentSession.value?.id === sid) busy.value = true
   try {
     while (!stopped) {
       const r = await agentApi.getRun(id)
       if (stopped) break
-      if (currentSession?.id === sid) upsertRun(r)
+      if (currentSession.value?.id === sid) upsertRun(r)
       if (['succeeded', 'failed', 'cancelled'].includes(r.status)) {
         localStorage.removeItem('reader-pending-' + sid)
-        if (currentSession?.id === sid) {
+        if (currentSession.value?.id === sid) {
           busy.value = false
-          currentSession = (await sessionsApi.get(sid!)).session
+          const updated = (await sessionsApi.get(sid!)).session
+          if (currentSession.value?.id === sid) currentSession.value = updated
           scroll()
         }
         await props.orchestrator?.refreshAnnotations()
@@ -233,9 +234,10 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 
 <template>
   <div class="chat-panel">
+    <header class="chat-heading"><div><span class="agent-dot"></span><strong>论文助手</strong><small>当前论文</small></div><p :title="paperTitle">{{ paperTitle || ('论文 ' + paperId) }}</p><slot name="session-controls" /></header>
     <div class="agent-state muted">{{ agentState }}</div>
     <div ref="chatBox" class="reader-chat">
-      <p v-if="!runs.length && !loading" class="muted">选中原文或添加图片，再向当前论文会话提问。</p>
+      <div v-if="!runs.length && !loading" class="chat-empty"><span aria-hidden="true">✧</span><strong>和原文一起思考</strong><p>选中一段原文，或添加论文中的图片。<br />也可以从下方模板开始提问。</p></div>
       <article v-for="run in runs" :key="run.id" class="chat-turn">
         <div class="turn-time muted">{{ STATES[run.status] }} · {{ run.created_at }}</div>
         <div class="question">{{ run.prompt }}</div>
@@ -273,19 +275,33 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           <option value="">选择提问模板</option>
           <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
         </select>
-        <input ref="fileInput" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!canSend" @change="onFiles" />
+        <button type="button" class="image-picker" :disabled="!canSend" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!canSend" @change="onFiles" />
       </div>
       <textarea v-model="question" rows="3" maxlength="3000" placeholder="向当前论文会话提问…" :disabled="busy || !session || session.archived" @input="scheduleDraft"></textarea>
-      <button class="primary" type="submit" :disabled="!canSend || !question.trim()">发送</button>
+      <div class="composer-footer"><span class="muted">原文选区 · 图片 · 文字</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">发送 ↑</button></div>
     </form>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>
   </div>
 </template>
 
 <style scoped>
-.chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.chat-heading { padding:16px 16px 12px; border-bottom:1px solid var(--border); }
+.chat-heading > div { display:flex; gap:8px; align-items:center; }
+.chat-heading strong { font-size:13px; }
+.chat-heading small { margin-left:auto; font-size:10px; color:var(--text-muted); }
+.chat-heading p { font-size:11px; margin:7px 0 12px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agent-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; }
+.chat-empty { margin:auto 0; padding:32px 8px; text-align:center; color:var(--text-muted); font-size:12px; }
+.chat-empty > span { display:block; color:var(--accent); font-size:32px; margin-bottom:12px; }
+.chat-empty strong { font-size:14px; font-weight:500; color:var(--text); }
+.chat-empty p { line-height:1.9; }
+.composer-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.composer-footer span { font-size:10px; }
+.composer-footer button { padding:6px 14px; font-size:12px; }
+.reader-composer textarea { width:100%; resize:vertical; min-height:88px; max-height:220px; font-size:13px; }
+.chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width:0; }
 .agent-state { padding: var(--space-2) var(--space-3); font-size: 12px; border-bottom: 1px solid var(--border); }
-.reader-chat { flex: 1; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.reader-chat { flex: 1; min-height:0; overflow-wrap:anywhere; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
 .chat-turn { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); background: var(--bg); display: flex; flex-direction: column; gap: var(--space-2); }
 .turn-time { font-size: 11px; }
 .question { font-weight: 600; }
@@ -302,6 +318,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .image-attachment button { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 50%; }
 .reader-composer { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); }
 .composer-tools { display: flex; gap: var(--space-2); align-items: center; }
-.composer-tools select { flex: 1; }
+.composer-tools select { flex: 1; min-width:0; font-size:11px; padding:6px; }
+.image-picker { flex-shrink:0; font-size:11px; padding:6px 8px; }
 .chat-toast { color: var(--danger); padding: 0 var(--space-3); font-size: 12px; }
 </style>

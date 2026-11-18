@@ -8,6 +8,8 @@ import TaskDialog from '@/components/TaskDialog.vue'
 import WelcomeView from './WelcomeView.vue'
 import ReadingView from './ReadingView.vue'
 import LibraryView from './LibraryView.vue'
+import CompareView from './CompareView.vue'
+import SchedulesView from './SchedulesView.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
 import type { Session, Template } from '@/api/types'
@@ -79,14 +81,8 @@ async function createDomain() {
             @discuss="taskRequest = { mode: 'chat' }"
           />
         </section>
-        <section v-if="wb.view === 'compare'" class="module-placeholder">
-          <h1>论文比较</h1>
-          <p class="muted">比较视图迁移中。</p>
-        </section>
-        <section v-if="wb.view === 'schedules'" class="module-placeholder">
-          <h1>定时任务</h1>
-          <p class="muted">定时任务视图迁移中。</p>
-        </section>
+        <CompareView v-if="wb.view === 'compare'" />
+        <SchedulesView v-if="wb.view === 'schedules'" />
         <LibraryView v-if="wb.view === 'library'" />
       </main>
     </div>

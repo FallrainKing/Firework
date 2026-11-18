@@ -116,7 +116,7 @@ async function createDomain() {
       <main class="work-main">
         <section v-show="wb.view === 'read'" class="reading-workspace">
           <PaperTabs @add="taskRequest = { mode: 'read' }" @home="goHome" />
-          <ReadingView :paper-id="wb.activePaperId" :session-id="activeSessionId()" @open-import="openImport" @save-timeout="pid => showToast('论文 ' + pid + ' 的草稿保存超时，已放行切换')" />
+          <ReadingView :paper-id="wb.activePaperId" :session-id="activeSessionId()" @open-import="openImport" @open-paper="(pid, sid) => { wb.openPaper(pid, sid); wb.setView('read') }" @session-bound="(pid, sid) => wb.setTabSession(pid, sid)" @save-failed="showToast" />
           <WelcomeView
             v-if="wb.activePaperId === null"
             @start="q => (taskRequest = { mode: 'read', question: q })"

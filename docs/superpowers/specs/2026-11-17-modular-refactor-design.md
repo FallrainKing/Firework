@@ -84,7 +84,7 @@ app/
 - `ingest/metadata.py` 去 LLM 化（见 §3）；`Settings.llm_providers` 等 Gateway 配置废弃。
 - RAG 栈仅作为 `library_search` 等工具的数据源保留。
 
-## 8. 前端（计划四、五交付）
+## 8. 前端（计划四、五已交付，2026-11-18）
 
 - `frontend/`：Vue 3 + Vite + TS；目录按功能域（workbench/reader/library/sessions/agent/schedules/shared）。
 - 布局不变：顶部四模块、左侧导航、多论文标签、三栏阅读（PDF.js 沿用内置 vendor 副本）。
@@ -113,5 +113,5 @@ app/
 1. ✅ `2026-11-17-backend-domain-refactor.md` — 后端功能域三层重组（已合并）。
 2. ✅ `2026-11-18-runner-async-execution.md` — Runner 异步执行模型（已合并）。
 3. ✅ `2026-11-18-llm-unification-legacy-retirement.md` — LLM 统一、legacy 退役（已合并待发布）。
-4. 计划四：Vue 前端骨架 + 主题 + 工作台。
-5. 计划五：阅读/管理/发现页迁移 + 部署切换 + 最终回归。
+4. ✅ `2026-11-18-vue-workbench-theme.md` — Vue 前端骨架 + 主题 + 工作台（已合并）。
+5. ✅ `2026-11-18-vue-reader-manage-discover.md` — 阅读/管理/发现页迁移 + 部署切换 + 最终回归（已合并待发布）。

@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 // 搜索/导入：沿用现有 discover.html（计划五 Vue 化）。
+const props = withDefaults(defineProps<{ targetPaperId?: number | null }>(), { targetPaperId: null })
 const emit = defineEmits<{ close: [] }>()
+const src = computed(() =>
+  props.targetPaperId !== null ? '/discover.html?target_paper_id=' + props.targetPaperId : '/discover.html',
+)
 </script>
 
 <template>
@@ -8,7 +13,7 @@ const emit = defineEmits<{ close: [] }>()
     <div class="import-bar">
       <button @click="emit('close')">← 返回工作台</button>
     </div>
-    <iframe class="import-frame" src="/discover.html" title="搜索、导入与会话" />
+    <iframe class="import-frame" :src="src" title="搜索、导入与会话" />
   </div>
 </template>
 

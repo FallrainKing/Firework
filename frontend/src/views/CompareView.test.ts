@@ -45,4 +45,15 @@ describe('CompareView', () => {
     expect(wb.tabs.every(t => t.session_id === 7)).toBe(true)
     expect(wb.view).toBe('read')
   })
+
+  it('rebinds already-open papers to the comparison session', async () => {
+    const wb = useWorkbenchStore()
+    wb.tabs = [{ paper_id: 1, session_id: 10 }]
+    wb.activePaperId = 1
+    const wrapper = mount(CompareView)
+    await flushPromises()
+    await wrapper.find('[data-action="open"]').trigger('click')
+    expect(wb.tabs.find(t => t.paper_id === 1)?.session_id).toBe(7)
+    expect(wb.tabs.find(t => t.paper_id === 2)?.session_id).toBe(7)
+  })
 })

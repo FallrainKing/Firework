@@ -4,14 +4,15 @@ import { attachBridge, requestSave, sendLayout } from '@/shared/bridge'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { WorkspaceState } from '@/api/types'
 
-const props = defineProps<{ paperId: number; sessionId: number | null }>()
-const emit = defineEmits<{ 'open-import': [paperId?: number] }>()
+const props = defineProps<{ paperId: number | null; sessionId: number | null }>()
+const emit = defineEmits<{ 'open-import': [paperId?: number]; 'save-timeout': [paperId: number] }>()
 const wb = useWorkbenchStore()
 
 const MAX_LOADED = 3
 
 interface Loaded {
   paperId: number
+  sessionId: number | null
   src: string
   lastUsed: number
 }
@@ -20,29 +21,56 @@ const loaded = ref<Loaded[]>([])
 const frameRefs = new Map<number, HTMLIFrameElement>()
 let detach: (() => void) | null = null
 let useCounter = 0
+// 串行化 ensure：并发切换时避免重复驱逐/超额加载。
+let chain: Promise<void> = Promise.resolve()
 
 function srcFor(paperId: number, sessionId: number | null): string {
   return '/reader.html?paper_id=' + paperId + (sessionId ? '&session_id=' + sessionId : '')
+}
+
+function dropFrame(paperId: number) {
+  loaded.value = loaded.value.filter(l => l.paperId !== paperId)
+  frameRefs.delete(paperId)
 }
 
 async function ensure(paperId: number, sessionId: number | null) {
   const existing = loaded.value.find(l => l.paperId === paperId)
   if (existing) {
     existing.lastUsed = ++useCounter
+    // 会话重绑定：保存旧帧草稿后以新会话重建（旧版行为）。
+    if (sessionId !== null && existing.sessionId !== sessionId) {
+      const frame = frameRefs.get(paperId)
+      if (frame) {
+        const ok = await requestSave(frame)
+        if (!ok) emit('save-timeout', paperId)
+      }
+      dropFrame(paperId)
+      loaded.value.push({ paperId, sessionId, src: srcFor(paperId, sessionId), lastUsed: ++useCounter })
+    }
     return
   }
   while (loaded.value.length >= MAX_LOADED) {
-    const victim = [...loaded.value].sort((a, b) => a.lastUsed - b.lastUsed)[0]
+    // 不驱逐当前活动帧；await 后重新挑选，避免竞态误删。
+    const candidates = loaded.value.filter(l => l.paperId !== props.paperId)
+    if (!candidates.length) break
+    const victim = candidates.sort((a, b) => a.lastUsed - b.lastUsed)[0]
     const frame = frameRefs.get(victim.paperId)
-    // 释放前请求保存草稿/位置；超时兜底放行（bridge 内 2s）。
-    if (frame) await requestSave(frame)
-    loaded.value = loaded.value.filter(l => l.paperId !== victim.paperId)
-    frameRefs.delete(victim.paperId)
+    if (frame) {
+      const ok = await requestSave(frame)
+      if (!ok) emit('save-timeout', victim.paperId)
+    }
+    if (victim.paperId === props.paperId) break
+    dropFrame(victim.paperId)
   }
-  loaded.value.push({ paperId, src: srcFor(paperId, sessionId), lastUsed: ++useCounter })
+  loaded.value.push({ paperId, sessionId, src: srcFor(paperId, sessionId), lastUsed: ++useCounter })
 }
 
-watch(() => [props.paperId, props.sessionId] as const, ([pid, sid]) => { void ensure(pid, sid) }, { immediate: true })
+function scheduleEnsure(paperId: number | null, sessionId: number | null) {
+  if (paperId === null) return
+  chain = chain.then(() => ensure(paperId, sessionId)).catch(() => {})
+}
+
+watch(() => [props.paperId, props.sessionId] as const, ([pid, sid]) => scheduleEnsure(pid, sid), { immediate: true })
 
 watch(() => wb.layout, layout => {
   for (const f of frameRefs.values()) sendLayout(f, layout)
@@ -53,8 +81,14 @@ onMounted(() => {
     onReady: (frame, pid, sid) => {
       sendLayout(frame, wb.layout)
       wb.setTabSession(pid, sid)
+      const l = loaded.value.find(x => x.paperId === pid)
+      if (l) l.sessionId = sid
     },
-    onSession: (pid, sid) => wb.setTabSession(pid, sid),
+    onSession: (pid, sid) => {
+      wb.setTabSession(pid, sid)
+      const l = loaded.value.find(x => x.paperId === pid)
+      if (l) l.sessionId = sid
+    },
     onLayoutChange: layout => wb.setLayout(layout),
     onOpenPaper: (pid, sid) => wb.openPaper(pid, sid),
     onOpenImport: pid => emit('open-import', pid),
@@ -62,7 +96,14 @@ onMounted(() => {
   })
 })
 
-onBeforeUnmount(() => detach?.())
+onBeforeUnmount(async () => {
+  detach?.()
+  // 真实卸载（离开阅读模块）前请求保存所有帧。
+  for (const [pid, frame] of frameRefs) {
+    const ok = await requestSave(frame)
+    if (!ok) emit('save-timeout', pid)
+  }
+})
 
 function setFrame(pid: number, el: unknown) {
   if (el) frameRefs.set(pid, el as HTMLIFrameElement)
@@ -71,10 +112,10 @@ function setFrame(pid: number, el: unknown) {
 </script>
 
 <template>
-  <div class="reading-frames">
+  <div v-show="paperId !== null" class="reading-frames">
     <iframe
       v-for="l in loaded"
-      :key="l.paperId"
+      :key="l.paperId + ':' + (l.sessionId ?? 'new')"
       :ref="el => setFrame(l.paperId, el)"
       :src="l.src"
       v-show="l.paperId === paperId"

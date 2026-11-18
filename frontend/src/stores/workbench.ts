@@ -51,6 +51,10 @@ export const useWorkbenchStore = defineStore('workbench', {
     openPaper(paperId: number, sessionId?: number) {
       const existing = this.tabs.find(t => t.paper_id === paperId)
       if (existing) {
+        // 与旧版一致：显式传入不同会话时重绑定（比较/最近阅读/新任务流程依赖）。
+        if (sessionId !== undefined && sessionId !== null && existing.session_id !== sessionId) {
+          existing.session_id = sessionId
+        }
         this.activePaperId = paperId
       } else {
         if (this.tabs.length >= MAX_TABS) throw new Error('打开的标签已达上限（20），请先关闭一些标签')

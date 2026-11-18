@@ -82,10 +82,23 @@ describe('activity store', () => {
   })
 
   it('cancel calls api and marks cancelling', async () => {
-    vi.spyOn(agentApi, 'cancelRun').mockResolvedValue(run({ status: 'cancelled' }))
+    let resolve!: (v: Run) => void
+    vi.spyOn(agentApi, 'cancelRun').mockImplementation(() => new Promise(r => { resolve = r }))
     const store = useActivityStore()
     await store.refresh()
-    await store.cancel('r1')
+    const pending = store.cancel('r1')
+    expect(store.active[0].cancelling).toBe(true)
+    resolve(run({ status: 'cancelled' }))
+    await pending
     expect(agentApi.cancelRun).toHaveBeenCalledWith('r1')
+  })
+
+  it('stop closes streams and timers', async () => {
+    const store = useActivityStore()
+    await store.refresh()
+    expect(FakeEventSource.instances).toHaveLength(1)
+    store.stop()
+    expect(FakeEventSource.instances[0].closed).toBe(true)
+    expect(store.visible).toBe(false)
   })
 })

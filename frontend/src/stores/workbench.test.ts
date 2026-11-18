@@ -44,13 +44,15 @@ describe('workbench store', () => {
     expect(second.workspaceId).toBe(first.workspaceId)
   })
 
-  it('openPaper reuses existing tab and activates', async () => {
+  it('openPaper reuses existing tab and rebinds explicit session', async () => {
     const wb = useWorkbenchStore()
     await wb.load()
     wb.openPaper(1, 99)
     expect(wb.tabs).toHaveLength(2)
-    expect(wb.tabs[0].session_id).toBe(10) // reuse keeps original binding
+    expect(wb.tabs[0].session_id).toBe(99) // explicit session rebinds (legacy parity)
     expect(wb.activePaperId).toBe(1)
+    wb.openPaper(1)
+    expect(wb.tabs[0].session_id).toBe(99) // no session arg keeps binding
   })
 
   it('openPaper appends new tab and enforces cap 20', async () => {

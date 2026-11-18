@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { attachBridge } from '@/shared/bridge'
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
 import PaperTabs from '@/components/PaperTabs.vue'
@@ -25,20 +26,46 @@ const domainOpen = ref(false)
 const domainName = ref('')
 const domainError = ref('')
 const toast = ref('')
+const importTarget = ref<number | null>(null)
+const librarySession = ref<number | null>(null)
 const activity = useActivityStore()
 let toastTimer: ReturnType<typeof setTimeout> | null = null
+let detachShell: (() => void) | null = null
+
+function showToast(message: string) {
+  toast.value = message
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => { toast.value = '' }, 5000)
+}
 
 watch(() => activity.lastTerminal, t => {
   if (!t) return
   const label = t.status === 'succeeded' ? '任务完成' : t.status === 'cancelled' ? '任务已取消' : '任务失败'
-  toast.value = label + (t.error ? '：' + t.error : '')
-  if (toastTimer) clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { toast.value = '' }, 5000)
+  showToast(label + (t.error ? '：' + t.error : ''))
 })
 
+function openImport(paperId?: number) {
+  importTarget.value = paperId ?? null
+  importOpen.value = true
+}
+
 onMounted(async () => {
-  await Promise.all([wb.load(), lib.refresh()])
+  // shell 级桥接：覆盖阅读池 + 论文库 + 导入 iframe（origin/source 校验在 bridge 内）。
+  detachShell = attachBridge(() => Array.from(document.querySelectorAll('iframe')), {
+    onOpenPaper: (pid, sid) => { wb.openPaper(pid, sid); wb.setView('read') },
+    onOpenImport: pid => openImport(pid),
+    onNavigate: view => wb.setView(view as 'read' | 'compare' | 'schedules' | 'library'),
+    onSession: (pid, sid) => wb.setTabSession(pid, sid),
+    onLibraryUpdated: () => void lib.refresh(),
+  })
+  try {
+    await Promise.all([wb.load(), lib.refresh()])
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '工作台加载失败')
+  }
 })
+
+onBeforeUnmount(() => detachShell?.())
 
 function goHome() {
   wb.activePaperId = null
@@ -51,8 +78,14 @@ function activeSessionId(): number | null {
 
 function onCreated(session: Session, _startingPrompt: string) {
   taskRequest.value = null
-  for (const pid of session.paper_ids) wb.openPaper(pid, session.id)
-  wb.setView('read')
+  if (session.paper_ids.length) {
+    for (const pid of session.paper_ids) wb.openPaper(pid, session.id)
+    wb.setView('read')
+  } else {
+    // 无论文的研究讨论：打开会话管理视图（旧版 openSession 行为）。
+    librarySession.value = session.id
+    wb.setView('library')
+  }
   void lib.refresh()
 }
 
@@ -77,29 +110,29 @@ async function createDomain() {
       <SideNav
         v-show="!sideHidden"
         @new-task="taskRequest = { mode: 'read' }"
-        @open-import="importOpen = true"
+        @open-import="openImport()"
         @new-domain="domainOpen = true"
       />
       <main class="work-main">
         <section v-show="wb.view === 'read'" class="reading-workspace">
           <PaperTabs @add="taskRequest = { mode: 'read' }" @home="goHome" />
-          <ReadingView v-if="wb.activePaperId !== null" :paper-id="wb.activePaperId" :session-id="activeSessionId()" @open-import="importOpen = true" />
+          <ReadingView :paper-id="wb.activePaperId" :session-id="activeSessionId()" @open-import="openImport" @save-timeout="pid => showToast('论文 ' + pid + ' 的草稿保存超时，已放行切换')" />
           <WelcomeView
-            v-else
+            v-if="wb.activePaperId === null"
             @start="q => (taskRequest = { mode: 'read', question: q })"
-            @open-import="importOpen = true"
-            @use-template="t => (taskRequest = { mode: 'read', template: t })"
+            @open-import="openImport()"
+            @use-template="t => (taskRequest = { mode: t.skill === 'paper_compare' ? 'compare' : t.skill === 'chat' ? 'chat' : 'read', template: t })"
             @compare="wb.setView('compare')"
             @discuss="taskRequest = { mode: 'chat' }"
           />
         </section>
         <CompareView v-if="wb.view === 'compare'" />
         <SchedulesView v-if="wb.view === 'schedules'" />
-        <LibraryView v-if="wb.view === 'library'" />
+        <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" />
       </main>
     </div>
     <div v-if="toast" class="work-toast" role="status">{{ toast }}</div>
-    <ImportOverlay v-if="importOpen" @close="importOpen = false" />
+    <ImportOverlay v-if="importOpen" :target-paper-id="importTarget" @close="importOpen = false" />
     <div v-if="taskRequest" class="dialog-overlay" @click.self="taskRequest = null">
       <TaskDialog
         :mode="taskRequest.mode"
@@ -107,7 +140,7 @@ async function createDomain() {
         :template-id="taskRequest.template?.id ?? ''"
         @created="onCreated"
         @close="taskRequest = null"
-        @open-import="importOpen = true"
+        @open-import="openImport()"
       />
     </div>
     <div v-if="domainOpen" class="dialog-overlay" @click.self="domainOpen = false">

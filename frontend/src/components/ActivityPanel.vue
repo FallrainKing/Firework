@@ -25,7 +25,7 @@ function summary(run: { progress?: { tools?: string[]; text?: string } }): strin
       </div>
       <button
         class="danger"
-        :disabled="run.cancelling || run.status === 'queued'"
+        :disabled="run.cancelling"
         :aria-label="'取消任务 ' + run.id"
         @click="activity.cancel(run.id)"
       >{{ run.cancelling ? '取消中…' : '取消' }}</button>

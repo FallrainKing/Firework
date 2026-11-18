@@ -13,6 +13,7 @@ export interface BridgeHandlers {
   onOpenPaper?: (paperId: number, sessionId?: number) => void
   onOpenImport?: (paperId?: number) => void
   onNavigate?: (view: string) => void
+  onLibraryUpdated?: () => void
 }
 
 interface Pending {
@@ -55,6 +56,9 @@ export function attachBridge(getFrames: () => HTMLIFrameElement[], handlers: Bri
         break
       case 'navigate-workbench':
         handlers.onNavigate?.(String(m.view))
+        break
+      case 'library-updated':
+        handlers.onLibraryUpdated?.()
         break
     }
   }

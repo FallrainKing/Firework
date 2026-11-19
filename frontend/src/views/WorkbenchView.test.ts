@@ -6,6 +6,7 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
 import { papersApi } from '@/api/papers'
 import { workbenchApi } from '@/api/workbench'
+import { agentApi } from '@/api/agent'
 vi.mock('vue-router', () => ({ useRoute: () => ({ query: {}, params: {} }) }))
 
 beforeEach(() => {
@@ -51,6 +52,18 @@ describe('reading full-text boundary', () => {
     expect(wrapper.find('.fulltext-gate').exists()).toBe(false)
     wrapper.unmount()
   })
+  it('keeps run cancellation visible when the side navigation is hidden', async () => {
+    vi.spyOn(papersApi, 'get').mockResolvedValue({ id: 1, title: '全文论文', has_pdf: true } as never)
+    vi.spyOn(agentApi, 'listRuns').mockResolvedValue({ runs: [{ id: 'run-visible', skill: 'chat', status: 'queued', progress: {}, cancelling: false } as never] })
+    const wrapper = shell()
+    useWorkbenchStore().openPaper(1)
+    await flushPromises()
+    const panel = wrapper.findComponent({ name: 'ActivityPanel' })
+    expect(panel.exists()).toBe(true)
+    expect(panel.text()).toContain('取消')
+    wrapper.unmount()
+  })
+
   it('plus opens a paper picker instead of creating a conversation', async () => {
     const wrapper = shell()
     wrapper.findComponent({ name: 'PaperTabs' }).vm.$emit('add')

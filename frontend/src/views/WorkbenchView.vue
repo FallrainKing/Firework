@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { parseDeepLink } from '@/shared/deeplink'
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
+import ActivityPanel from '@/components/ActivityPanel.vue'
 import PaperTabs from '@/components/PaperTabs.vue'
 import ImportOverlay from '@/components/ImportOverlay.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
@@ -164,6 +165,7 @@ async function createDomain() {
         @new-domain="domainOpen = true"
         @open-paper="openPaper"
       />
+      <ActivityPanel v-if="sideHidden" class="floating-activity" />
       <main class="work-main">
         <section v-show="wb.view === 'read'" class="reading-workspace">
           <PaperTabs @add="pickerOpen = true" @home="goHome" />
@@ -220,6 +222,7 @@ async function createDomain() {
 <style scoped>
 .workbench { display: flex; flex-direction: column; height: 100dvh; }
 .work-layout { position:relative; display: flex; flex: 1; min-height: 0; }
+.floating-activity { position:absolute; top:var(--space-3); left:var(--space-3); z-index:30; width:min(280px,calc(100vw - 24px)); }
 .work-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
 .reading-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow:hidden; background:var(--surface); }
 .module-placeholder { padding: var(--space-6); }

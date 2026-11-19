@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
 import { readerApi } from '@/api/reader'
@@ -24,6 +24,12 @@ const associatedPapers = ref<Array<{ id: number; title: string }>>([])
 const busy = ref(false)
 const uploading = ref(false)
 const loading = ref(true)
+const loadingOlder = ref(false)
+const hasMoreRuns = ref(false)
+const nextBefore = ref<number | null>(null)
+const atBottom = ref(true)
+const newContent = ref(false)
+const cancellingRun = ref(false)
 const toast = ref('')
 const uploadError = ref('')
 const failedFiles = ref<File[]>([])
@@ -46,6 +52,7 @@ const currentSession = ref<Session | null>(props.session)
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const canSend = computed(() => !loading.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
 const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
+const activeRun = computed(() => [...runs.value].reverse().find(run => run.status === 'queued' || run.status === 'running') ?? null)
 const visibleTemplates = computed(() => {
   const q = slashQuery.value.trim().toLowerCase()
   return templates.value.filter(t => !q || t.name.toLowerCase().includes(q) || t.prompt.toLowerCase().includes(q)).slice(0, 8)
@@ -56,7 +63,33 @@ const visiblePapers = computed(() => {
 })
 
 function showToast(m: string) { toast.value = m; setTimeout(() => { toast.value = '' }, 5000) }
-function scroll() { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }
+function scroll() {
+  if (!chatBox.value) return
+  const el = chatBox.value
+  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
+  if (nearBottom) {
+    atBottom.value = true
+    newContent.value = false
+    el.scrollTop = el.scrollHeight
+  } else {
+    atBottom.value = false
+    newContent.value = true
+  }
+}
+
+function handleScroll() {
+  if (!chatBox.value) return
+  const el = chatBox.value
+  atBottom.value = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
+  if (atBottom.value) newContent.value = false
+}
+
+function jumpToBottom() {
+  if (!chatBox.value) return
+  chatBox.value.scrollTop = chatBox.value.scrollHeight
+  atBottom.value = true
+  newContent.value = false
+}
 function paperTitle(id: number): string {
   return associatedPapers.value.find(p => p.id === id)?.title ?? (id === props.paperId ? (props.paperTitle || `论文 ${id}`) : `论文 ${id}`)
 }
@@ -74,6 +107,10 @@ async function load(session: Session) {
   contexts.value = []
   attachments.value = []
   runs.value = []
+  hasMoreRuns.value = false
+  nextBefore.value = null
+  atBottom.value = true
+  newContent.value = false
   closeMenus()
   const [data, draft, detail] = await Promise.all([
     sessionsApi.runs(session.id, undefined, 100),
@@ -86,6 +123,8 @@ async function load(session: Session) {
   attachments.value = draft.attachments ?? []
   associatedPapers.value = detail.papers.map(p => ({ id: p.id, title: p.title }))
   runs.value = data.runs
+  hasMoreRuns.value = data.has_more
+  nextBefore.value = data.next_before
   for (const r of data.runs) if (['queued', 'running'].includes(r.status)) { busy.value = true; void watchRun(r.id, session.id) }
   loading.value = false
   await loadTemplates()
@@ -183,6 +222,67 @@ async function uploadFiles(files: File[]) {
     uploading.value = false
     if (fileInput.value) fileInput.value.value = ''
   }
+}
+
+async function loadOlder() {
+  if (!currentSession.value || loadingOlder.value || nextBefore.value === null) return
+  const sid = currentSession.value.id
+  const before = nextBefore.value
+  loadingOlder.value = true
+  try {
+    const el = chatBox.value
+    const previousHeight = el?.scrollHeight ?? 0
+    const previousTop = el?.scrollTop ?? 0
+    const data = await sessionsApi.runs(sid, before, 50)
+    if (currentSession.value?.id !== sid) return
+    const existing = new Set(runs.value.map(r => r.id))
+    runs.value = [...data.runs.filter(r => !existing.has(r.id)), ...runs.value]
+    hasMoreRuns.value = data.has_more
+    nextBefore.value = data.next_before
+    await nextTick()
+    if (el) el.scrollTop = el.scrollHeight - previousHeight + previousTop
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '历史载入失败')
+  } finally {
+    loadingOlder.value = false
+  }
+}
+
+function elapsedText(run: Run): string {
+  const created = Date.parse(run.created_at)
+  const finished = run.finished_at ? Date.parse(run.finished_at) : Date.now()
+  if (!Number.isFinite(created) || !Number.isFinite(finished) || finished < created) return '未提供'
+  const seconds = Math.max(0, Math.round((finished - created) / 1000))
+  if (seconds < 60) return `${seconds} 秒`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes} 分 ${seconds % 60} 秒`
+  return `${Math.floor(minutes / 60)} 时 ${minutes % 60} 分`
+}
+
+async function cancelActiveRun() {
+  if (!activeRun.value || cancellingRun.value) return
+  cancellingRun.value = true
+  try {
+    const updated = await agentApi.cancelRun(activeRun.value.id)
+    upsertRun(updated)
+  } catch (e) {
+    showToast(e instanceof Error ? e.message : '取消失败')
+  } finally {
+    cancellingRun.value = false
+  }
+}
+
+async function copyAnswer(run: Run) {
+  try {
+    await navigator.clipboard.writeText(run.answer)
+    showToast('回答已复制')
+  } catch {
+    showToast('复制失败')
+  }
+}
+
+function toolCallName(call: Record<string, unknown>): string {
+  return String(call.name ?? call.tool ?? call.type ?? '工具调用')
 }
 
 function onFiles() {
@@ -360,11 +460,18 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 <template>
   <div class="chat-panel">
     <header class="chat-heading"><div><span class="agent-dot"></span><strong>论文助手</strong><small>当前论文</small></div><p :title="paperTitle">{{ paperTitle || ('论文 ' + paperId) }}</p><slot name="session-controls" /></header>
-    <div class="agent-state muted">{{ agentState }}</div>
-    <div ref="chatBox" class="reader-chat">
+    <div class="agent-state muted">
+      <span>{{ agentState }}</span>
+      <template v-if="activeRun">
+        <span class="run-meta">{{ STATES[activeRun.status] }} · 已用时 {{ elapsedText(activeRun) }}</span>
+        <button class="danger stop-run" type="button" :disabled="cancellingRun" @click="cancelActiveRun">{{ cancellingRun ? '取消中…' : '停止' }}</button>
+      </template>
+    </div>
+    <div ref="chatBox" class="reader-chat" @scroll.passive="handleScroll">
+      <button v-if="hasMoreRuns" class="load-older" type="button" :disabled="loadingOlder" @click="loadOlder">{{ loadingOlder ? '正在载入历史…' : '载入更早消息' }}</button>
       <div v-if="!runs.length && !loading" class="chat-empty"><span aria-hidden="true">✧</span><strong>和原文一起思考</strong><p>输入 / 使用模板，输入 @ 引用论文，选中原文或添加图片。</p></div>
       <article v-for="run in runs" :key="run.id" class="chat-turn">
-        <div class="turn-time muted">{{ STATES[run.status] }} · {{ run.created_at }}</div>
+        <div class="turn-time muted">{{ STATES[run.status] }} · {{ run.created_at }}<template v-if="run.status === 'running' || run.status === 'queued'"> · 已用时 {{ elapsedText(run) }}</template></div>
         <div class="question">{{ run.prompt }}</div>
         <p v-if="run.status === 'running' && progressText(run)" class="muted">{{ progressText(run) }}</p>
         <img v-for="id in run.attachment_ids" :key="id" class="chat-image" :src="'/api/workbench/images/' + id" alt="本轮提问的图片" />
@@ -373,16 +480,33 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           <div v-if="c.quote">{{ c.quote }}</div>
         </div>
         <div v-if="run.answer" class="answer" v-html="renderMd(run.answer)"></div>
+        <button v-if="run.answer" class="copy-answer" type="button" @click="copyAnswer(run)">复制回答</button>
         <p v-if="run.error" class="error">{{ run.error }}</p>
         <button v-if="run.status === 'failed' || run.status === 'cancelled'" class="reedit" @click="reedit(run)">重新编辑</button>
-        <template v-for="(t, i) in run.tool_calls" :key="'t' + i">
-          <button v-if="(t.result as any)?.text_source === 'original_pdf_page'" class="tool-source" @click="orchestrator?.jump({ paper_id: (t.result as any).paper_id, page: (t.result as any).page, file_version: '', quote: '', rects: [] })">
-            核对原文：第 {{ (t.result as any).page }} 页
-          </button>
-        </template>
+        <details v-if="run.tool_calls.length" class="tool-group">
+          <summary>工具调用 {{ run.tool_calls.length }} 项（已折叠）</summary>
+          <div v-for="(t, i) in run.tool_calls" :key="'t' + i" class="tool-call">
+            <button v-if="(t.result as any)?.text_source === 'original_pdf_page'" type="button" @click="orchestrator?.jump({ paper_id: (t.result as any).paper_id, page: (t.result as any).page, file_version: '', quote: '', rects: [] })">
+              核对原文：第 {{ (t.result as any).page }} 页
+            </button>
+            <strong>{{ toolCallName(t) }}</strong>
+            <pre>{{ JSON.stringify(t, null, 2) }}</pre>
+          </div>
+        </details>
+        <details class="execution-details">
+          <summary>执行详情</summary>
+          <dl>
+            <div><dt>运行编号</dt><dd>{{ run.id }}</dd></div>
+            <div><dt>技能 / 版本</dt><dd>{{ run.skill }} / {{ run.skill_version || '未提供' }}</dd></div>
+            <div><dt>模型</dt><dd>{{ run.model || '未提供' }}</dd></div>
+            <div><dt>开始 / 结束</dt><dd>{{ run.created_at || '未提供' }} → {{ run.finished_at || '未提供' }}</dd></div>
+            <div><dt>费用估算</dt><dd>{{ run.cli_estimated_cost_usd === null ? '未提供' : `$${run.cli_estimated_cost_usd.toFixed(4)}（CLI 估算，非实际账单）` }}</dd></div>
+          </dl>
+        </details>
         <p v-if="run.usage && 'input_tokens' in run.usage" class="usage muted">本轮输入 {{ run.usage.input_tokens }} / 输出 {{ run.usage.output_tokens }} tokens{{ (run.metadata as any)?.session_mode === 'native_resume' ? ' · 原生续聊' : '' }}</p>
       </article>
     </div>
+    <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
     <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
       <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">
         <strong>{{ c.paper_id === paperId ? '当前论文' : '引用论文' }}</strong>
@@ -437,7 +561,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .composer-footer span { font-size:10px; }
 .composer-footer button { padding:6px 14px; font-size:12px; }
 .reader-composer textarea { width:100%; resize:vertical; min-height:88px; max-height:220px; font-size:13px; }
-.chat-panel { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width:0; }
+.chat-panel { position:relative; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width:0; }
 .agent-state { padding: var(--space-2) var(--space-3); font-size: 12px; border-bottom: 1px solid var(--border); }
 .reader-chat { flex: 1; min-height:0; overflow-wrap:anywhere; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
 .chat-turn { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); background: var(--bg); display: flex; flex-direction: column; gap: var(--space-2); }
@@ -472,5 +596,21 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .upload-error { display:flex; align-items:center; gap:6px; margin:0; font-size:11px; }
 .upload-error button { padding:2px 6px; font-size:10px; }
 .chat-toast { color: var(--danger); padding: 0 var(--space-3); font-size: 12px; }
+.agent-state { display:flex; align-items:center; gap:8px; }
+.run-meta { margin-left:auto; }
+.stop-run { padding:3px 8px; font-size:10px; flex-shrink:0; }
+.load-older { align-self:center; font-size:11px; padding:5px 10px; }
+.tool-group,.execution-details { border-top:1px dashed var(--border); padding-top:var(--space-2); font-size:11px; }
+.tool-group summary,.execution-details summary { cursor:pointer; color:var(--text-muted); }
+.tool-call { display:grid; gap:4px; padding:var(--space-2) 0; }
+.tool-call pre { max-height:180px; overflow:auto; margin:0; padding:var(--space-2); border-radius:var(--radius); background:var(--surface); font-size:10px; }
+.execution-details dl { display:grid; gap:4px; margin:var(--space-2) 0 0; }
+.execution-details div { display:grid; grid-template-columns:90px 1fr; gap:var(--space-2); }
+.execution-details dt { color:var(--text-muted); }
+.execution-details dd { margin:0; min-width:0; overflow-wrap:anywhere; }
+.copy-answer { align-self:flex-start; font-size:10px; padding:3px 7px; }
+.new-content { position:absolute; right:var(--space-4); bottom:205px; z-index:7; padding:5px 10px; font-size:11px; border-color:var(--accent); color:var(--accent); background:var(--surface); box-shadow:0 5px 16px rgb(0 0 0 / .12); }
+.answer :deep(table) { display:block; max-width:100%; overflow-x:auto; }
+.answer :deep(img) { max-width:100%; height:auto; }
 @media(max-width:700px) { .command-menu { bottom:150px; } }
 </style>

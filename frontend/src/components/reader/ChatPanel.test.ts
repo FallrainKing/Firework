@@ -189,3 +189,66 @@ describe('ChatPanel research composer', () => {
 })
 
 function largeBody() { return new Array(5 * 1024 * 1024 + 1).fill('x').join('') }
+
+describe('ChatPanel long conversation', () => {
+  it('pages older history without duplicating runs and keeps the scroll anchor', async () => {
+    vi.spyOn(sessionsApi, 'runs')
+      .mockResolvedValueOnce({ runs: [run({ id: 'r2', created_at: '2026-01-02T00:00:00Z' })], has_more: true, next_before: 90 })
+      .mockResolvedValueOnce({ runs: [run({ id: 'r1', created_at: '2026-01-01T00:00:00Z' })], has_more: false, next_before: null })
+    const wrapper = await mountPanel()
+    await wrapper.find('.load-older').trigger('click')
+    await flushPromises()
+    expect(sessionsApi.runs).toHaveBeenLastCalledWith(5, 90, 50)
+    expect(wrapper.findAll('.chat-turn')).toHaveLength(2)
+    expect(wrapper.find('.load-older').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not force scrolling when the reader is above the latest run', async () => {
+    vi.spyOn(agentApi, 'createRun').mockResolvedValue(run({ id: 'r2' }))
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue(run({ id: 'r2' }))
+    const wrapper = await mountPanel()
+    const el = wrapper.find('.reader-chat').element as HTMLElement
+    Object.defineProperty(el, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: 100, configurable: true })
+    el.scrollTop = 0
+    await el.dispatchEvent(new Event('scroll'))
+    await wrapper.find('textarea').setValue('新问题')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('.new-content').text()).toContain('新内容，回到底部')
+    await wrapper.find('.new-content').trigger('click')
+    expect(wrapper.find('.new-content').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps a visible stop control and cancels the active run', async () => {
+    vi.spyOn(sessionsApi, 'runs').mockResolvedValue({ runs: [run({ id: 'r-active', status: 'running' })], has_more: false, next_before: null })
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue(run({ id: 'r-active', status: 'running' }))
+    vi.spyOn(agentApi, 'cancelRun').mockResolvedValue(run({ id: 'r-active', status: 'cancelled' }))
+    const wrapper = await mountPanel()
+    expect(wrapper.find('.agent-state').text()).toContain('已用时')
+    await wrapper.find('.stop-run').trigger('click')
+    await flushPromises()
+    expect(agentApi.cancelRun).toHaveBeenCalledWith('r-active')
+    wrapper.unmount()
+  })
+
+  it('collapses tool activity and exposes real execution details', async () => {
+    vi.spyOn(sessionsApi, 'runs').mockResolvedValue({
+      runs: [run({
+        tool_calls: [{ name: 'read_page', result: { text_source: 'original_pdf_page', page: 2 } }],
+        model: 'test-model',
+        cli_estimated_cost_usd: 0.0123,
+      })],
+      has_more: false,
+      next_before: null,
+    })
+    const wrapper = await mountPanel()
+    expect(wrapper.find('.tool-group summary').text()).toContain('工具调用 1 项（已折叠）')
+    await wrapper.find('.execution-details summary').trigger('click')
+    expect(wrapper.find('.execution-details').text()).toContain('test-model')
+    expect(wrapper.find('.execution-details').text()).toContain('CLI 估算，非实际账单')
+    wrapper.unmount()
+  })
+})

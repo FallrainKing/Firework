@@ -80,6 +80,7 @@ function tabLabel(tab: { paper_id: number }): string {
         >×</button>
       </div>
     </div>
+    <button class="tab-add" aria-label="新增论文标签" @click="emit('add')">＋</button>
     <div v-if="hasOverflow" class="overflow-wrap">
       <button class="tab-overflow" :aria-expanded="overflowOpen" aria-haspopup="true" @click="overflowOpen = !overflowOpen">⋯</button>
       <div v-if="overflowOpen" class="overflow-menu" role="menu" aria-label="更多论文标签">
@@ -96,14 +97,13 @@ function tabLabel(tab: { paper_id: number }): string {
         </button>
       </div>
     </div>
-    <button class="tab-add" aria-label="新增论文标签" @click="emit('add')">＋</button>
   </div>
 </template>
 
 <style scoped>
-.paper-tab-row { position:relative; display:flex; align-items:stretch; gap:0; padding:8px 12px 0; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; min-height:46px; max-width:100%; overflow:hidden; }
-.paper-tabs { display:flex; gap:4px; overflow:hidden; flex:1; min-width:0; }
-.paper-tab { display:flex; align-items:center; gap:8px; flex:0 1 180px; min-width:72px; padding:8px 8px 8px 10px; border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; background:none; cursor:pointer; white-space:nowrap; color:var(--text-muted); font-size:12px; }
+.paper-tab-row { position:relative; display:flex; align-items:stretch; gap:0; padding:8px 12px 0; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; min-height:46px; max-width:100%; min-width:0; }
+.paper-tabs { display:flex; gap:4px; overflow:hidden; flex:0 1 auto; min-width:0; }
+.paper-tab { display:flex; align-items:center; gap:8px; flex:0 1 180px; width:180px; max-width:180px; min-width:72px; padding:8px 8px 8px 10px; border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; background:none; cursor:pointer; white-space:nowrap; color:var(--text-muted); font-size:12px; }
 .paper-tab.active { border-color:var(--border); background:var(--bg); color:var(--text); box-shadow:inset 0 2px var(--accent); }
 .tab-title { overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
 .status-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
@@ -115,7 +115,7 @@ function tabLabel(tab: { paper_id: number }): string {
 .tab-close:hover { color:var(--danger); }
 .tab-add,.tab-home { padding:6px 10px; margin-bottom:4px; border:0; background:none; font-size:12px; white-space:nowrap; flex-shrink:0; }
 .tab-home { margin-right:8px; color:var(--text-muted); }.tab-home.active { color:var(--accent); background:var(--accent-soft); }
-.overflow-wrap { position:relative; display:flex; align-items:center; flex-shrink:0; }
+.overflow-wrap { margin-left:auto; position:relative; display:flex; align-items:center; flex-shrink:0; }
 .tab-overflow { border:0; background:none; padding:6px 8px; color:var(--text-muted); }
 .overflow-menu { position:absolute; top:100%; right:0; z-index:40; min-width:220px; max-width:min(320px,90vw); max-height:50vh; overflow:auto; background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); }
 .overflow-menu button { display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; border:0; background:none; text-align:left; color:var(--text); }

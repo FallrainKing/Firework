@@ -141,37 +141,6 @@ defineExpose({ flush, orchestrator: orch })
     :data-mobile="layout.mobileMode.value"
     :style="{ '--aux-width': layout.layout.value.left_width + 'px', '--chat-width': layout.layout.value.right_width + 'px' }"
   >
-    <div class="reader-top">
-      <span class="reader-title">{{ orch.profile.value?.title ?? '论文阅读' }}</span>
-      <div class="page-controls">
-        <button aria-label="上一页" @click="engine?.jump(pageInput - 1)">‹</button>
-        <input v-model.number="pageInput" type="number" min="1" :max="orch.doc.value?.page_count ?? 1" aria-label="页码" @change="engine?.jump(pageInput)" @keydown.enter="engine?.jump(pageInput)" />
-        <span class="muted">/ {{ orch.doc.value?.page_count ?? '—' }}</span>
-        <button aria-label="下一页" @click="engine?.jump(pageInput + 1)">›</button>
-      </div>
-      <select class="zoom" :value="engine?.zoom ?? 'fit'" aria-label="缩放" @change="engine?.setZoom(($event.target as HTMLSelectElement).value)">
-        <option value="fit">适合宽度</option>
-        <option value="1">100%</option>
-        <option value="1.25">125%</option>
-        <option value="1.5">150%</option>
-        <option value="2">200%</option>
-      </select>
-      <div v-if="!narrow" class="tools" role="group" aria-label="阅读工具">
-        <button :aria-pressed="mode === 'select'" @click="setTool('select')">选择</button>
-        <button :aria-pressed="mode === 'pen'" @click="setTool('pen')">画笔</button>
-        <button :aria-pressed="mode === 'erase'" @click="setTool('erase')">橡皮</button>
-        <input v-model="color" type="color" aria-label="批注颜色" @change="engine && (engine.color = color)" />
-      </div>
-      <div v-if="!narrow" class="layout-presets" role="group" aria-label="布局预设">
-        <button @click="layout.applyPreset('reading')">阅读优先</button>
-        <button @click="layout.applyPreset('discussion')">讨论优先</button>
-        <button @click="layout.applyPreset('default')">默认</button>
-      </div>
-      <button v-if="!narrow" class="toggle-left" aria-label="收起或展开侧栏" @click="layout.toggle('left')">◧</button>
-      <button v-if="!narrow" class="toggle-chat" aria-label="收起或展开会话" @click="layout.toggle('right')">◨</button>
-      <button v-if="narrow" class="mobile-more" aria-label="更多操作" :aria-expanded="mobileToolsOpen" @click="mobileToolsOpen = !mobileToolsOpen">⋯</button>
-    </div>
-
     <div class="reader-body">
       <aside class="left-pane">
         <ReaderSidebar ref="sidebarRef" :doc="orch.doc.value" :session="orch.session.value" :orchestrator="orch" />
@@ -182,20 +151,51 @@ defineExpose({ flush, orchestrator: orch })
         @pointerdown="layout.startDrag('left', $event, $event.currentTarget as HTMLElement, layout.layout.value.left_width)"
         @keydown="layout.onResizerKey('left', $event)"
       ></div>
-      <main class="pdf-pane">
-        <div ref="scrollEl" class="pdf-scroll">
-          <div ref="pagesEl" class="pdf-pages"></div>
+      <main class="pdf-pane" :aria-label="'论文原文：' + (orch.profile.value?.title ?? '论文阅读')">
+        <div class="reader-top" role="toolbar" aria-label="论文阅读工具栏">
+          <div class="page-controls">
+            <button aria-label="上一页" @click="engine?.jump(pageInput - 1)">‹</button>
+            <input v-model.number="pageInput" type="number" min="1" :max="orch.doc.value?.page_count ?? 1" aria-label="页码" @change="engine?.jump(pageInput)" @keydown.enter="engine?.jump(pageInput)" />
+            <span class="muted">/ {{ orch.doc.value?.page_count ?? '—' }}</span>
+            <button aria-label="下一页" @click="engine?.jump(pageInput + 1)">›</button>
+          </div>
+          <select class="zoom" :value="engine?.zoom ?? 'fit'" aria-label="缩放" @change="engine?.setZoom(($event.target as HTMLSelectElement).value)">
+            <option value="fit">适合宽度</option>
+            <option value="1">100%</option>
+            <option value="1.25">125%</option>
+            <option value="1.5">150%</option>
+            <option value="2">200%</option>
+          </select>
+          <div v-if="!narrow" class="tools" role="group" aria-label="阅读工具">
+            <button :aria-pressed="mode === 'select'" @click="setTool('select')">选择</button>
+            <button :aria-pressed="mode === 'pen'" @click="setTool('pen')">画笔</button>
+            <button :aria-pressed="mode === 'erase'" @click="setTool('erase')">橡皮</button>
+            <input v-model="color" type="color" aria-label="批注颜色" @change="engine && (engine.color = color)" />
+          </div>
+          <div v-if="!narrow" class="layout-presets" role="group" aria-label="布局预设">
+            <button @click="layout.applyPreset('reading')">阅读优先</button>
+            <button @click="layout.applyPreset('discussion')">讨论优先</button>
+            <button @click="layout.applyPreset('default')">默认</button>
+          </div>
+          <button v-if="!narrow" class="toggle-left" aria-label="收起或展开侧栏" @click="layout.toggle('left')">◧</button>
+          <button v-if="!narrow" class="toggle-chat" aria-label="收起或展开会话" @click="layout.toggle('right')">◨</button>
+          <button v-if="narrow" class="mobile-more" aria-label="更多操作" :aria-expanded="mobileToolsOpen" @click="mobileToolsOpen = !mobileToolsOpen">⋯</button>
         </div>
-        <div v-if="orch.loading.value || orch.loadError.value" class="pdf-error" role="status">
-          <strong>{{ orch.loading.value ? '正在打开论文…' : '暂时无法打开全文' }}</strong><p>{{ orch.loadError.value }}</p>
-          <button v-if="orch.missingPdf.value" class="primary" @click="emit('open-import', paperId)">补充 PDF 全文</button>
-        </div>
-        <div v-if="selected" class="selection-actions" :style="popupStyle" @pointerdown.prevent>
-          <button data-selection="explain" @click="runAction('explain')">解释</button>
-          <button data-selection="translate" @click="runAction('translate')">翻译</button>
-          <button data-selection="highlight" @click="runAction('highlight')">高亮</button>
-          <button data-selection="note" @click="runAction('note')">批注</button>
-          <button data-selection="chat" @click="runAction('chat')">加入对话</button>
+        <div class="pdf-document">
+          <div ref="scrollEl" class="pdf-scroll">
+            <div ref="pagesEl" class="pdf-pages"></div>
+          </div>
+          <div v-if="orch.loading.value || orch.loadError.value" class="pdf-error" role="status">
+            <strong>{{ orch.loading.value ? '正在打开论文…' : '暂时无法打开全文' }}</strong><p>{{ orch.loadError.value }}</p>
+            <button v-if="orch.missingPdf.value" class="primary" @click="emit('open-import', paperId)">补充 PDF 全文</button>
+          </div>
+          <div v-if="selected" class="selection-actions" :style="popupStyle" @pointerdown.prevent>
+            <button data-selection="explain" @click="runAction('explain')">解释</button>
+            <button data-selection="translate" @click="runAction('translate')">翻译</button>
+            <button data-selection="highlight" @click="runAction('highlight')">高亮</button>
+            <button data-selection="note" @click="runAction('note')">批注</button>
+            <button data-selection="chat" @click="runAction('chat')">加入对话</button>
+          </div>
         </div>
       </main>
       <div
@@ -247,12 +247,11 @@ defineExpose({ flush, orchestrator: orch })
 <style scoped>
 .reading-layout { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .reader-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; min-height:50px; flex-shrink:0; }
-.reader-title { font-weight: 500; font-size:12px; margin-right:auto; max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-controls { display:flex; gap:6px; min-width:0; }
 .reader-session { flex:1; min-width:0; max-width:100%; font-size:11px; padding:5px; }
 .new-session { flex-shrink:0; font-size:11px; padding:5px 8px; }
 .reader-top button,.reader-top select { padding:4px 7px; font-size:12px; }
-.page-controls { display: flex; align-items: center; gap: var(--space-1); }
+.page-controls { flex-shrink:0; display: flex; align-items: center; gap: var(--space-1); }
 .page-controls input { width: 64px; }
 .tools { display: flex; gap: var(--space-1); align-items: center; }
 .tools button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
@@ -268,7 +267,8 @@ defineExpose({ flush, orchestrator: orch })
 .resizer { width: 6px; cursor: col-resize; touch-action:none; background:var(--surface); flex-shrink: 0; }
 .resizer:hover, .resizer:focus { background: var(--accent); outline: none; }
 .pdf-pane { flex: 1; min-width: 0; position: relative; display: flex; flex-direction: column; }
-.pdf-scroll { flex: 1; overflow: auto; background: var(--canvas); padding:20px 16px; }
+.pdf-document { flex:1; min-height:0; min-width:0; display:flex; flex-direction:column; position:relative; }
+.pdf-scroll { flex: 1; min-height:0; overflow: auto; background: var(--canvas); padding:20px 16px; }
 .pdf-pages { min-width:100%; width:max-content; display: flex; flex-direction: column; align-items: center; gap: var(--space-3); }
 .pdf-error { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); background: var(--bg); }
 .selection-actions { position: fixed; display: flex; gap: var(--space-1); padding: var(--space-1); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 30; }
@@ -280,7 +280,6 @@ defineExpose({ flush, orchestrator: orch })
 .mobile-switch button[aria-pressed='true'] { color: var(--accent); background: var(--accent-soft); }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }
 @media (max-width: 760px) {
-  .reader-title { display:none; }
   .reader-top { gap:5px; padding:6px; }
   .left-pane,.chat-pane { min-width:0; max-width:none; }
   .reader-body > .left-pane, .reader-body > .chat-pane, .reader-body > .pdf-pane, .resizer { display: none; }

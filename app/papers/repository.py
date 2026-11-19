@@ -33,7 +33,12 @@ def paper_collections(db: sqlite3.Connection, pid: int):
     ).fetchall()
 
 
-def _search_where(q, collection_id):
+READING_STATUSES = ('unread', 'reading', 'read')
+
+
+def _search_where(q, collection_id, reading_status=None):
+    if reading_status is not None and reading_status not in READING_STATUSES:
+        raise ValueError('reading_status must be unread, reading or read')
     where = " WHERE (instr(lower(coalesce(p.title,'')),lower(?))>0 OR instr(lower(coalesce(p.abstract,'')),lower(?))>0 OR instr(lower(coalesce(p.authors,'')),lower(?))>0 OR instr(lower(p.affiliations),lower(?))>0 OR instr(lower(p.brief_summary),lower(?))>0)"
     args = [q] * 5
     if collection_id is not None:
@@ -42,16 +47,27 @@ def _search_where(q, collection_id):
         else:
             where += ' AND EXISTS(SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id AND x.collection_id=?)'
             args.append(collection_id)
+    if reading_status is not None:
+        where += " AND (CASE WHEN EXISTS(SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id JOIN agent_runs ar ON ar.conversation_id=c.id WHERE cp.paper_id=p.id AND c.skill='paper_read' AND ar.status='succeeded') THEN 'read' WHEN EXISTS(SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id WHERE cp.paper_id=p.id AND c.skill='paper_read') THEN 'reading' ELSE 'unread' END)=?"
+        args.append(reading_status)
     return where, args
 
 
-def count_papers(db: sqlite3.Connection, q: str, collection_id: int | None) -> int:
-    where, args = _search_where(q, collection_id)
+def reading_status(db: sqlite3.Connection, pid: int) -> str:
+    if db.execute("SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id JOIN agent_runs ar ON ar.conversation_id=c.id WHERE cp.paper_id=? AND c.skill='paper_read' AND ar.status='succeeded' LIMIT 1", (pid,)).fetchone():
+        return 'read'
+    if db.execute("SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id WHERE cp.paper_id=? AND c.skill='paper_read' LIMIT 1", (pid,)).fetchone():
+        return 'reading'
+    return 'unread'
+
+
+def count_papers(db: sqlite3.Connection, q: str, collection_id: int | None, reading_status: str | None = None) -> int:
+    where, args = _search_where(q, collection_id, reading_status)
     return db.execute('SELECT count(*) FROM papers p' + where, args).fetchone()[0]
 
 
-def search_papers(db: sqlite3.Connection, q: str, collection_id: int | None, limit: int, offset: int):
-    where, args = _search_where(q, collection_id)
+def search_papers(db: sqlite3.Connection, q: str, collection_id: int | None, limit: int, offset: int, reading_status: str | None = None):
+    where, args = _search_where(q, collection_id, reading_status)
     return db.execute(
         'SELECT p.* FROM papers p' + where + ' ORDER BY p.id DESC LIMIT ? OFFSET ?',
         args + [limit, offset],

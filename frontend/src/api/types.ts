@@ -80,6 +80,7 @@ export interface Paper {
   doi: string | null
   arxiv_id: string | null
   status: string
+  reading_status: 'unread' | 'reading' | 'read'
   collections: Collection[]
   thumbnail_url: string | null
   image_caption: string

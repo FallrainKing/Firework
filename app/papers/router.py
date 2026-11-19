@@ -21,8 +21,8 @@ async def create_collection(body: CollectionCreate, request: Request):
 
 
 @router.get('/papers')
-async def papers(request: Request, q: str = Query('', max_length=200), collection_id: int | None = None, limit: int = Query(60, ge=1, le=100), offset: int = Query(0, ge=0)):
-    return service.papers_view(request.app.state.db, q, collection_id, limit, offset)
+async def papers(request: Request, q: str = Query('', max_length=200), collection_id: int | None = None, reading_status: str | None = Query(None, pattern='^(unread|reading|read)$'), limit: int = Query(60, ge=1, le=100), offset: int = Query(0, ge=0)):
+    return service.papers_view(request.app.state.db, q, collection_id, reading_status, limit, offset)
 
 
 @router.get('/papers/{paper_id}')

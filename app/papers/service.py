@@ -43,6 +43,8 @@ def card(db: sqlite3.Connection, row) -> dict:
     d['thumbnail_url'] = f"/api/library/papers/{d['id']}/thumbnail" if d['pdf_path'] else None
     d['image_caption'] = '原始 PDF 首页预览' if d['pdf_path'] else '书目信息 · 全文待补充'
     d['has_pdf'] = bool(d['pdf_path'])
+    # Derived from reading sessions/runs, never from the import status `ready`.
+    d['reading_status'] = repo.reading_status(db, d['id'])
     d.pop('pdf_path', None)
     return d
 
@@ -64,9 +66,9 @@ def create_collection(db: sqlite3.Connection, body: CollectionCreate) -> dict:
     return {'id': cur.lastrowid, 'name': name}
 
 
-def papers_view(db, q='', collection_id=None, limit=60, offset=0) -> dict:
-    total = repo.count_papers(db, q, collection_id)
-    rows = repo.search_papers(db, q, collection_id, limit, offset)
+def papers_view(db, q='', collection_id=None, reading_status=None, limit=60, offset=0) -> dict:
+    total = repo.count_papers(db, q, collection_id, reading_status)
+    rows = repo.search_papers(db, q, collection_id, limit, offset, reading_status)
     return {'papers': [card(db, r) for r in rows], 'total': total, 'offset': offset, 'has_more': offset + len(rows) < total}
 
 

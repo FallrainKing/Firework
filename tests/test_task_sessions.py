@@ -26,6 +26,22 @@ def test_templates_and_draft_session_do_not_call_agent(client):
     assert not session['native_ready'] and session['run_count']==0
     assert c.get('/api/agent/runs').json()['runs']==[]
 
+def test_library_reading_status_is_derived_from_reading_tasks_not_import_ready(client):
+    c,s=client
+    pid=paper(s,'Reading status')
+    assert c.get('/api/library/papers').json()['papers'][0]['reading_status']=='unread'
+    session=c.post('/api/sessions',json={'template_id':'read','paper_ids':[pid]}).json()['session']
+    assert c.get('/api/library/papers').json()['papers'][0]['reading_status']=='reading'
+    with sqlite3.connect(s.db_path) as db:
+        db.execute(
+            "INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status,answer,usage_json,tool_calls_json,metadata_json,context_json,purpose,attachment_ids_json,progress_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ('reading-status-run','reading-status-key',session['id'],'paper_read','read','succeeded','done','{}','[]','{}','[]','chat','[]','{}'),
+        )
+        db.commit()
+    data=c.get('/api/library/papers?reading_status=read').json()
+    assert data['total']==1 and data['papers'][0]['reading_status']=='read'
+    assert c.get('/api/library/papers?reading_status=unread').json()['total']==0
+
 def test_comparison_selection_and_invalid_materials(client):
     c,s=client;a=paper(s,'A');b=paper(s,'B')
     assert c.post('/api/sessions',json={'template_id':'compare','paper_ids':[a,a]}).status_code==400

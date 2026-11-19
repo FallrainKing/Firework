@@ -5,7 +5,7 @@ import LibraryGrid from './LibraryGrid.vue'
 import { papersApi } from '@/api/papers'
 import { sessionsApi } from '@/api/sessions'
 
-const paper = { id: 1, title: 'Attention', authors: ['A'], affiliations: [], abstract: 'abs', brief_summary: null, summary: 'abs', doi: null, arxiv_id: null, status: 'ready', collections: [{ id: 2, name: '基础模型' }], thumbnail_url: '/api/library/papers/1/thumbnail', image_caption: '原始 PDF 首页预览', has_pdf: true, metadata_version: 1 }
+const paper = { id: 1, title: 'Attention', authors: ['A'], affiliations: [], abstract: 'abs', brief_summary: null, summary: 'abs', doi: null, arxiv_id: null, status: 'ready', reading_status: 'unread', collections: [{ id: 2, name: '基础模型' }], thumbnail_url: '/api/library/papers/1/thumbnail', image_caption: '原始 PDF 首页预览', has_pdf: true, metadata_version: 1 }
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -29,6 +29,14 @@ describe('LibraryGrid', () => {
     expect(wrapper.find('img').attributes('src')).toBe('/api/library/papers/1/thumbnail')
   })
 
+  it('switches between card and compact density', async () => {
+    const wrapper = await mountGrid()
+    expect(wrapper.find('.paper-grid').classes()).not.toContain('compact')
+    await wrapper.find('[aria-label="列表密度"] button[aria-pressed="false"]').trigger('click')
+    expect(wrapper.find('.paper-grid').classes()).toContain('compact')
+    wrapper.unmount()
+  })
+
   it('read button emits open-paper', async () => {
     const wrapper = await mountGrid()
     await wrapper.find('button.read-paper').trigger('click')
@@ -42,6 +50,14 @@ describe('LibraryGrid', () => {
     expect(wrapper.emitted('open-import')?.[0]).toEqual([1])
   })
 
+  it('reading status filter uses recorded reading task status', async () => {
+    const wrapper = await mountGrid()
+    await wrapper.find('select.reading-filter').setValue('read')
+    await flushPromises()
+    expect(papersApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ reading_status: 'read', offset: 0 }))
+    wrapper.unmount()
+  })
+
   it('collection filter passes collection_id', async () => {
     const wrapper = await mountGrid()
     await wrapper.find('select.collection-filter').setValue('2')
@@ -49,17 +65,29 @@ describe('LibraryGrid', () => {
     expect(papersApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ collection_id: 2, offset: 0 }))
   })
 
+  it('shows the batch bar only after selection', async () => {
+    const wrapper = await mountGrid()
+    expect(wrapper.find('.batch-bar').exists()).toBe(false)
+    await wrapper.find('input.paper-select').setValue(true)
+    expect(wrapper.find('.batch-bar').exists()).toBe(true)
+    expect(wrapper.find('.batch-bar').text()).toContain('已选择 1 篇')
+    wrapper.unmount()
+  })
+
   it('compare selected requires two papers', async () => {
     const wrapper = await mountGrid()
+    await wrapper.find('input.paper-select').setValue(true)
     expect(wrapper.find('button.compare-selected').attributes('disabled')).toBeDefined()
     await wrapper.find('input.paper-select').setValue(true)
     expect(wrapper.find('button.compare-selected').attributes('disabled')).toBeDefined()
   })
 
-  it('edit dialog submits metadata_version and surfaces conflict', async () => {
+  it('opens management and full information from the more menu', async () => {
     vi.spyOn(papersApi, 'get').mockResolvedValue(paper as never)
     vi.spyOn(papersApi, 'patch').mockRejectedValue(Object.assign(new Error('论文信息已更新，请刷新后重试'), { status: 409 }))
     const wrapper = await mountGrid()
+    await wrapper.find('button.more-actions').trigger('click')
+    expect(wrapper.find('.card-menu').text()).toContain('完整信息 / 管理信息')
     await wrapper.find('button.edit-paper').trigger('click')
     await flushPromises()
     await wrapper.find('button.save-paper').trigger('click')

@@ -1,6 +1,6 @@
 # 当前环境、部署与排障
 
-核对日期：2026-11-19（Asia/Shanghai）；认证版本基于 `e25954e`。本文件为当前维护正文，文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+核对日期：2026-11-19（Asia/Shanghai）；认证版本功能提交 `79e6cb2` 与 HTTPS 修复 `b46f89e`（基于 `e25954e`）。本文件为当前维护正文，文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
 ## 1. 当前实例
 
@@ -148,3 +148,5 @@ AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_t
 旧的匿名五步冒烟在认证版会收到 401；先按认证说明签发 5 分钟私有维护会话，再设置 AUTH_SESSION_FILE 执行。生产 Cookie 只通过 HTTPS，临时维护文件只在受信任宿主使用。HTTP 本地开发可显式配置 RESEARCH_AUTH_COOKIE_SECURE=0，使用单独的 research_session_dev Cookie 名，不用于公网。
 
 认证升级的完整备份、旧 app/backup 镜像和提交号见本次变更记录。回退不能混合新身份库与其他日期研究库；恢复后旧浏览器会话必须撤销。
+
+认证版已实际上线：完整发布前备份为 backups/before-auth-complete-20261119-2248，发布后为 backups/after-auth-20261119-2250；app/backup 回退镜像分别带 before-auth-20261119 标签。原 backup 容器曾滞后于源码，本次已重建替换并验证包含身份库与账号归档。维护冒烟使用短期文件并在结束后撤销；源码提交与完整验证见 [变更记录](CHANGELOG.md)。

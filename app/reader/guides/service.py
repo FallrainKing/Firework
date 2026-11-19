@@ -128,6 +128,11 @@ def submit(db,settings,r,body:GuideResult):
     return {'staged':True,'items':len(resolved),'warnings':warnings,'message':'执行成功后再发布；不修改人工批注，无法唯一定位的内容只显示页级笔记。'}
 
 
+def location_status(anchors):
+    verified=sum(a['status']=='verified' for a in anchors)
+    return 'verified' if verified==len(anchors) and verified else 'mixed' if verified else 'page_only'
+
+
 def publish(db,settings,r):
     paper=reader_service.paper(db,r['paper_id']);info=pages.document_info(settings,paper)
     if info['file_version']!=r['file_version']:raise ServiceError(409,'文件版本已变化，旧结果不激活')
@@ -136,7 +141,7 @@ def publish(db,settings,r):
     db.execute('UPDATE reader_guide_tasks SET active=0 WHERE paper_id=?',(r['paper_id'],))
     for resolved in data['_resolved']:
         item=resolved['item'];anchors=resolved['anchors'];iid=uuid.uuid4().hex
-        location='verified' if all(a['status']=='verified' for a in anchors) else 'page_only'
+        location=location_status(anchors)
         db.execute('INSERT INTO reader_guide_items VALUES (?,?,?,?,?,?)',(iid,r['id'],item['key'],dump(item),dump(anchors),location))
         content=(f"### {item['title']}\n\n**为什么重要**\n\n{item['why_important_md']}\n\n**解释**\n\n{item['explanation_md']}")[:7800]
         for a in anchors:
@@ -177,7 +182,7 @@ def view(db,r,cached=False):
     if payload:
         for row in db.execute('SELECT * FROM reader_guide_items WHERE task_id=? ORDER BY rowid',(r['id'],)):
             anns=[dict(a) for a in db.execute('SELECT id,page,deleted,kind FROM reader_annotations WHERE guide_item_id=? AND origin=?',(row['id'],'ai'))]
-            d['items'].append({'id':row['id'],'item':json.loads(row['item_json']),'anchors':json.loads(row['anchors_json']),'location_status':row['location_status'],'annotations':anns})
+            d['items'].append({'id':row['id'],'item':json.loads(row['item_json']),'anchors':json.loads(row['anchors_json']),'location_status':location_status(json.loads(row['anchors_json'])),'annotations':anns})
     a=db.execute('SELECT usage_json,cli_estimated_cost_usd FROM agent_runs WHERE id=?',(r['agent_run_id'],)).fetchone()
     d['usage']=json.loads(a[0]) if a else {};d['cost']=a[1] if a else None
     return d

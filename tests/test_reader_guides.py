@@ -137,3 +137,10 @@ def test_duplicate_quote_requires_disambiguation():
     assert locate(block,TextAnchor(type='text',block_id='block',quote='sameword'))['status']=='ambiguous'
     assert locate(block,TextAnchor(type='text',block_id='block',quote='sameword',prefix='sameword'))['status']=='verified'
     assert normalized('ﬁ  x\n− 1')=='fix-1'
+
+
+def test_mixed_anchor_status_is_not_misreported_as_unlocated():
+    from app.reader.guides.service import location_status
+    assert location_status([{'status':'verified'},{'status':'page_only'}])=='mixed'
+    assert location_status([{'status':'verified'}])=='verified'
+    assert location_status([{'status':'ambiguous'}])=='page_only'

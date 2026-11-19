@@ -188,3 +188,13 @@ systemctl --user restart research-agent-runner
 - 详情见《前沿追踪实现与验收记录》。
 
 - Markdown 生产依赖新增固定版本 `marked@18.2.1` 与 `dompurify@3.4.18`，依赖锁定在前端 package-lock.json，随 Docker Node 24 构建打包，无新增外部 Markdown 服务。
+
+## 2026-11-19 导读与批注更新
+
+- 发布代码基于 `cf8f62f`，功能提交 `5dac0d7`；功能分支 `feat/skill-reader-guides`，生产发布分支仍为 `release/frontier-workbench-20261119`。服务器本地提交，未推送远端。
+- Runner 协议 **4**；用户级 `research-agent-runner` 与 app 已同步更新。
+- 新迁移 `0013_reader_guides.sql`，资料位置不变；导读保存在现有 SQLite，不另建模型服务。
+- 新默认技能 `paper_guide`：最多 6 次工具、240 秒、6000 输出 token、预算参数 $0.20；仅用户确认执行，未新增收费调度。
+- 部署前备份：`/home/f/.local/state/research-assistant/backups/before-reader-guides-20261119-185306/app.db`；回退镜像 `research-assistant-app:before-reader-guides-20261119`。
+- 回退需同步旧应用与 Runner 协议；迁移采用增加字段/表方式，不直接删除新导读或旧阅读记录。
+- 验证：前端 180 项、后端相关 158 项通过，构建及现有发布检查 5/5 通过。真实验证与功能边界见《Skill导读与批注实现验收》。

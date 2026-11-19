@@ -46,7 +46,8 @@ def view(a,s):
 async def session(request:Request):
     s=store(request);a=s.session(request.cookies.get(s.cookie_name,''))
     return {'authenticated':bool(a),'account':view(a,s) if a else None,'csrf_token':a['csrf'] if a else None,
-            'registration_open':False,'admin_only':s.admin_only,'initialized':bool(s.primary_id())}
+            'registration_open':False,'admin_only':s.admin_only,'initialized':bool(s.primary_id()),
+            'secure_cookie':s.secure_cookie,'login_url':s.public_origin+'/login'}
 
 @router.post('/api/auth/login')
 async def login(body:Login,request:Request,response:Response):

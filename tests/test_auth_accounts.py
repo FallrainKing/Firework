@@ -106,6 +106,8 @@ def test_cookie_csrf_origin_and_logout(secured):
     c,app=secured
     app.state.auth_store.secure_cookie=True
     r=c.post('/api/auth/login',json={'username':'paper','password':ADMIN_PASSWORD})
+    info=c.get('/api/auth/session').json();assert info['secure_cookie'] is True
+    assert info['login_url']==app.state.auth_store.public_origin+'/login'
     cookie=r.headers['set-cookie'];assert all(v in cookie for v in ('HttpOnly','Secure','SameSite=strict','Path=/'))
     headers={'Cookie':COOKIE+'='+c.cookies.get(COOKIE),'X-CSRF-Token':r.json()['csrf_token']};c.cookies.clear()
     assert c.patch('/api/me',headers={'Cookie':headers['Cookie']},json={'display_name':'Blocked'}).status_code==403

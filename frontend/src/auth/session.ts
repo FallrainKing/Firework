@@ -1,7 +1,7 @@
 import {ref} from 'vue'
 import {api,setCsrfToken} from '@/api/client'
 export interface Account {id:string;username:string;role:'admin'|'user';enabled:number;login_allowed:boolean;created_at:number;last_login_at:number|null}
-export interface AuthSession {authenticated:boolean;account:Account|null;csrf_token:string|null;registration_open:boolean;admin_only:boolean;initialized?:boolean}
+export interface AuthSession {authenticated:boolean;account:Account|null;csrf_token:string|null;registration_open:boolean;admin_only:boolean;initialized?:boolean;secure_cookie?:boolean;login_url?:string}
 export const authState=ref<AuthSession|null>(null)
 let pending:Promise<void>|null=null
 const PRIVATE_KEYS=['research-workspace','reader-pending-','research-pending-session-','paper-ai-layer-','frontier-view-','library-density','research-theme']

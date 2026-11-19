@@ -55,3 +55,42 @@ describe('PaperTabs', () => {
     expect(wrapper.emitted('home')).toHaveLength(1)
   })
 })
+
+describe('PaperTabs status and overflow', () => {
+  it('marks draft, running and failed tabs', () => {
+    const wb = seeded()
+    wb.setTabStatus(1, { draft: true })
+    wb.setTabStatus(2, { failed: true })
+    const wrapper = mount(PaperTabs)
+    const dots = wrapper.findAll('.status-dot')
+    expect(dots[0].classes()).toContain('draft')
+    expect(dots[1].classes()).toContain('failed')
+    expect(wrapper.findAll('[role="tab"]')[0].attributes('aria-label')).toBe('Attention（有草稿）')
+    expect(wrapper.findAll('[role="tab"]')[1].attributes('aria-label')).toBe('Diffusion（失败）')
+  })
+
+  it('moves extra tabs into an overflow menu while keeping add button visible', async () => {
+    const wb = seeded()
+    wb.tabs = [1, 2, 3, 4, 5].map(id => ({ paper_id: id, session_id: null }))
+    const lib = useLibraryStore()
+    lib.papersById = Object.fromEntries(wb.tabs.map(t => [t.paper_id, { id: t.paper_id, title: `论文${t.paper_id}` }])) as never
+    const wrapper = mount(PaperTabs)
+    expect(wrapper.findAll('[role="tab"]')).toHaveLength(3)
+    expect(wrapper.find('.tab-overflow').exists()).toBe(true)
+    expect(wrapper.find('.tab-add').exists()).toBe(true)
+    await wrapper.find('.tab-overflow').trigger('click')
+    expect(wrapper.findAll('[role="menuitem"]')).toHaveLength(2)
+    await wrapper.findAll('[role="menuitem"]')[1].trigger('click')
+    expect(wb.activePaperId).toBe(5)
+    expect(wrapper.find('.overflow-menu').exists()).toBe(false)
+  })
+
+  it('close removes its transient status', () => {
+    const wb = seeded()
+    wb.setTabStatus(1, { running: true })
+    const wrapper = mount(PaperTabs)
+    expect(wrapper.find('.status-dot.running').exists()).toBe(true)
+    wrapper.findAll('.tab-close')[0].trigger('click')
+    expect(wb.tabStatuses[1]).toBeUndefined()
+  })
+})

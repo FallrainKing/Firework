@@ -4,6 +4,7 @@ import { useWorkbenchStore } from '@/stores/workbench'
 
 export type MobileMode = 'left' | 'pdf' | 'chat'
 export type Side = 'left' | 'right'
+export type LayoutPreset = 'reading' | 'discussion' | 'default'
 
 const clampWidth = (v: number) => Math.max(140, Math.min(600, Math.round(v)))
 
@@ -15,6 +16,15 @@ export function useReaderLayout() {
 
   function widthKey(side: Side): 'left_width' | 'right_width' {
     return side === 'left' ? 'left_width' : 'right_width'
+  }
+
+  function applyPreset(preset: LayoutPreset) {
+    const widths: Record<LayoutPreset, { left_width: number; right_width: number }> = {
+      reading: { left_width: 360, right_width: 180 },
+      discussion: { left_width: 150, right_width: 500 },
+      default: { left_width: 235, right_width: 340 },
+    }
+    wb.setLayout(widths[preset])
   }
 
   function nudge(side: Side, delta: number) {
@@ -34,12 +44,13 @@ export function useReaderLayout() {
     separator.setPointerCapture(e.pointerId)
     const move = (ev: PointerEvent) => {
       const delta = (ev.clientX - startX) * sign
-      wb.setLayout({ [widthKey(side)]: clampWidth(currentWidth + delta) })
+      wb.previewLayout({ [widthKey(side)]: clampWidth(currentWidth + delta) })
     }
     const finish = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', finish)
       window.removeEventListener('pointercancel', finish)
+      void wb.persist()
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', finish)
@@ -58,5 +69,5 @@ export function useReaderLayout() {
     mobileMode.value = name
   }
 
-  return { layout, mobileMode, nudge, toggle, startDrag, onResizerKey, setMobile }
+  return { layout, mobileMode, applyPreset, nudge, toggle, startDrag, onResizerKey, setMobile }
 }

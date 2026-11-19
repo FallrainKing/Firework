@@ -29,6 +29,7 @@ const popupStyle = ref<Record<string, string>>({})
 const sessions = ref<Session[]>([])
 const dialogOpen = ref(false)
 const narrow = ref(window.innerWidth <= 760)
+const mobileToolsOpen = ref(false)
 const color = ref('#f5d76e')
 const mode = ref('select')
 
@@ -155,14 +156,20 @@ defineExpose({ flush, orchestrator: orch })
         <option value="1.5">150%</option>
         <option value="2">200%</option>
       </select>
-      <div class="tools" role="group" aria-label="阅读工具">
+      <div v-if="!narrow" class="tools" role="group" aria-label="阅读工具">
         <button :aria-pressed="mode === 'select'" @click="setTool('select')">选择</button>
         <button :aria-pressed="mode === 'pen'" @click="setTool('pen')">画笔</button>
         <button :aria-pressed="mode === 'erase'" @click="setTool('erase')">橡皮</button>
         <input v-model="color" type="color" aria-label="批注颜色" @change="engine && (engine.color = color)" />
       </div>
-      <button class="toggle-left" aria-label="收起或展开侧栏" @click="layout.toggle('left')">◧</button>
-      <button class="toggle-chat" aria-label="收起或展开会话" @click="layout.toggle('right')">◨</button>
+      <div v-if="!narrow" class="layout-presets" role="group" aria-label="布局预设">
+        <button @click="layout.applyPreset('reading')">阅读优先</button>
+        <button @click="layout.applyPreset('discussion')">讨论优先</button>
+        <button @click="layout.applyPreset('default')">默认</button>
+      </div>
+      <button v-if="!narrow" class="toggle-left" aria-label="收起或展开侧栏" @click="layout.toggle('left')">◧</button>
+      <button v-if="!narrow" class="toggle-chat" aria-label="收起或展开会话" @click="layout.toggle('right')">◨</button>
+      <button v-if="narrow" class="mobile-more" aria-label="更多操作" :aria-expanded="mobileToolsOpen" @click="mobileToolsOpen = !mobileToolsOpen">⋯</button>
     </div>
 
     <div class="reader-body">
@@ -206,6 +213,25 @@ defineExpose({ flush, orchestrator: orch })
       </aside>
     </div>
 
+    <div v-if="narrow && mobileToolsOpen" class="mobile-drawer" role="dialog" aria-label="更多阅读操作">
+      <div class="drawer-row">
+        <button @click="layout.applyPreset('reading'); mobileToolsOpen = false">阅读优先</button>
+        <button @click="layout.applyPreset('discussion'); mobileToolsOpen = false">讨论优先</button>
+        <button @click="layout.applyPreset('default'); mobileToolsOpen = false">恢复默认</button>
+      </div>
+      <div class="tools" role="group" aria-label="阅读工具">
+        <button :aria-pressed="mode === 'select'" @click="setTool('select')">选择</button>
+        <button :aria-pressed="mode === 'pen'" @click="setTool('pen')">画笔</button>
+        <button :aria-pressed="mode === 'erase'" @click="setTool('erase')">橡皮</button>
+        <input v-model="color" type="color" aria-label="批注颜色" @change="engine && (engine.color = color)" />
+      </div>
+      <div class="drawer-row">
+        <button @click="layout.toggle('left'); mobileToolsOpen = false">目录面板</button>
+        <button @click="layout.toggle('right'); mobileToolsOpen = false">会话面板</button>
+        <button @click="mobileToolsOpen = false">完成</button>
+      </div>
+    </div>
+
     <div v-if="narrow" class="mobile-switch" role="group" aria-label="分区切换">
       <button :aria-pressed="layout.mobileMode.value === 'left'" @click="layout.setMobile('left')">目录</button>
       <button :aria-pressed="layout.mobileMode.value === 'pdf'" @click="layout.setMobile('pdf')">原文</button>
@@ -231,9 +257,12 @@ defineExpose({ flush, orchestrator: orch })
 .tools { display: flex; gap: var(--space-1); align-items: center; }
 .tools button[aria-pressed='true'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .tools input[type='color'] { width: 32px; height: 32px; padding: 2px; }
-.reader-body { display: flex; flex: 1; min-height: 0; }
-.left-pane { width: min(var(--aux-width), 28%); min-width:140px; flex-shrink:0; overflow:hidden; border-right: 1px solid var(--border); background: var(--surface); }
-.chat-pane { width: min(var(--chat-width), 42%); min-width:240px; flex-shrink:0; overflow:hidden; border-left: 1px solid var(--border); background: var(--surface); }
+.reader-top { overflow:hidden; min-width:0; }
+.layout-presets { display:flex; gap:4px; flex-shrink:0; }
+.mobile-more { flex-shrink:0; }
+.reader-body { display: flex; flex: 1; min-height: 0; min-width:0; overflow:hidden; }
+.left-pane { width:min(var(--aux-width), 34%); min-width:140px; flex-shrink:0; overflow:hidden; border-right: 1px solid var(--border); background: var(--surface); }
+.chat-pane { width:min(var(--chat-width), 52%); min-width:240px; flex-shrink:0; overflow:hidden; border-left: 1px solid var(--border); background: var(--surface); }
 .hide-left .left-pane, .hide-left .resizer:first-of-type { display: none; }
 .hide-chat .chat-pane, .hide-chat .resizer:last-of-type { display: none; }
 .resizer { width: 6px; cursor: col-resize; touch-action:none; background:var(--surface); flex-shrink: 0; }
@@ -244,6 +273,8 @@ defineExpose({ flush, orchestrator: orch })
 .pdf-error { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3); background: var(--bg); }
 .selection-actions { position: fixed; display: flex; gap: var(--space-1); padding: var(--space-1); background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 30; }
 .selection-actions button { padding: var(--space-1) var(--space-2); font-size: 12px; }
+.mobile-drawer { position:absolute; top:0; right:0; z-index:40; width:min(320px,100%); max-height:calc(100% - 46px); overflow:auto; background:var(--bg); border:1px solid var(--border); box-shadow:var(--shadow); }
+.drawer-row,.mobile-drawer .tools { display:flex; flex-wrap:wrap; gap:6px; padding:10px; }
 .mobile-switch { display: flex; border-top: 1px solid var(--border); }
 .mobile-switch button { flex: 1; border: none; border-radius: 0; }
 .mobile-switch button[aria-pressed='true'] { color: var(--accent); background: var(--accent-soft); }
@@ -253,6 +284,8 @@ defineExpose({ flush, orchestrator: orch })
   .reader-top { gap:5px; padding:6px; }
   .left-pane,.chat-pane { min-width:0; max-width:none; }
   .reader-body > .left-pane, .reader-body > .chat-pane, .reader-body > .pdf-pane, .resizer { display: none; }
+  .reader-top { padding:4px; gap:4px; }
+  .page-controls input { width:52px; }
   .reading-layout[data-mobile='left'] .left-pane { display: block; width: 100%; }
   .reading-layout[data-mobile='pdf'] .pdf-pane { display: flex; }
   .reading-layout[data-mobile='chat'] .chat-pane { display: block; width: 100%; }

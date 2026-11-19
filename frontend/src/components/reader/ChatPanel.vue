@@ -5,9 +5,11 @@ import { sessionsApi } from '@/api/sessions'
 import { readerApi } from '@/api/reader'
 import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
+import { useWorkbenchStore } from '@/stores/workbench'
 import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
 
 const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
+const wb = useWorkbenchStore()
 
 const QUICK: Template[] = [
   { id: 'quick_overview', name: '快速概览', description: '', kind: 'reading', skill: 'chat', prompt: '请概述当前论文的研究问题、方法、主要结论与材料覆盖范围。', builtin: 0 },
@@ -53,6 +55,13 @@ const STATES: Record<string, string> = { queued: '排队', running: '执行中',
 const canSend = computed(() => !loading.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
 const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
 const activeRun = computed(() => [...runs.value].reverse().find(run => run.status === 'queued' || run.status === 'running') ?? null)
+watch([() => props.paperId, question, contexts, attachments, activeRun], () => {
+  wb.setTabStatus(props.paperId, {
+    draft: Boolean(question.value.trim() || contexts.value.length || attachments.value.length),
+    failed: runs.value.some(run => run.status === 'failed'),
+    running: activeRun.value !== null,
+  })
+}, { deep: true })
 const visibleTemplates = computed(() => {
   const q = slashQuery.value.trim().toLowerCase()
   return templates.value.filter(t => !q || t.name.toLowerCase().includes(q) || t.prompt.toLowerCase().includes(q)).slice(0, 8)

@@ -28,6 +28,7 @@ export const useWorkbenchStore = defineStore('workbench', {
     layout: { ...DEFAULT_LAYOUT } as Layout,
     loaded: false,
     saveError: null as string | null,
+    tabStatuses: {} as Record<number, { draft: boolean; failed: boolean; running: boolean }>,
   }),
   getters: {
     snapshot(state): WorkspaceState {
@@ -63,7 +64,14 @@ export const useWorkbenchStore = defineStore('workbench', {
       }
       this.schedulePersist()
     },
+    setTabStatus(paperId: number, partial: Partial<{ draft: boolean; failed: boolean; running: boolean }>) {
+      const current = this.tabStatuses[paperId] ?? { draft: false, failed: false, running: false }
+      const next = { ...current, ...partial }
+      if (!next.draft && !next.failed && !next.running) delete this.tabStatuses[paperId]
+      else this.tabStatuses[paperId] = next
+    },
     closeTab(paperId: number) {
+      delete this.tabStatuses[paperId]
       this.tabs = this.tabs.filter(t => t.paper_id !== paperId)
       if (this.activePaperId === paperId) {
         this.activePaperId = this.tabs.length ? this.tabs[this.tabs.length - 1].paper_id : null
@@ -88,6 +96,9 @@ export const useWorkbenchStore = defineStore('workbench', {
     setLayout(partial: Partial<Layout>) {
       Object.assign(this.layout, partial)
       this.schedulePersist()
+    },
+    previewLayout(partial: Partial<Layout>) {
+      Object.assign(this.layout, partial)
     },
     schedulePersist() {
       if (persistTimer) clearTimeout(persistTimer)

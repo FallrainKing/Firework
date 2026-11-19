@@ -10,7 +10,7 @@ export const frontierApi={
  trigger:(id:number,key:string)=>api<FrontierRun>(`/api/frontier/topics/${id}/runs`,{body:{request_key:key}}),
  runs:(id:number)=>api<{runs:FrontierRun[]}>(`/api/frontier/topics/${id}/runs`),
  cancel:(id:string)=>api(`/api/frontier/runs/${id}/cancel`,{method:'POST'}),
- items:(id?:number)=>api<{items:FrontierItem[]}>('/api/frontier/candidates'+(id?`?topic_id=${id}`:'')),
+ items:(id?:number,before?:string)=>{const p=new URLSearchParams();if(id)p.set('topic_id',String(id));if(before)p.set('before',before);return api<{items:FrontierItem[];next_cursor?:string|null}>('/api/frontier/candidates?'+p)},
  reports:(id?:number,before?:number)=>{const p=new URLSearchParams();if(id)p.set('topic_id',String(id));if(before)p.set('before',String(before));return api<{reports:FrontierRun[];next_cursor:number|null}>('/api/frontier/reports?'+p)},
  discussion:(id:string)=>api<{session_id:number}>(`/api/frontier/runs/${id}/discussion`,{method:'POST'}),
  read:(id:string)=>api(`/api/frontier/reports/${id}/read-state`,{method:'PATCH'}),

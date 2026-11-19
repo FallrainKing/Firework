@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { renderMarkdown } from '@/shared/markdown'
 import { ref, watch } from 'vue'
 import StateFeedback from '@/components/StateFeedback.vue'
 import { readerApi } from '@/api/reader'
@@ -148,10 +149,7 @@ function quoteToChat(a: Annotation) {
   void orch?.selectionAction('chat', { paper_id: a.paper_id, page: a.page, file_version: a.file_version, quote: a.quote, rects: a.rects })
 }
 
-function renderMd(text: string): string {
-  if (window.mdRender) return window.mdRender(text).innerHTML
-  return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
-}
+function renderMd(text: string): string { return renderMarkdown(text) }
 
 const versionMismatch = (fv: string) => fv !== props.doc?.file_version
 
@@ -232,7 +230,7 @@ defineExpose({ focusNote, refresh, setTab })
       <article v-for="t in translations" :key="t.id" class="aux-entry">
         <button class="link" @click="locate(t)">原文 · 第 {{ t.page }} 页</button>
         <blockquote>{{ t.quote }}</blockquote>
-        <div v-if="t.status === 'succeeded'" class="answer" v-html="renderMd(t.answer)"></div>
+        <div v-if="t.status === 'succeeded'" class="answer markdown-content" v-html="renderMd(t.answer)"></div>
         <p v-else class="muted">{{ t.status === 'failed' ? '翻译失败，可重新选择原文后重试。' : t.status === 'cancelled' ? '翻译已取消，可重新选择原文后重试。' : '智能体正在翻译…' }}</p>
         <div class="entry-actions">
           <button class="delete-translation" @click="removeTranslation(t.id)">删除</button>

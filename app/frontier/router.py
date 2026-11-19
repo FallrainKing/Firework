@@ -56,7 +56,9 @@ async def discussion(ident:str,request:Request):
     return {'session_id':sid}
 
 @router.get('/candidates')
-async def candidates(request:Request,topic_id:int|None=None):return {'items':s.items(request.app.state.db,topic_id)}
+async def candidates(request:Request,topic_id:int|None=None,before:str|None=Query(None,pattern=r'^\d+:\d+$')):
+    rows=s.items(request.app.state.db,topic_id,before,51)
+    return {'items':rows[:50],'next_cursor':str(rows[49]['id'])+':'+str(rows[49]['topic_id']) if len(rows)>50 else None}
 
 @router.post('/topics/{topic_id}/items/{entity_id}/decision')
 async def decision(topic_id:int,entity_id:int,body:Decision,request:Request):return await s.decide(request.app.state.db,request.app.state,topic_id,entity_id,body)

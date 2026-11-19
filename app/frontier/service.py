@@ -91,6 +91,10 @@ async def trigger(db,state,topic_id,key):
     from ..agent.service import status_view
     health=await status_view(db)
     if not health['runner_protocol_compatible']:raise ServiceError(409,'智能体离线或版本不匹配，请先同步 Runner')
+    prior=db.execute('SELECT * FROM frontier_runs WHERE request_key=?',(key,)).fetchone()
+    if prior:
+        if prior['topic_id']!=topic_id:raise ServiceError(409,'请求编号已用于其他主题')
+        return run_view(db,prior)
     t=require(db,'frontier_topics',topic_id);cfg=json.loads(t['config_json'])
     count=db.execute("SELECT count(*) FROM frontier_runs WHERE topic_id=? AND created_at>=datetime('now','start of day')",(topic_id,)).fetchone()[0]
     if count>=cfg['daily_run_limit']:raise ServiceError(429,'今日主题执行次数已达上限，请明日再试或调整配置')
@@ -161,7 +165,7 @@ def context(db,r):
         start=r['window_start']
         if c:start=(datetime.fromisoformat(c[0])-timedelta(days=2)).strftime('%Y-%m-%d %H:%M:%S')
         windows[source]={'start':start,'end':r['window_end']}
-    return {'topic_id':r['topic_id'],'config':cfg,'windows':windows,'run_id':r['id'],'warning':'作者/团队是软匹配提示；不要宣称精确实体过滤。范围或分页截断需要在报告中说明。'}
+    return {'topic_id':r['topic_id'],'config':cfg,'windows':windows,'run_id':r['id'],'timezone':'UTC','warning':'作者/团队是软匹配提示；不要宣称精确实体过滤。范围或分页截断需要在报告中说明。'}
 
 
 def ingest(db,r,source,query,result=None,error=None):
@@ -227,9 +231,13 @@ def item_view(db,r):
     return d
 
 
-def items(db,topic_id=None):
-    where='WHERE i.topic_id=?' if topic_id else '';params=(topic_id,) if topic_id else ()
-    rows=db.execute(f'SELECT e.*,i.topic_id,i.decision,i.revision,i.approved_hash FROM frontier_items i JOIN frontier_entities e ON e.id=i.entity_id {where} ORDER BY i.last_seen DESC,e.id DESC LIMIT 200',params).fetchall()
+def items(db,topic_id=None,before=None,limit=200):
+    clauses=[];params=[]
+    if topic_id:clauses.append('i.topic_id=?');params.append(topic_id)
+    if before:
+        eid,tid=map(int,before.split(':'));clauses.append('(e.id<? OR (e.id=? AND i.topic_id<?))');params.extend([eid,eid,tid])
+    where='WHERE '+' AND '.join(clauses) if clauses else '';params.append(limit)
+    rows=db.execute(f'SELECT e.*,i.topic_id,i.decision,i.revision,i.approved_hash FROM frontier_items i JOIN frontier_entities e ON e.id=i.entity_id {where} ORDER BY e.id DESC,i.topic_id DESC LIMIT ?',params).fetchall()
     out=[item_view(db,r) for r in rows];db.commit();return out
 
 

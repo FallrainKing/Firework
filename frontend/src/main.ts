@@ -3,5 +3,9 @@ import { createPinia } from 'pinia'
 import App from './App.vue'
 import { router } from './router'
 import '@/shared/theme/tokens.css'
+import '@/shared/markdown.css'
+import { renderMarkdownElement } from '@/shared/markdown'
+
+window.mdRender = renderMarkdownElement
 
 createApp(App).use(createPinia()).use(router).mount('#app')

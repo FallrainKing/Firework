@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { renderMarkdown } from '@/shared/markdown'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { sessionsApi } from '@/api/sessions'
 import { agentApi } from '@/api/agent'
@@ -222,10 +223,7 @@ function onCreated(session: Session, startingPrompt: string) {
   void openSession(session.id)
 }
 
-function renderMd(text: string): string {
-  if (window.mdRender) return window.mdRender(text).innerHTML
-  return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
-}
+function renderMd(text: string): string { return renderMarkdown(text) }
 </script>
 
 <template>
@@ -302,7 +300,7 @@ function renderMd(text: string): string {
           <article v-for="r in runs" :key="r.id" class="message">
             <div class="message-head muted">{{ STATES[r.status] || r.status }} · {{ r.created_at }}</div>
             <div class="user-prompt">{{ r.prompt }}</div>
-            <div v-if="r.answer" class="answer" v-html="renderMd(r.answer)"></div>
+            <div v-if="r.answer" class="answer markdown-content" v-html="renderMd(r.answer)"></div>
             <p v-if="r.error" class="tool-error">{{ r.error }}</p>
             <details v-for="(call, i) in r.tool_calls" :key="i" class="source">
               <summary>{{ call.ok ? '来源已读取' : '工具失败' }} · {{ call.tool }}{{ call.query ? ' · ' + call.query : '' }}</summary>

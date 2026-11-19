@@ -170,3 +170,14 @@ def test_release_fetch_failure_does_not_create_false_update(db,topic):
     later={k:v for k,v in m.items() if k!='release'};later['release_checked']=False
     y=f.ingest(db,draft(db,topic),'github','robot',{'records':[later]})['items'][0]
     assert x['entity_id']==y['entity_id'] and y['change_type']=='known'
+
+
+def test_candidate_cursor_pages_are_stable(db,topic):
+    for index in range(4):
+        m=paper();m['doi']=f'10.1234/item{index}';m['title']=f'Paper {index}'
+        stage(db,draft(db,topic),m)
+    first=f.items(db,topic['id'],limit=2)
+    cursor=str(first[-1]['id'])+':'+str(topic['id'])
+    second=f.items(db,topic['id'],cursor,limit=2)
+    assert len(first)==len(second)==2
+    assert not {x['id'] for x in first}&{x['id'] for x in second}

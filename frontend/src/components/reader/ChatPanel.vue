@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { renderMarkdown } from '@/shared/markdown'
 import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
@@ -569,10 +570,7 @@ function progressText(run: Run): string {
   return (p.tools?.length ? '正在调用 ' + p.tools.join('、') : '') + (p.text ? ' · ' + p.text : '')
 }
 
-function renderMd(text: string): string {
-  if (window.mdRender) return window.mdRender(text).innerHTML
-  return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
-}
+function renderMd(text: string): string { return renderMarkdown(text) }
 
 async function allRunsForExport(): Promise<Run[]> {
   const sid = currentSession.value?.id
@@ -744,7 +742,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           <button @click="orchestrator?.jump(c)">{{ c.quote ? '原文' : '论文引用' }} · {{ resolvePaperTitle(c.paper_id) }} 第 {{ c.page }} 页</button>
           <div v-if="c.quote">{{ c.quote }}</div>
         </div>
-        <div v-if="run.answer" class="answer" v-html="renderMd(run.answer)"></div>
+        <div v-if="run.answer" class="answer markdown-content" v-html="renderMd(run.answer)"></div>
         <button v-if="run.answer" class="copy-answer" type="button" @click="copyAnswer(run)">复制回答</button>
         <p v-if="run.error" class="error">{{ run.error }}</p>
         <button v-if="run.status === 'failed' || run.status === 'cancelled'" class="reedit" @click="reedit(run)">重新编辑</button>

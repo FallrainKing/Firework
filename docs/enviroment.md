@@ -1,200 +1,140 @@
-# 当前开发与运行环境
+# 当前环境、部署与排障
 
-记录日期：2026-11-17；工作台/部署信息补充于 2026-11-18（Asia/Shanghai）。文件名沿用请求中的 `enviroment.md`。
+核对日期：2026-11-19（Asia/Shanghai）；应用代码基线 `13956f9`。本文件为当前维护正文，文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
-本文件用于后续开发交接。只记录环境和配置位置，不保存密钥、密码、令牌或认证文件内容。基础环境版本保留原记录；本轮重建了前端镜像，完成前端测试、服务冒烟与浏览器阅读/图片输入验证。
+## 1. 当前实例
 
-## 1. 服务器与项目
+| 项目 | 已核对信息 |
+| --- | --- |
+| 服务器 / 项目 | `f@100.64.0.7` / `/home/f/research-assistant` |
+| 系统 | Ubuntu 24.04.5 LTS，x86_64 |
+| Python / 虚拟环境 | 3.12.3 / `.venv` |
+| Docker / Compose | 29.10.0 / v5.7.1 |
+| Claude Code CLI | 2.1.322，`/home/f/.local/bin/claude` |
+| 前端构建 | Docker Node 24，多阶段构建 Vue/Vite |
+| 生产分支 | `release/frontier-workbench-20261119` |
+| Runner | 用户级 `research-agent-runner`，协议 4，并发 2 |
+| 实际模型快照 | 状态接口报告 `qwen4-max[1M]`，以运行时状态为准 |
+| 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
+| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0013_reader_guides.sql` |
 
-| 项目 | 当前信息 |
-|---|---|
-| SSH 用户与地址 | `f@100.64.0.7` |
-| SSH 连接 | `ssh -i ~/.ssh/id_ed25519_1026 f@100.64.0.7` |
-| 项目目录 | `/home/f/research-assistant` |
-| 操作系统内核 | Linux `7.0.0-38-generic` |
-| 架构 | `x86_64` |
-| Python | `3.12.3` |
-| 虚拟环境 | `/home/f/research-assistant/.venv` |
-| Docker | `29.10.0`，build `fdd4b8e` |
-| Docker Compose | `v5.7.1` |
-| Claude Code CLI | `2.1.322` |
-| Claude CLI 路径 | `/home/f/.local/bin/claude` |
+当前提交均保存在服务器 Git，最近功能尚未推送远端。文档改动不要求重建镜像。
 
-SSH 私钥只引用调用端路径，不属于项目文件，也不应复制或提交到仓库。
+SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。现有公网访问认证和隧道配置另由运维管理，本轮未变更其链路。
 
-## 2. Git 状态与交付文档
+## 2. 服务和目录
 
-2026-11-18 阅读工作台更新：
-
-- 当前交付分支：`feat/vue-reading-workbench`，从另一智能体重构后的 `ac86b9c` 建立。
-- 前端：Vue 3 + TypeScript + Vite + Pinia；生产沿用 Docker 内 Node 24 构建；本机 Node 26 测试需要 `NODE_OPTIONS=--no-experimental-webstorage`，避免原生 localStorage 与 jsdom 冲突。
-- 本轮未变更后端迁移、Runner 服务及其模型配置，仅读取状态和执行一笔最小图片验证。
-- 发布前保留镜像：`research-assistant-app:before-reading-workbench-20261118`；执行了已有数据备份脚本。
-- 本轮为服务器本地 Git 提交，未远程推送；具体提交号见 Git 日志。
-- 历史 `feat/reading-workbench-tabs` 和 `11d7efa` 属于前一轮原生页面交付，不能代表当前 Vue 架构。
-
-项目根目录的交接文档：
-
-- `架构.md`：整体架构、接口、数据模型和部署结构。
-- `任务设计和实现的流程与未实现.md`：实现过程、已有验证证据、未验证和未实现事项。
-- `enviroment.md`：当前环境与运维入口。
-
-以下原有运维文件不纳入本轮提交：
-
-- `ops/public-access-credentials.txt`
-- `ops/tunnel.log`
-- `ops/tunnel.sh`
-
-不要使用无差别的 `git add .` 将认证资料或日志意外提交。
-
-## 3. 服务部署
-
-采用现有 Docker Compose 配置运行：
-
-| 服务 | 职责 |
-|---|---|
-| `app` | FastAPI API、静态 Web、管理数据与任务 |
-| `qdrant` | 原文文本块的向量索引 |
-| `backup` | 数据库、文件、向量与原生会话备份 |
-
-已有容器名称：`research-assistant-app-1`、`research-assistant-qdrant-1`、`research-assistant-backup-1`。
-
-app 容器内服务端口为 `8000`，宿主机映射为 `127.0.0.1:8600` 和 `100.64.0.7:8600`。容器内通过 `http://qdrant:6333` 访问 Qdrant。
-
-公共入口为 [https://paper.matchesai.vip](https://paper.matchesai.vip)，沿用原有 HTTPS 与访问认证。凭据不记录在本文中。
-
-当前架构按单 Web worker、单 Runner 部署设计，不应直接扩展为多个 worker 或副本而不处理队列、数据库启动清理及定时调度的一致性。
-
-## 4. 数据与模型缓存
-
-宿主机 `data/` 挂载到 app 容器的 `/app/data`。
+Compose：app 提供 API/SPA，qdrant 保存向量，backup 负责计划备份。app 容器内端口 8000，Qdrant 连接 `http://qdrant:6333`；宿主 Runner 通过 `data/agent/runner.sock` 与应用通信。
 
 ```text
 data/
-  app.db                  SQLite 数据库
-  papers/                 原始论文 PDF
-  imports/                待处理上传文件
-  attachments/            图片附件
-  hf/                     Hugging Face 本地模型缓存
-  qdrant/                 Qdrant 持久数据
+  app.db                        SQLite（含导读、追踪与审批）
+  papers/ imports/ attachments/  原始 PDF、暂存、会话图片
+  skills/archives/              不可变 ZIP 原包
+  skills/packages/              已安装版本资源
+  avatars/                      用户头像
+  hf/                           bge-m3 模型缓存
+  qdrant/                       向量存储
   agent/
-    runner.sock           私有 Runner Unix Socket
-    internal-token        内部导入认证令牌，不提交 Git
-    sessions/             原生任务工作目录
-    claude-config/        本项目 Claude 原生会话存储
-    runs/                 工具执行记录
+    runner.sock                 私有通信入口
+    internal-token              内部工具认证文件
+    claude-config/ sessions/    本项目原生会话及工作目录
+    runs/                       执行事件与工具记录
 ```
 
-- SQLite 使用 WAL，迁移由 `app/migrations/` 自动应用。
-- 当前本地嵌入模型为 `BAAI/bge-m3`，使用 CPU。
-- Compose 默认设置 `HF_HUB_OFFLINE=1`，利用已有缓存，避免启动时联网探测和限流等待。
-- 首次下载或有意更新模型时才调整离线设置；缓存环境不能直接照搬为一台新服务器已经具备的条件。
-- Qdrant 镜像在 Compose 中按 digest 固定，避免浮动标签改变存储版本。
-- 图片目录为宿主机运行用户所有，目录权限 `700`、文件权限 `600`，使宿主机 Runner 能读取上传附件。
+容器与 Runner 共用文件，需对齐宿主 UID/GID。上传目录和技能资源按宿主用户准备，不能用全目录放宽权限来解决读取失败。
 
-## 5. 现有智能体环境
+## 3. 配置来源
 
-Runner 由用户级 systemd 服务管理：
+| 配置 | 来源及规则 |
+| --- | --- |
+| DATA_DIR / QDRANT_URL | `app/core/config.py`；宿主默认 data / localhost:6333，Compose 内覆盖 |
+| HOST_UID / HOST_GID | Compose 默认 1000，新机器按运行用户对齐 |
+| HF_HUB_OFFLINE | Compose 默认 1，要求缓存已存在；首次下载用 0 |
+| HF_ENDPOINT | 镜像/测试使用 hf-mirror；模型缓存挂载到容器 HF 缓存目录 |
+| 模型凭据 | 现有宿主 `~/.claude/settings.json` 的 ANTHROPIC 配置，由 Runner 读取 |
+| 模型选择 | RESEARCH_AGENT_MODEL → Claude 配置的 ANTHROPIC_MODEL → 默认 Sonnet 配置 → 代码回退 |
+| 视觉覆盖 | RESEARCH_AGENT_VISION_MODEL；否则沿用当前模型，仍须真实支持视觉 |
+| Runner 并发 | RESEARCH_AGENT_CONCURRENCY 默认 2；队列和额度另受执行器约束 |
 
-```text
-服务名：research-agent-runner
-服务文件：/home/f/.config/systemd/user/research-agent-runner.service
-工作目录：/home/f/research-assistant
-启动模块：agent_runner.server:app
-运行方式：.venv/bin/python -m uvicorn
-通信方式：data/agent/runner.sock
-```
+仓库 `ops/research-agent-runner.service` 模板仍含旧的固定模型 `deepseek-latest`，不能不加核对覆盖当前运行服务。新装时删除该固定覆盖，或按明确需要设置模型；不从文档猜测供应商配置。
 
-宿主机 Socket 路径为 `/home/f/research-assistant/data/agent/runner.sock`，app 容器内路径为 `/app/data/agent/runner.sock`。
+## 4. 新机器部署
 
-模型与认证配置从宿主机 `/home/f/.claude/settings.json` 读取。项目不另存一份 API 密钥。
+以下是部署步骤，文档整理时没有对现有服务器重新安装或切换配置。
 
-模型选择顺序：
+1. 准备 Python 3.12+、Docker/Compose、可工作的 Claude CLI 和现有宿主配置；模型凭据不写入 app 的 `.env`。
+2. 在项目创建虚拟环境、先安装 CPU torch，再安装 requirements：
 
-1. 显式 `RESEARCH_AGENT_MODEL`。
-2. 当前 Claude 配置的 `ANTHROPIC_MODEL`。
-3. 当前 Claude 配置的默认 Sonnet 模型。
-4. 代码中的兼容回退值；不应把它视为已确认可用的模型。
+   ```sh
+   python3.12 -m venv .venv
+   .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+   .venv/bin/pip install -r requirements.txt
+   cp .env.example .env
+   ```
 
-图片可通过 `RESEARCH_AGENT_VISION_MODEL` 单独覆盖。最近实际读取到的配置模型为 `qwen4-max[1M]`；模型配置会变化，不应将此名称重新硬编码进服务文件。原服务固定旧模型名的设置已经移除。
+3. 核对 `.env` 中 UID/GID、项目路径；修改 Compose 内 `100.64.0.7` 绑定为本机实际网卡地址，或仅保留 loopback。当前地址不是通用安装默认。
+4. 新机器没有缓存时以 `HF_HUB_OFFLINE=0` 首次启动，等待 bge-m3 下载与初始化；下载时间取决于网络，不保证固定分钟数。缓存位于 data/hf；之后恢复离线启动。已有缓存部署不重复下载。
+5. 安装用户 Runner。服务模板默认项目在 `~/research-assistant`；其他路径须同步改 WorkingDirectory、ExecStart/ExecStartPre 和 Socket。先核对并调整模板中的模型覆盖，再安装：
 
-执行模型为后台任务 + SSE 进度 + 可取消（2026-11-18）：Runner 并发 `RESEARCH_AGENT_CONCURRENCY` 默认 2，队列上限 8；护栏按 Skill 配置（chat/搜索 6 回合/1024 token/120s/$0.10，导入 6/2048/180s/$0.20，阅读/审查/比较 30/8192/无硬超时/$1.00）。各 Skill 另有工具和调用次数限制。CLI 费用估算不等同于网关账单。
+   ```sh
+   mkdir -p ~/.config/systemd/user
+   cp ops/research-agent-runner.service ~/.config/systemd/user/research-agent-runner.service
+   systemctl --user daemon-reload
+   systemctl --user enable --now research-agent-runner
+   ```
 
-## 6. 前端与业务入口
+6. 启动容器并验证：
 
-- 主工作台：`app/web/index.html`、`app/web/workbench/`。
-- Vue 工作台：`frontend/`（Vue 3 + Vite + TS），根路径 `/`；开发 `cd frontend && npm run dev`（proxy 指向 8600），测试 `npm test`，构建 `npm run build` 后拷贝 `dist/` 到 `app/web/`（Docker 多阶段构建自动完成）。`app/web/vendor/`（PDF.js）保留在仓库。
-- 阅读页面：`app/web/reader.html`、`app/web/reader/`。
-- 论文管理兼容页面：`app/web/manage.html`。
-- 搜索与导入：`app/web/discover.html`。
-- 内置 PDF.js：`app/web/vendor/pdfjs/`，版本 `6.5.438`。
-- Skill 注册表：`app/agent/catalog.py`。
-- Skill 说明：`skills/<skill>/SKILL.md`。
+   ```sh
+   docker compose up -d --build
+   .venv/bin/python scripts/smoke_test.py
+   ```
 
-前端为 Vue 工作台，开发需要 Node（服务器已装 v24）与 `frontend/` 的 npm 依赖；生产由 Docker 多阶段构建，无需宿主手动构建。
+首次部署 Runner/App 的启动时序可能短暂不就绪，待应用健康后再次检查协议。宿主 Runner 工具目前回调固定 `http://127.0.0.1:8600`；修改宿主端口还须修改/适配工具端，不能只改 Compose。
 
-## 7. 备份与回退位置
+需要退出登录后继续运行用户服务时，按主机运维策略配置用户 linger；本次未修改系统级设置。
 
-备份脚本为 `ops/backup.sh`，输出到项目 `backups/`，默认保留 14 份。备份容器配置为 Asia/Shanghai，每日 02:00 执行。
+## 5. 现有实例升级
 
-备份范围包含 SQLite、Qdrant 快照、原始论文、待处理上传、图片附件和本项目原生会话。附件目录加入脚本后的最终备份演练尚未继续执行，不能把配置完成等同于已验证恢复。
+在 `/home/f/research-assistant` 操作：
 
-本轮改造前的快照目录：
+1. 检查 Git 干净与目标提交；查询 `/api/agent/runs`，确认没有 queued/running 任务，并暂停会触发运行的相关调度。
+2. 保存旧提交、镜像标签，并按 [备份文档](BACKUP-RESTORE.md) 做迁移前成套备份。在线 SQLite 备份不能替代 PDF/技能包/原生会话/Qdrant 备份。
+3. 在独立工作区验证并构建候选镜像；评估增量迁移。不要通过 checkout 覆盖未提交工作。
+4. 同步应用与宿主 Runner 代码，必要时重启 Runner，再替换 app。协议必须兼容，本版为 4。
+5. 零模型冒烟通过后，再按需要做一次用户明确触发的小范围真实验证。页面刷新或重复测试不能额外创建收费任务。
 
-```text
-/home/f/research-assistant-change-backups/workbench-20261117-213912/
-```
+`ops/deploy.sh` 已有备份、构建、重启和冒烟流程；默认 `DOCKER='sudo docker'`，已有 Docker 权限可设 `DOCKER=docker`。脚本不会自动检查在途任务，其“迁移 0008”输出文字是历史提示；实际迁移由 app/core/db.py 应用所有未执行 SQL。使用前仍须执行上述检查。
 
-其中保存了代码和数据库快照，以及修改前的 `research-agent-runner.service`。旧 app 镜像保留为：
+## 6. 状态与排障
 
-```text
-research-assistant-app:pre-workbench-20261117
-```
-
-回退需要同时考虑代码、数据库迁移、原始文件、向量和原生会话；不要直接用旧数据库覆盖新增草稿、附件和执行记录。
-
-## 8. 后续使用的命令
-
-以下仅供交接参考，本次没有执行这些检查或重新发布。
-
-```bash
-cd /home/f/research-assistant
-
-# 查看服务
-systemctl --user status research-agent-runner
+```sh
+# 不需要模型调用
+curl -fsS http://127.0.0.1:8600/health
+curl -fsS http://127.0.0.1:8600/api/agent/status
 docker compose ps
-
-# 测试：后续明确安排验收时使用
-HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 PYTHONDONTWRITEBYTECODE=1 \
-  .venv/bin/python -m pytest -q -p no:cacheprovider
-
-# 发布代码：确认需要发布时使用
-docker compose build app backup
-docker compose up -d app backup
-systemctl --user restart research-agent-runner
+systemctl --user status research-agent-runner --no-pager
+journalctl --user -u research-agent-runner -n 60 --no-pager
+docker compose logs --tail=80 app
+.venv/bin/python scripts/smoke_test.py
 ```
 
-当前提交的最终回归、运行镜像对应版本和备份恢复验证仍以《任务设计和实现的流程与未实现.md》的待办为准。本文件不是新增的验收通过报告。
+查看日志时不要把认证内容、完整提示或未脱敏配置贴入公开问题。`/health` 只说明应用可响应；Runner 兼容性以 `/api/agent/status` 和五步冒烟为准。
 
+| 症状 | 检查 |
+| --- | --- |
+| app 启动后持续不可访问 | 模型缓存/离线配置、Qdrant 就绪、启动日志；RAG 初始化有有界重试 |
+| 页面可用但智能体离线 | 宿主用户服务、Socket 挂载与权限、CLI 配置 |
+| protocol 不匹配 | 应用和 Runner 是否同一代码版本、是否漏重启服务 |
+| 图片或技能资源无法读取 | DATA_DIR 属主与文件权限、资源是否与 DB 记录成套存在 |
+| 新页面看不到改动 | 检查实际构建镜像和 app 容器，再刷新浏览器；仅改源码不会改镜像内静态资源 |
+| 任务重启后失败 | 当前会终止受影响任务，不自动重复付费；核实后手动重试 |
 
-## 2026-11-19 前沿追踪发布补充
+## 7. 最近发布与回退资料
 
-- 服务器代码目录仍为 `/home/f/research-assistant`；发布分支 `release/frontier-workbench-20261119`，功能提交 `50e9eb1`。
-- 宿主 Runner 与应用同步升级到协议 3，继续复用原模型配置，没有新增 API 密钥。
-- 新增迁移 `0012_frontier.sql`，身份回填与候选、报告、项目、审批记录保存在现有 SQLite。
-- 真实验证主题 ID 为 1，周期保持暂停；仅执行过一次真实追踪，未批准生产候选。
-- 发布前 SQLite 备份：`/home/f/.local/state/research-assistant/backups/before-frontier-20261119-162623/app.db`。原 `backups` 目录对宿主用户不可写，本次使用宿主私有状态目录备份。
-- 回退镜像 `research-assistant-app:before-frontier-20261119`；回退需同步应用与 Runner 协议。
-- 详情见《前沿追踪实现与验收记录》。
-
-- Markdown 生产依赖新增固定版本 `marked@18.2.1` 与 `dompurify@3.4.18`，依赖锁定在前端 package-lock.json，随 Docker Node 24 构建打包，无新增外部 Markdown 服务。
-
-## 2026-11-19 导读与批注更新
-
-- 发布代码基于 `cf8f62f`，功能提交 `5dac0d7`；功能分支 `feat/skill-reader-guides`，生产发布分支仍为 `release/frontier-workbench-20261119`。服务器本地提交，未推送远端。
-- Runner 协议 **4**；用户级 `research-agent-runner` 与 app 已同步更新。
-- 新迁移 `0013_reader_guides.sql`，资料位置不变；导读保存在现有 SQLite，不另建模型服务。
-- 新默认技能 `paper_guide`：最多 6 次工具、240 秒、6000 输出 token、预算参数 $0.20；仅用户确认执行，未新增收费调度。
-- 部署前备份：`/home/f/.local/state/research-assistant/backups/before-reader-guides-20261119-185306/app.db`；回退镜像 `research-assistant-app:before-reader-guides-20261119`。
-- 回退需同步旧应用与 Runner 协议；迁移采用增加字段/表方式，不直接删除新导读或旧阅读记录。
-- 验证：前端 181 项、后端相关 158 项通过，构建及现有发布检查 5/5 通过。真实验证与功能边界见《Skill导读与批注实现验收》。
+- 功能代码：`5dac0d7`，混合定位修正 `ea41fea`，文档 `5272525`，侧栏恢复/契约 `13956f9`。
+- 迁移前 SQLite 快照：`/home/f/.local/state/research-assistant/backups/before-reader-guides-20261119-185306/app.db`。
+- 旧镜像标签：`research-assistant-app:before-reader-guides-20261119`；正常成套备份另在 backups/。
+- 切回旧应用必须同步相应 Runner；旧代码不保证理解新数据。不要直接删除迁移记录或执行未经设计的逆向 ALTER。
+- 完整数据恢复前先停 app、Runner 与备份写入，见 [备份恢复](BACKUP-RESTORE.md)。本轮文档整理没有执行生产恢复。

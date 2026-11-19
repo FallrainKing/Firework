@@ -1,4 +1,6 @@
-# 研知 · Research Assistant
+# Firework
+
+Firework 是以现有智能体和 Skills 为执行核心的论文发现、阅读与研究管理工作台。前端包名为 `firework`；保留既有 `research-assistant` 部署目录、服务与内部标识，以兼容现有资料和运维。
 
 面向个人研究的论文发现、管理与阅读工作台。平台管理论文、文件、会话、技能和任务；总结、翻译、审查、比较及前沿报告由服务器已有 Claude Code 智能体通过 Skills 执行。
 

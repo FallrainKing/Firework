@@ -42,7 +42,7 @@ onMounted(() => { void loadProfile() })
 
 <template>
   <header class="work-top">
-    <a class="work-brand" href="/">研知 <small>研究工作台</small></a>
+    <a class="work-brand" href="/">Firework <small>研究工作台</small></a>
     <nav aria-label="功能导航">
       <button
         v-for="v in views"
@@ -86,7 +86,7 @@ onMounted(() => { void loadProfile() })
 
 <style scoped>
 .work-top { display:flex; align-items:center; gap:24px; padding:0 24px; min-height:64px; border-bottom:1px solid var(--border); background:var(--bg); flex-shrink:0; }
-.work-brand { font-weight:750; font-size:21px; letter-spacing:2px; color:var(--accent); text-decoration:none; white-space:nowrap; }
+.work-brand { font-weight:750; font-size:21px; letter-spacing:.3px; color:var(--accent); text-decoration:none; white-space:nowrap; }
 .work-brand small { display:inline-block; color:var(--text-muted); font-size:11px; font-weight:400; letter-spacing:0; margin-left:10px; }
 nav { display:flex; gap:12px; flex:1; align-self:stretch; }
 nav button { border:0; border-bottom:2px solid transparent; border-radius:0; background:none; color:var(--text-muted); padding:0 14px; white-space:nowrap; }

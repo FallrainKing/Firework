@@ -139,7 +139,7 @@ async def lifespan(app: FastAPI):
 
 def create_app(*, authentication: bool = True) -> FastAPI:
     """Build the FastAPI app: API routers + health endpoint + static web UI."""
-    app = FastAPI(title="Research Assistant", lifespan=lifespan)
+    app = FastAPI(title="Firework", lifespan=lifespan)
     app.state.authentication = authentication
     if authentication:
         app.add_middleware(AuthenticationMiddleware)

@@ -235,3 +235,16 @@ def test_dynamic_skill_and_avatar_state_is_archived(tmp_path):
         assert 'skills/packages/demo/SKILL.md' in names
     with tarfile.open(avatars_archive) as tar:
         assert 'avatars/abc.png' in tar.getnames()
+
+
+def test_vector_retention_keeps_each_account_collection(tmp_path):
+    import time
+    data=tmp_path/'data';data.mkdir();backups=tmp_path/'backups';backups.mkdir()
+    for collection in ('chunks','chunks_'+'a'*32):
+        for i in range(1,21):
+            path=backups/f'qdrant-{collection}-202501{i:02d}.snap';path.write_bytes(b'snapshot')
+            os.utime(path,(time.time()+i,time.time()+i))
+    result=run_backup(data,backups,'http://127.0.0.1:1')
+    assert result.returncode==0,result.stderr
+    assert len(list(backups.glob('qdrant-chunks-*.snap')))==KEEP
+    assert len(list(backups.glob('qdrant-chunks_'+('a'*32)+'-*.snap')))==KEEP

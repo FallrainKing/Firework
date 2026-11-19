@@ -19,6 +19,9 @@
 from __future__ import annotations
 
 import sys
+import os
+import json
+from pathlib import Path
 import time
 
 import httpx
@@ -75,6 +78,14 @@ def check_agent(client: httpx.Client) -> dict:
 
 def main() -> None:
     with httpx.Client(base_url=BASE_URL, timeout=10) as client:
+        session_file=os.getenv('AUTH_SESSION_FILE')
+        if session_file:
+            path=Path(session_file)
+            if path.stat().st_mode & 0o077:
+                fail('auth','维护会话文件必须为私有权限')
+            saved=json.loads(path.read_text())
+            client.cookies.set(saved.get('cookie_name','__Host-research_session'),saved['token'])
+            client.headers['X-CSRF-Token']=saved['csrf']
         wait_health(client)
         print("ok [1/5] health")
 

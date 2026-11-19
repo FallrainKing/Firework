@@ -8,6 +8,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
@@ -25,6 +28,10 @@ from .frontier.router import router as frontier_router, internal as frontier_int
 from .reader.router import router as reader_router
 from .reader.guides.router import router as guide_router,internal as guide_internal
 from .sessions.router import router as sessions_router
+from .auth.store import AuthStore
+from .auth.runtime import WorkspaceManager
+from .auth.middleware import AuthenticationMiddleware
+from .auth.router import router as auth_router
 from .core.config import Settings
 from .core.db import get_conn
 from .core.errors import register_error_handlers
@@ -72,7 +79,7 @@ async def _init_rag_stack(settings: Settings) -> tuple[Embedder, VectorStore]:
         try:
             if embedder is None:
                 embedder = Embedder()
-            store = VectorStore(QdrantClient(settings.qdrant_url))
+            store = VectorStore(QdrantClient(settings.qdrant_url), collection=settings.vector_collection)
             store.ensure_collection(embedder.dimension)
             return embedder, store
         except Exception as exc:  # noqa: BLE001 — retried, then re-raised below
@@ -105,24 +112,46 @@ async def lifespan(app: FastAPI):
     app.state.embedder = embedder
     app.state.store = store
 
+    if app.state.authentication:
+        app.state.auth_store = AuthStore.from_env(settings.data_dir)
+        app.state.workspaces = WorkspaceManager(app)
     agent_service.init_agent_state(app)
     # Stop runner jobs orphaned by a previous app crash/restart (best-effort).
     orphan_cleanup=asyncio.create_task(agent_service.cancel_orphaned_runner_jobs(app.state))
+    scheduler=None
     try:
+        if app.state.authentication:
+            await app.state.workspaces.load_accounts()
         scheduler=asyncio.create_task(schedules_service.schedule_loop(app))
         yield
     finally:
-        scheduler.cancel()
+        if scheduler:
+            scheduler.cancel()
         orphan_cleanup.cancel()
-        await asyncio.gather(scheduler,orphan_cleanup,return_exceptions=True)
+        await asyncio.gather(*([scheduler] if scheduler else []),orphan_cleanup,return_exceptions=True)
+        if app.state.authentication:
+            await app.state.workspaces.close()
         await agent_service.close_agent_state(app)
         db.close()
+        if app.state.authentication:
+            app.state.auth_store.close()
 
 
-def create_app() -> FastAPI:
+def create_app(*, authentication: bool = True) -> FastAPI:
     """Build the FastAPI app: API routers + health endpoint + static web UI."""
     app = FastAPI(title="Research Assistant", lifespan=lifespan)
+    app.state.authentication = authentication
+    if authentication:
+        app.add_middleware(AuthenticationMiddleware)
     register_error_handlers(app)
+    @app.exception_handler(RequestValidationError)
+    async def private_validation_errors(request,exc):
+        if request.url.path.startswith(('/api/auth/','/api/admin/')):
+            # FastAPI's default errors include raw input, which can be a password.
+            errors=[{k:e[k] for k in ('loc','msg','type') if k in e} for e in exc.errors()]
+            return JSONResponse({'detail':errors},status_code=422)
+        return await request_validation_exception_handler(request,exc)
+    app.include_router(auth_router)
 
     app.include_router(agent_router)
     app.include_router(skills_router)

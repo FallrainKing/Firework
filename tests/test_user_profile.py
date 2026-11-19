@@ -17,7 +17,7 @@ PNG = (
 
 def _client(tmp_path):
     settings = Settings(data_dir=tmp_path, qdrant_url='http://localhost')
-    app = create_app()
+    app = create_app(authentication=False)
     app.state.settings = settings
     app.state.db = get_conn(settings)
     return TestClient(app)

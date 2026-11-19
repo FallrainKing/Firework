@@ -46,6 +46,11 @@ async def run_events(run_id: str, request: Request):
     async def gen():
         last = None
         while True:
+            auth=getattr(request.app.state,"auth_store",None)
+            if auth:
+                from ..auth.store import COOKIE
+                if auth.session(request.cookies.get(auth.cookie_name,"")) is None:
+                    return
             snap = service.run_snapshot(db, run_id)
             if snap is None:
                 return

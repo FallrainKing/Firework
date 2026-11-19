@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { meApi, type Profile } from '@/api/me'
 import StateFeedback from '@/components/StateFeedback.vue'
+import AccountSecurity from '@/components/AccountSecurity.vue'
 
 const profile = ref<Profile | null>(null)
 const displayName = ref('')
@@ -110,12 +111,13 @@ onMounted(refresh)
       <div>
         <p class="eyebrow">LOCAL SETTINGS</p>
         <h1 id="settings-title">设置</h1>
-        <p class="muted">当前为单用户本机部署；设置不保存模型密钥，也不会触发模型调用。</p>
+        <p class="muted">当前账号的资料与设置独立保存；不保存模型密钥，也不会触发模型调用。</p>
       </div>
     </div>
 
     <StateFeedback :loading="loading" :error="error || null" :empty="!loading && !error && !profile" empty-text="未提供用户资料。" @retry="refresh" />
 
+    <AccountSecurity />
     <template v-if="profile">
       <div class="settings-grid">
         <article class="settings-card">

@@ -1,6 +1,6 @@
 # 当前环境、部署与排障
 
-核对日期：2026-11-19（Asia/Shanghai）；应用代码基线 `13956f9`。本文件为当前维护正文，文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+核对日期：2026-11-19（Asia/Shanghai）；认证版本基于 `e25954e`。本文件为当前维护正文，文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
 ## 1. 当前实例
 
@@ -13,12 +13,12 @@
 | Claude Code CLI | 2.1.322，`/home/f/.local/bin/claude` |
 | 前端构建 | Docker Node 24，多阶段构建 Vue/Vite |
 | 生产分支 | `release/frontier-workbench-20261119` |
-| Runner | 用户级 `research-agent-runner`，协议 4，并发 2 |
+| Runner | 用户级 `research-agent-runner`，协议 5，并发 2 |
 | 实际模型快照 | 状态接口报告 `qwen4-max[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
 | 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0013_reader_guides.sql` |
 
-当前提交均保存在服务器 Git，最近功能尚未推送远端。文档改动不要求重建镜像。
+当前提交均保存在服务器 Git，最近功能尚未推送远端。本次认证改动需要同时重建 app/backup 并同步 Runner。
 
 SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。现有公网访问认证和隧道配置另由运维管理，本轮未变更其链路。
 
@@ -88,7 +88,7 @@ data/
 
    ```sh
    docker compose up -d --build
-   .venv/bin/python scripts/smoke_test.py
+   AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_test.py
    ```
 
 首次部署 Runner/App 的启动时序可能短暂不就绪，待应用健康后再次检查协议。宿主 Runner 工具目前回调固定 `http://127.0.0.1:8600`；修改宿主端口还须修改/适配工具端，不能只改 Compose。
@@ -102,10 +102,10 @@ data/
 1. 检查 Git 干净与目标提交；查询 `/api/agent/runs`，确认没有 queued/running 任务，并暂停会触发运行的相关调度。
 2. 保存旧提交、镜像标签，并按 [备份文档](BACKUP-RESTORE.md) 做迁移前成套备份。在线 SQLite 备份不能替代 PDF/技能包/原生会话/Qdrant 备份。
 3. 在独立工作区验证并构建候选镜像；评估增量迁移。不要通过 checkout 覆盖未提交工作。
-4. 同步应用与宿主 Runner 代码，必要时重启 Runner，再替换 app。协议必须兼容，本版为 4。
+4. 同步应用与宿主 Runner 代码，必要时重启 Runner，再替换 app。协议必须兼容，本版为 5。
 5. 零模型冒烟通过后，再按需要做一次用户明确触发的小范围真实验证。页面刷新或重复测试不能额外创建收费任务。
 
-`ops/deploy.sh` 已有备份、构建、重启和冒烟流程；默认 `DOCKER='sudo docker'`，已有 Docker 权限可设 `DOCKER=docker`。脚本不会自动检查在途任务，其“迁移 0008”输出文字是历史提示；实际迁移由 app/core/db.py 应用所有未执行 SQL。使用前仍须执行上述检查。
+`ops/deploy.sh` 已有备份、构建、重启和冒烟流程；默认 `DOCKER='sudo docker'`，已有 Docker 权限可设 `DOCKER=docker`。脚本不会自动检查在途任务；实际迁移由 app/core/db.py 应用所有未执行 SQL。认证版会自动创建短期维护会话用于冒烟，结束后撤销并清理文件。使用前仍须执行上述检查。
 
 ## 6. 状态与排障
 
@@ -117,7 +117,7 @@ docker compose ps
 systemctl --user status research-agent-runner --no-pager
 journalctl --user -u research-agent-runner -n 60 --no-pager
 docker compose logs --tail=80 app
-.venv/bin/python scripts/smoke_test.py
+AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_test.py
 ```
 
 查看日志时不要把认证内容、完整提示或未脱敏配置贴入公开问题。`/health` 只说明应用可响应；Runner 兼容性以 `/api/agent/status` 和五步冒烟为准。
@@ -138,3 +138,13 @@ docker compose logs --tail=80 app
 - 旧镜像标签：`research-assistant-app:before-reader-guides-20261119`；正常成套备份另在 backups/。
 - 切回旧应用必须同步相应 Runner；旧代码不保证理解新数据。不要直接删除迁移记录或执行未经设计的逆向 ALTER。
 - 完整数据恢复前先停 app、Runner 与备份写入，见 [备份恢复](BACKUP-RESTORE.md)。本轮文档整理没有执行生产恢复。
+
+## 认证版本部署补充
+
+认证默认强制启用。RESEARCH_AUTH_ADMIN_ONLY=1、RESEARCH_AUTH_COOKIE_SECURE=1、RESEARCH_PUBLIC_ORIGIN=https://paper.matchesai.vip；未开放注册，普通账号仍不能登录。初始化沿用现有入口凭据，详见 [认证说明](AUTHENTICATION.md)。
+
+新增 data/auth/accounts.db（身份、散列、会话、节流和审计）及 data/accounts/{随机ID}/（独立研究空间）；原管理员继续使用原 data/app.db、papers、agent 和 chunks 集合。新账号集合为 chunks_{工作区ID}。原资料不迁移、不复制到新账号。
+
+旧的匿名五步冒烟在认证版会收到 401；先按认证说明签发 5 分钟私有维护会话，再设置 AUTH_SESSION_FILE 执行。生产 Cookie 只通过 HTTPS，临时维护文件只在受信任宿主使用。HTTP 本地开发可显式配置 RESEARCH_AUTH_COOKIE_SECURE=0，使用单独的 research_session_dev Cookie 名，不用于公网。
+
+认证升级的完整备份、旧 app/backup 镜像和提交号见本次变更记录。回退不能混合新身份库与其他日期研究库；恢复后旧浏览器会话必须撤销。

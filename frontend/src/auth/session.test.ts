@@ -1,0 +1,36 @@
+import {beforeEach,describe,it,expect} from 'vitest'
+import {resetBrowserIdentity} from './session'
+beforeEach(()=>{localStorage.clear();sessionStorage.clear()})
+describe('browser account separation',()=>{
+ it('preserves legacy administrator workspace at first account migration',()=>{
+  localStorage.setItem('research-workspace-id','legacy-workspace')
+  resetBrowserIdentity('admin',true)
+  expect(localStorage.getItem('research-workspace-id')).toBe('legacy-workspace')
+ })
+ it('does not expose old drafts, views, theme or private state to a new account',()=>{
+  resetBrowserIdentity('admin')
+  localStorage.setItem('research-workspace-id','admin-workspace')
+  localStorage.setItem('reader-pending-1','private draft')
+  localStorage.setItem('frontier-view-v1','private topic')
+  localStorage.setItem('research-theme','dark')
+  sessionStorage.setItem('private','draft')
+  resetBrowserIdentity('reader')
+  expect(localStorage.getItem('reader-pending-1')).toBeNull()
+  expect(localStorage.getItem('frontier-view-v1')).toBeNull()
+  expect(localStorage.getItem('research-theme')).toBeNull()
+  expect(sessionStorage.length).toBe(0)
+  expect(localStorage.getItem('research-workspace-id')).toBeNull()
+  resetBrowserIdentity('admin')
+  expect(localStorage.getItem('research-workspace-id')).toBe('admin-workspace')
+ })
+ it('clears state on logout and restores only the same account workspace ID',()=>{
+  resetBrowserIdentity('admin',true)
+  localStorage.setItem('research-workspace-id','saved-id')
+  localStorage.setItem('research-pending-session-1','draft')
+  resetBrowserIdentity(null)
+  expect(localStorage.getItem('research-workspace-id')).toBeNull()
+  expect(localStorage.getItem('research-pending-session-1')).toBeNull()
+  resetBrowserIdentity('admin',true)
+  expect(localStorage.getItem('research-workspace-id')).toBe('saved-id')
+ })
+})

@@ -1,9 +1,18 @@
 # 当前注册路由清单
 
-提取日期：2026-11-19；应用代码基线 13956f9。来自运行实例 /openapi.json；字段定义见 /docs，调用约定见 [接口说明](API.md)。本清单不表示内部工具可供浏览器直接调用。
+更新：2026-11-19。认证改造基于 e25954e，Runner 协议 5。由当前应用 OpenAPI 提取，接口文档和业务 API 需登录；调用约定见 [接口说明](API.md) 与 [认证说明](AUTHENTICATION.md)。
 
 | 方法 | 路径 |
 | --- | --- |
+| GET | `/api/auth/session` |
+| POST | `/api/auth/login` |
+| POST | `/api/auth/register` |
+| POST | `/api/auth/logout` |
+| POST | `/api/auth/password` |
+| GET | `/api/admin/accounts` |
+| POST | `/api/admin/accounts` |
+| PATCH | `/api/admin/accounts/{ident}` |
+| POST | `/api/admin/accounts/{ident}/password` |
 | GET | `/api/agent/status` |
 | GET | `/api/agent/runs` |
 | POST | `/api/agent/runs` |
@@ -109,4 +118,4 @@
 | POST | `/api/workbench/schedules/{ident}/run` |
 | GET | `/health` |
 
-共 86 个路径、104 个 HTTP 操作。统计不包含 SPA 挂载和私有 Runner 的 Socket 路由。
+共 94 个路径、113 个 HTTP 操作；不包含静态挂载及私有 Runner Socket。

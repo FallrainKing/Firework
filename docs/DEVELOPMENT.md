@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-适用基线：2026-11-19 / `13956f9`。目录结构见 [架构](架构.md)，服务器安装见 [环境与部署](enviroment.md)。
+适用基线：2026-11-19 / 认证改造基于 `e25954e`。目录结构见 [架构](架构.md)，服务器安装见 [环境与部署](enviroment.md)。
 
 ## 1. 开发环境
 
@@ -42,7 +42,7 @@ npm --prefix frontend run build
 后端相关回归示例（使用隔离 fixtures；本组不调用真实 Agent 模型）：
 
 ```sh
-HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest   tests/test_reader_guides.py tests/test_reader_imports.py   tests/test_workbench.py tests/test_runner_jobs.py tests/test_frontier.py   tests/test_agent_mvp.py tests/test_skills_registry.py tests/test_db_migrations.py   tests/test_task_sessions.py tests/test_release_smoke.py   tests/test_route_surface.py tests/test_app_health.py -q
+HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest   tests/test_auth_accounts.py tests/test_reader_guides.py tests/test_reader_imports.py   tests/test_workbench.py tests/test_runner_jobs.py tests/test_frontier.py   tests/test_agent_mvp.py tests/test_skills_registry.py tests/test_db_migrations.py   tests/test_task_sessions.py tests/test_release_smoke.py   tests/test_route_surface.py tests/test_app_health.py -q
 ```
 
 模型缓存类测试仍可能加载本地嵌入模型；缺缓存时先处理依赖，不能把未运行说成通过。变更范围涉及解析器/备份等时再选择对应测试，完整测试可用 `.venv/bin/python -m pytest -q`。
@@ -50,7 +50,7 @@ HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest   tests/test_
 运行中服务的五步冒烟：
 
 ```sh
-.venv/bin/python scripts/smoke_test.py
+AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_test.py
 ```
 
 检查健康、论文库、模板、工作区读写/恢复、Runner 协议，不发起模型调用。真实执行应单独小范围验证，记录 Run ID、材料范围、工具、结果、费用估算与缺口；不要在每次刷新或重复冒烟时调用模型。
@@ -75,3 +75,5 @@ HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest   tests/test_
 文档修改通常无需重建镜像或重启服务。仅提交 Git 不等于推送远端；只有明确执行 push 才说明已推送。当前 pyproject/package 版本仍为 0.1.0，不能用它替代实际 Git 提交和 Runner 协议判断版本。
 
 本轮文档验证只核对链接、注册路由、源码引用和改动范围，沿用上一轮业务验收记录，未重新调用智能体或执行生产恢复。
+
+认证默认开启。旧业务单元测试可显式构造 create_app(authentication=False)，认证/隔离测试必须使用默认工厂并真实执行中间件；不得将测试参数作为生产开关。维护冒烟文件的签发与清理见 [认证说明](AUTHENTICATION.md)。

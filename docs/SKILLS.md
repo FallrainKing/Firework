@@ -76,3 +76,5 @@ skill_resource 只读取允许的资源范围，不启动包内命令。需要�
 前沿已包含 Nature 发现流程的适配资源，来源和说明见 `skills/frontier_monitor/NOTICE.md`。完整 kelip-paper-reading、nature-reader、Paper Card 的材料链与视觉依赖仍未全部接入；平台不把简化流程冒称完整上游能力。
 
 归档原包、资源、数据库注册表和版本引用需同日备份，见 [备份恢复](BACKUP-RESTORE.md)。
+
+账号隔离补充：自定义包、版本引用、分类、审计、模板与原生任务工作区按账号隔离；内置通用资源共享代码。当前仅原管理员可登录，普通账号的管理状态不自动开放登录。

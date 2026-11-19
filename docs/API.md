@@ -1,13 +1,16 @@
 # 接口与调用约定
 
-依据：2026-11-19 / `13956f9` 的已注册 OpenAPI。交互文档 `/docs`，机器描述 `/openapi.json`，完整路径见 [路由清单](API-ROUTES.md)。字段的最终定义以各域 schemas.py 与 OpenAPI 为准。
+依据：2026-11-19 / 认证改造基于 `e25954e` 的已注册 OpenAPI。交互文档 `/docs`，机器描述 `/openapi.json`，完整路径见 [路由清单](API-ROUTES.md)。字段的最终定义以各域 schemas.py 与 OpenAPI 为准。
 
-现有部署由外层访问认证保护；业务为单用户上下文。不要从本地用户资料接口推断已实现账号/租户权限。`/api/internal/*` 为 Runner 受限工具使用，前端不得获取其私有令牌。
+现有部署由外层访问认证保护；业务由服务端登录会话绑定独立账号工作区。当前只允许原管理员登录，公开注册关闭；认证接口、Cookie、CSRF 和账号管理详见 [认证说明](AUTHENTICATION.md)。`/api/internal/*` 为 Runner 受限工具使用，前端不得获取其私有令牌。
+
+业务 API 要求有效会话，写请求另需 X-CSRF-Token；401 应回到登录页。文件、SSE、头像和资料查询同样隔离，客户端指定其他工作区不会改变访问范围。
 
 ## 1. 业务分组
 
 | 领域 | 主要路径 | 用途 |
 | --- | --- | --- |
+| 认证与账号 | `/api/auth/*`、`/api/admin/accounts` | 登录、退出、密码修改、关闭注册及管理员账号管理 |
 | 健康与 Agent | `/health`、`/api/agent/status`、`/api/agent/runs` | 可用性、协议、执行、查询、取消和事件 |
 | 会话 | `/api/sessions`、`/api/sessions/templates`、`/api/sessions/categories` | 任务上下文、模板、分类与归档 |
 | 论文库 | `/api/library/papers`、`/api/library/collections` | 列表、卡片、分类、编辑与缩略图 |
@@ -18,7 +21,7 @@
 | Skills | `/api/skills`、`/api/skills/imports` | 安装、版本、默认版本、分类、审计、最小验证 |
 | 前沿 | `/api/frontier/topics`、`reports`、`candidates`、`projects` | 主题、报告、发现、审批和项目库 |
 | 调度 | `/api/workbench/schedules` | 默认停用的间隔任务，启停及执行一次 |
-| 用户 | `/api/me`、`/api/me/preferences`、`/api/me/avatar` | 单用户资料、偏好与头像 |
+| 用户 | `/api/me`、`/api/me/preferences`、`/api/me/avatar` | 当前账号资料、偏好与头像 |
 
 列表不共享一套分页协议：论文/技能列表采用 offset/limit，前沿报告与候选使用各自返回的 next_cursor；沿用返回游标，不自行拼接或假设跨列表通用。
 

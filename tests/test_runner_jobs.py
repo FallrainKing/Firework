@@ -275,3 +275,64 @@ def test_http_protocol(runtime, monkeypatch):
         cancel = c.post('/runs/' + '2' * 32 + '/cancel')
         assert cancel.status_code == 200 and cancel.json()['run_id'] == '2' * 32
         assert c.post('/runs/' + '9' * 32 + '/cancel').status_code == 404
+
+
+def test_account_runner_sessions_and_run_lookup_are_isolated(tmp_path,monkeypatch):
+    import sqlite3
+    from app.auth.store import AuthStore
+    from agent_runner import server
+    from app.core.config import Settings
+    from app.core.db import get_conn
+    root=tmp_path/'project';runtime=root/'data/agent';runtime.mkdir(parents=True)
+    (root/'skills/chat').mkdir(parents=True);(root/'skills/chat/SKILL.md').write_text('Only own account')
+    auth=AuthStore(root/'data',admin_only=False)
+    first='a'*32;second='b'*32
+    for i,key in enumerate((first,second)):
+        auth.db.execute("INSERT INTO accounts(id,username,password_hash,role,enabled,workspace_key,created_at) VALUES (?,?,?,'user',1,?,0)",(str(i),'reader-'+str(i),'unused',key))
+        settings=Settings(data_dir=root/'data/accounts'/key,qdrant_url='unused',workspace_key=key)
+        db=get_conn(settings);db.close()
+    auth.db.commit();auth.close()
+    monkeypatch.setenv('RESEARCH_AUTH_ADMIN_ONLY','0')
+    monkeypatch.setattr(server,'ROOT',root);monkeypatch.setattr(server,'RUNTIME',runtime)
+    monkeypatch.setattr(server,'load_environment',lambda:{})
+    monkeypatch.setattr(cli,'load_environment',lambda rt:{'CLAUDE_CONFIG_DIR':str(rt/'claude-config')})
+    monkeypatch.setattr(cli.os,'killpg',lambda pid,sig:None)
+    captures=[]
+    fake=make_spawn([result_line('private result')])
+    async def spawn(*args,**kwargs):captures.append(kwargs);return await fake(*args,**kwargs)
+    monkeypatch.setattr(jobs_mod.asyncio,'create_subprocess_exec',spawn)
+    with TestClient(server.app) as c:
+        rid='c'*32;sid='11111111-1111-4111-8111-111111111111'
+        payload={'run_id':rid,'skill':'chat','prompt':'read only own','session_id':sid}
+        assert c.post('/runs',headers={'X-Research-Workspace':first},json=payload).status_code==202
+        assert c.get('/runs/'+rid,headers={'X-Research-Workspace':second}).status_code==404
+        assert c.post('/runs/'+rid+'/cancel',headers={'X-Research-Workspace':second}).status_code==404
+        assert c.get('/runs/'+rid+'/events',headers={'X-Research-Workspace':second}).status_code==404
+        assert c.post('/runs',headers={'X-Research-Workspace':second},json=payload).status_code==202
+        c.get('/runs/'+rid+'/events',headers={'X-Research-Workspace':first})
+        c.get('/runs/'+rid+'/events',headers={'X-Research-Workspace':second})
+        assert len(captures)==2
+        assert captures[0]['cwd']!=captures[1]['cwd']
+        assert captures[0]['env']['CLAUDE_CONFIG_DIR']!=captures[1]['env']['CLAUDE_CONFIG_DIR']
+        assert server.workspace_engines[first]._sem is server.workspace_engines[second]._sem
+        assert c.get('/health',headers={'X-Research-Workspace':'../legacy'}).status_code==400
+
+
+def test_custom_skill_files_use_the_account_runtime_not_global_data(engine,runtime,monkeypatch):
+    own=runtime.parent/'skills/packages/private-v1';own.mkdir(parents=True)
+    (own/'SKILL.md').write_text('Account-private skill instructions')
+    capture={}
+    monkeypatch.setattr(jobs_mod.asyncio,'create_subprocess_exec',make_spawn([result_line('done')],capture=capture))
+    policy={'id':'custom:private','name':'Private','storage_key':'packages/private-v1','entry':'SKILL.md',
+            'tools':['skill_resource'],'max_calls':4,'max_turns':6,'max_output_tokens':1024,'timeout_s':120,'max_budget_usd':.1}
+    async def main():
+        await engine.start();await engine.submit('e'*32,'custom:private',body(skill_policy=policy,workspace_key='a'*32))
+        async for _ in engine.events('e'*32):pass
+        await engine.close()
+    asyncio.run(main())
+    args=list(capture['args']);mcp=json.loads(args[args.index('--mcp-config')+1])
+    env=mcp['mcpServers']['research']['env']
+    assert env['RESEARCH_SKILL_ROOT']==str(own)
+    assert env['RESEARCH_DB_PATH']==str(runtime.parent/'app.db')
+    assert env['RESEARCH_WORKSPACE']=='a'*32
+    assert 'Account-private skill instructions' in args[args.index('--system-prompt')+1]

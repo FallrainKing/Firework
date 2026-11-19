@@ -1,4 +1,4 @@
-"""create_app() must register every domain's routers.
+"""create_app(authentication=False) must register every domain's routers.
 
 Hand-built test fixtures include routers manually, so a missing
 include_router() in main.py is invisible to them — this pins the real
@@ -8,25 +8,25 @@ from app.main import create_app
 
 
 def test_create_app_registers_schedule_routes():
-    paths = create_app().openapi()['paths']
+    paths = create_app(authentication=False).openapi()['paths']
     assert set(paths['/api/workbench/schedules']) == {'get', 'post'}
     assert set(paths['/api/workbench/schedules/{ident}']) == {'patch'}
     assert set(paths['/api/workbench/schedules/{ident}/run']) == {'post'}
 
 
 def test_create_app_registers_skill_version_routes():
-    paths = create_app().openapi()['paths']
+    paths = create_app(authentication=False).openapi()['paths']
     assert set(paths['/api/skills/{skill_id}/versions']) == {'get'}
     assert set(paths['/api/skills/{skill_id}/default-version']) == {'post'}
 
 
 def test_create_app_registers_skill_validation_route():
-    paths = create_app().openapi()['paths']
+    paths = create_app(authentication=False).openapi()['paths']
     assert set(paths['/api/skills/{skill_id}/validate-run']) == {'post'}
 
 
 def test_create_app_registers_every_domain():
-    paths = create_app().openapi()['paths']
+    paths = create_app(authentication=False).openapi()['paths']
     for p in ('/health', '/api/agent/status', '/api/skills', '/api/sessions', '/api/library/papers',
               '/api/reader/papers/{paper_id}', '/api/imports/source',
               '/api/internal/imports/{ident}/execute', '/api/workbench/states/{ident}',
@@ -35,7 +35,7 @@ def test_create_app_registers_every_domain():
 
 
 def test_legacy_routes_retired():
-    paths = create_app().openapi()['paths']
+    paths = create_app(authentication=False).openapi()['paths']
     for p in paths:
         assert not p.startswith(('/api/qa', '/api/study', '/api/notes', '/api/papers', '/api/import/')), p
 
@@ -48,7 +48,7 @@ def test_spa_fallback_for_deep_links(tmp_path, monkeypatch):
 
     (tmp_path / 'index.html').write_text('<html>vue-app</html>')
     monkeypatch.setattr(main, 'WEB_DIR', tmp_path)
-    client = TestClient(main.create_app())
+    client = TestClient(main.create_app(authentication=False))
     r = client.get('/reader/1')
     assert r.status_code == 200 and 'vue-app' in r.text
     assert client.get('/health').json()['status'] == 'ok'
@@ -75,5 +75,5 @@ def test_smoke_workspace_step_dry_run(tmp_path, monkeypatch, embedder):
     monkeypatch.setenv('DATA_DIR', str(tmp_path))
     monkeypatch.setenv('QDRANT_URL', ':memory:')
     monkeypatch.setattr(main, 'Embedder', lambda model_name='BAAI/bge-m3': embedder)
-    with TestClient(main.create_app()) as c:
+    with TestClient(main.create_app(authentication=False)) as c:
         mod.check_workspace(c)

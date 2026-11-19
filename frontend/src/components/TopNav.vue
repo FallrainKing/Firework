@@ -4,6 +4,9 @@ import { useWorkbenchStore } from '@/stores/workbench'
 import { useThemeStore } from '@/shared/theme/store'
 import { meApi, type Profile } from '@/api/me'
 import StateFeedback from './StateFeedback.vue'
+import { useRouter } from 'vue-router'
+import { logout, authState } from '@/auth/session'
+const router=useRouter()
 
 const wb = useWorkbenchStore()
 const theme = useThemeStore()
@@ -33,6 +36,7 @@ async function loadProfile() {
   }
 }
 
+async function signOut(){try{await logout()}catch{profileError.value='退出登录未成功，请重试'}}
 onMounted(() => { void loadProfile() })
 </script>
 
@@ -64,13 +68,16 @@ onMounted(() => { void loadProfile() })
             :loading="profileLoading"
             :error="profileError || null"
             :empty="profile === null"
-            empty-text="本机模式，无需登录。"
+            empty-text="请重新载入账号信息。"
             @retry="loadProfile"
           />
         </div>
+        <span class="account-mode">{{authState?.account?.username}} · {{authState?.account?.role==='admin'?'管理员':'独立账号'}}</span>
+        <button v-if="authState?.account?.role==='admin'" type="button" role="menuitem" @click="router.push('/accounts');userMenuOpen=false">账号管理</button>
         <button type="button" role="menuitem" @click="wb.setView('skills'); userMenuOpen = false">技能库</button>
         <button type="button" role="menuitem" @click="wb.setView('settings'); userMenuOpen = false">设置</button>
         <button type="button" role="menuitem" @click="theme.toggle(); userMenuOpen = false">{{ theme.mode === 'light' ? '切换深色主题' : '切换浅色主题' }}</button>
+        <button type="button" role="menuitem" @click="signOut">退出登录</button>
       </div>
     </div>
     <button class="side-toggle" aria-label="展开或收起论文导航" @click="emit('toggle-side')">☰</button>

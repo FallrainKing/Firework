@@ -12,7 +12,7 @@ $DOCKER exec research-assistant-backup-1 /ops/backup.sh
 echo "== 2/5 构建镜像 =="
 $DOCKER compose build app backup
 
-echo "== 3/5 重启 app/backup（自动应用迁移 0008）=="
+echo "== 3/5 重启 app/backup（自动应用未执行的迁移）=="
 $DOCKER compose up -d app backup
 
 echo "== 4/5 重启 Runner =="
@@ -28,5 +28,20 @@ until curl -sf http://127.0.0.1:8600/health >/dev/null 2>&1; do
   fi
   sleep 2
 done
-.venv/bin/python scripts/smoke_test.py
+if [ -n "${AUTH_SESSION_FILE:-}" ]; then
+    .venv/bin/python scripts/smoke_test.py
+else
+    maintenance_dir=$(mktemp -d)
+    cleanup_auth() {
+        if [ -f "$maintenance_dir/session.json" ]; then
+            .venv/bin/python -m app.auth.bootstrap revoke-session --input "$maintenance_dir/session.json" >/dev/null 2>&1 || true
+        fi
+        rm -rf -- "$maintenance_dir"
+    }
+    trap cleanup_auth EXIT HUP INT TERM
+    .venv/bin/python -m app.auth.bootstrap issue-session --output "$maintenance_dir/session.json" --minutes 5
+    AUTH_SESSION_FILE="$maintenance_dir/session.json" .venv/bin/python scripts/smoke_test.py
+    cleanup_auth
+    trap - EXIT HUP INT TERM
+fi
 echo "deploy: done"

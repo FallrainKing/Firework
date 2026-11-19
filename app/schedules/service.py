@@ -75,6 +75,9 @@ async def schedule_loop(app):
         reconcile(db)
         from ..reader.guides.service import reconcile as reconcile_guides
         reconcile_guides(db,app.state.settings)
+        auth=getattr(app.state,"auth_store",None)
+        if auth and not auth.login_allowed(auth.by_workspace(app.state.settings.workspace_key)):
+            continue
         for row in repo.due_schedules(db):
             # Advance before dispatch: a restart must never replay billed work.
             repo.advance_next(db, row['id'], next_time(row['interval_hours']))

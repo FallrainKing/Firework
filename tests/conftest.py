@@ -153,6 +153,6 @@ def api_client(tmp_path, monkeypatch, embedder):
         monkeypatch.setattr(
             main, "Embedder", lambda model_name="BAAI/bge-m3": embedder
         )
-        return TestClient(main.create_app())
+        return TestClient(main.create_app(authentication=False))
 
     return _make

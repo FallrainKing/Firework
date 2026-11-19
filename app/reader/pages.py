@@ -16,7 +16,9 @@ def pdf_file(settings,row):
     if not row['pdf_path']:raise ValueError('这篇论文尚无 PDF 全文，请先添加文件。')
     root=(settings.data_dir/'papers').resolve()
     path=Path(row['pdf_path'])
-    if str(path).startswith('/app/data/papers/'):
+    key=getattr(settings,'workspace_key','legacy')
+    container_root=Path('/app/data') if key=='legacy' else Path('/app/data/accounts')/key
+    if path.parent==container_root/'papers':
         path=root/path.name
     path=path.resolve()
     if not path.is_relative_to(root) or not path.is_file():raise ValueError('PDF 文件不可用')

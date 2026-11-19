@@ -1,3 +1,6 @@
+let csrfToken = ''
+export function setCsrfToken(value:string){csrfToken=value}
+
 export class ApiError extends Error {
   constructor(public status: number, message: string) {
     super(message)
@@ -19,6 +22,8 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     init.headers = { 'Content-Type': 'application/json' }
     init.body = JSON.stringify(opts.body)
   }
+  init.credentials = 'same-origin'
+  if (!['GET','HEAD','OPTIONS'].includes(init.method!)) init.headers = { ...init.headers, 'X-CSRF-Token': csrfToken }
   const res = await fetch(path, init)
   let data: unknown = null
   try {
@@ -27,6 +32,7 @@ export async function api<T>(path: string, opts: Options = {}): Promise<T> {
     /* empty body */
   }
   if (!res.ok) {
+    if (res.status === 401 && !path.startsWith('/api/auth/')) window.dispatchEvent(new Event('research-auth-expired'))
     const detail = (data as { detail?: unknown } | null)?.detail
     throw new ApiError(res.status, typeof detail === 'string' ? detail : '请求失败，请稍后重试')
   }

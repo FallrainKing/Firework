@@ -48,7 +48,7 @@ def paper_page(paper_id,page,db_path):
     with sqlite3.connect(Path(db_path).resolve().as_uri()+'?mode=ro',uri=True) as db:
         db.row_factory=sqlite3.Row;row=db.execute('SELECT * FROM papers WHERE id=?',(paper_id,)).fetchone()
         if row is None:raise ValueError('Paper not found')
-        result=read_page(Settings(data_dir=Path(db_path).parent,qdrant_url='unused'),row,page)
+        result=read_page(Settings(data_dir=Path(db_path).parent,qdrant_url='unused',workspace_key=os.environ.get('RESEARCH_WORKSPACE','legacy')),row,page)
     result['truncated']=len(result['text'])>14000;result['text']=result['text'][:14000]
     return result
 
@@ -61,7 +61,7 @@ def paper_search(query,source):
 
 def internal_call(path,arguments):
     token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
-    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/'+path,data=json.dumps(arguments,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID']})
+    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/'+path,data=json.dumps(arguments,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID'],'X-Research-Workspace':os.environ.get('RESEARCH_WORKSPACE','legacy')})
     try:
         with urllib.request.urlopen(req,timeout=45) as response:return json.load(response)
     except urllib.error.HTTPError as exc:
@@ -71,13 +71,13 @@ def internal_call(path,arguments):
 
 def frontier_call(action,arguments):
     token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
-    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/frontier/'+action,data=json.dumps(arguments,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID']})
+    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/frontier/'+action,data=json.dumps(arguments,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID'],'X-Research-Workspace':os.environ.get('RESEARCH_WORKSPACE','legacy')})
     with urllib.request.urlopen(req,timeout=45) as response:return json.load(response)
 
 def paper_import(request_id):
     if request_id!=os.environ.get('RESEARCH_IMPORT_ID') or not request_id:raise ValueError('Import request not authorized for this task')
     token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
-    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/imports/'+request_id+'/execute',data=b'{}',headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID']})
+    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/imports/'+request_id+'/execute',data=b'{}',headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID'],'X-Research-Workspace':os.environ.get('RESEARCH_WORKSPACE','legacy')})
     with urllib.request.urlopen(req,timeout=100) as response:return json.load(response)
 
 def paper_read(paper_id: int, start_chunk: int, db_path: str) -> dict:

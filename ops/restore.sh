@@ -108,15 +108,52 @@ if [ -f "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" ]; then
     tar -xzf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$STAGE/agent" --strip-components 2
 fi
 
+# Authentication-enabled backups must restore identity and tenant data together.
+IDENTITY_BACKUP="${BACKUP_DIR}/identity-${DATE}.db"
+if [ -f "$IDENTITY_BACKUP" ]; then
+    require_file "${BACKUP_DIR}/accounts-${DATE}.tar.gz"
+    mkdir -p "$STAGE/auth"
+    cp "$IDENTITY_BACKUP" "$STAGE/auth/accounts.db"
+    [ "$(sqlite3 "$STAGE/auth/accounts.db" 'PRAGMA integrity_check;')" = "ok" ] || exit 1
+    tar -xzf "${BACKUP_DIR}/accounts-${DATE}.tar.gz" -C "$STAGE"
+    for workspace_id in $(sqlite3 "$STAGE/auth/accounts.db" "SELECT workspace_key FROM accounts WHERE workspace_key<>'legacy'"); do
+        case "$workspace_id" in *[!a-f0-9]*|'') echo 'Invalid account workspace' >&2; exit 1;; esac
+        [ "${#workspace_id}" -eq 32 ] || exit 1
+        tenant_db="$STAGE/accounts/$workspace_id/app.db"
+        require_file "$tenant_db"
+        [ "$(sqlite3 "$tenant_db" 'PRAGMA integrity_check;')" = "ok" ] || exit 1
+        for storage_key in $(sqlite3 "$tenant_db" "SELECT storage_key FROM skill_versions WHERE storage_key<>''"); do
+            [ -d "$STAGE/accounts/$workspace_id/skills/$storage_key" ] || exit 1
+        done
+        for archive_hash in $(sqlite3 "$tenant_db" "SELECT archive_hash FROM skill_imports WHERE archive_hash<>''"); do
+            [ -f "$STAGE/accounts/$workspace_id/skills/archives/$archive_hash.zip" ] || exit 1
+        done
+        for avatar in $(sqlite3 "$tenant_db" "SELECT avatar_storage_key FROM user_profile WHERE avatar_storage_key<>''"); do
+            [ -f "$STAGE/accounts/$workspace_id/avatars/$avatar" ] || exit 1
+        done
+        for pdf in $(sqlite3 "$tenant_db" "SELECT pdf_path FROM papers WHERE pdf_path<>'' AND pdf_path IS NOT NULL"); do
+            [ -f "$STAGE/accounts/$workspace_id/papers/${pdf##*/}" ] || exit 1
+        done
+        for image in $(sqlite3 "$tenant_db" 'SELECT id FROM image_attachments'); do
+            [ -f "$STAGE/accounts/$workspace_id/attachments/$image" ] || exit 1
+        done
+    done
+    # A restore must not revive previously issued browser sessions.
+    sqlite3 "$STAGE/auth/accounts.db" 'UPDATE auth_sessions SET revoked=1;'
+elif [ -f "$DATA_DIR/auth/accounts.db" ]; then
+    echo 'restore.sh: identity backup missing; refusing to mix current accounts with old research data' >&2
+    exit 1
+fi
+
 mkdir -p "$DATA_DIR" "$ROLLBACK"
 RESTORE_STARTED=1
-for item in app.db app.db-wal app.db-shm skills avatars papers imports attachments agent; do
+for item in app.db app.db-wal app.db-shm skills avatars papers imports attachments agent auth accounts; do
     if [ -e "$DATA_DIR/$item" ]; then
         mv -- "$DATA_DIR/$item" "$ROLLBACK/$item"
     fi
 done
 cp -- "$DB" "$DATA_DIR/app.db"
-for folder in skills avatars papers imports attachments agent; do
+for folder in skills avatars papers imports attachments agent auth accounts; do
     if [ -d "$STAGE/$folder" ]; then
         cp -a -- "$STAGE/$folder" "$DATA_DIR/$folder"
     fi

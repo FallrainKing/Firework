@@ -13,13 +13,21 @@ router = APIRouter(prefix='/api/me', tags=['user'])
 
 @router.get('')
 async def get_profile(request: Request):
-    return service.profile_view(request.app.state.db)
+    return account_profile(service.profile_view(request.app.state.db),request)
+
+
+def account_profile(result,request):
+    user=getattr(request.state,"auth_user",None)
+    if user:
+        result.update(auth_mode="account",account_id=user["id"],username=user["username"],role=user["role"])
+        result["capabilities"]["auth"]=True
+    return result
 
 
 @router.patch('')
 async def patch_profile(body: ProfileUpdate, request: Request):
     try:
-        return service.update_profile(request.app.state.db, body)
+        return account_profile(service.update_profile(request.app.state.db, body),request)
     except ValueError as exc:
         raise ServiceError(422, str(exc)) from exc
 
@@ -28,7 +36,7 @@ async def patch_profile(body: ProfileUpdate, request: Request):
 async def upload_avatar(request: Request, avatar: UploadFile = File(...)):
     data = await avatar.read(3 * 1024 * 1024)
     try:
-        return service.save_avatar(request.app.state.db, request.app.state.settings, data, avatar.filename or '')
+        return account_profile(service.save_avatar(request.app.state.db, request.app.state.settings, data, avatar.filename or ''),request)
     except ValueError as exc:
         raise ServiceError(422, str(exc)) from exc
 

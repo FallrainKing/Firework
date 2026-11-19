@@ -17,6 +17,14 @@ class Settings:
 
     data_dir: Path
     qdrant_url: str
+    workspace_key: str = "legacy"
+
+    @property
+    def vector_collection(self) -> str:
+        from .workspaces import valid_workspace
+        if not valid_workspace(self.workspace_key):
+            raise ValueError("Invalid workspace")
+        return "chunks" if self.workspace_key == "legacy" else "chunks_" + self.workspace_key
 
     @classmethod
     def from_env(cls) -> "Settings":

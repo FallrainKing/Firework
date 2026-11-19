@@ -2,7 +2,10 @@ import { api } from './client'
 
 export interface Profile {
   display_name: string
-  auth_mode: 'local'
+  auth_mode: 'local' | 'account'
+  account_id?: string
+  username?: string
+  role?: 'admin' | 'user'
   avatar_url: string | null
   revision: number
   updated_at: string

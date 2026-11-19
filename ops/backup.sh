@@ -103,6 +103,47 @@ prune 'papers-*.tar.gz'
 prune 'imports-*.tar.gz'
 prune 'agent-sessions-*.tar.gz'
 prune 'app-*.db'
-prune 'qdrant-*.snap'
+# Retain each account's vector collection independently. A global 14-file
+# limit would delete today's snapshots as soon as there are >14 collections.
+for snapshot_file in "$BACKUP_DIR"/qdrant-*.snap; do
+    [ -f "$snapshot_file" ] || continue
+    snapshot_name=${snapshot_file##*/}
+    collection_name=${snapshot_name#qdrant-}
+    collection_name=${collection_name%-????????.snap}
+    printf '%s\n' "$collection_name"
+done | sort -u | while IFS= read -r collection_name; do
+    prune "qdrant-${collection_name}-*.snap"
+done
+
+
+
+# Identity database and isolated workspaces. Snapshot SQLite before copying
+# immutable research files; never archive live WAL files as the database copy.
+if [ -f "${DATA_DIR}/auth/accounts.db" ]; then
+    sqlite3 "${DATA_DIR}/auth/accounts.db" ".backup '${BACKUP_DIR}/identity-${DATE}.db'"
+    chmod 600 "${BACKUP_DIR}/identity-${DATE}.db"
+fi
+if [ -d "${DATA_DIR}/accounts" ] || [ -f "${DATA_DIR}/auth/accounts.db" ]; then
+    tenant_stage=$(mktemp -d)
+    mkdir -p "$tenant_stage/accounts"
+    for workspace in "${DATA_DIR}/accounts"/*; do
+        [ -d "$workspace" ] || continue
+        workspace_id=${workspace##*/}
+        snapshot_db="$tenant_stage/snapshot-$workspace_id.db"
+        if [ -f "$workspace/app.db" ]; then
+            sqlite3 "$workspace/app.db" ".backup '$snapshot_db'"
+        fi
+        cp -a "$workspace" "$tenant_stage/accounts/"
+        rm -f "$tenant_stage/accounts/$workspace_id/app.db" "$tenant_stage/accounts/$workspace_id/app.db-wal" "$tenant_stage/accounts/$workspace_id/app.db-shm"
+        if [ -f "$snapshot_db" ]; then
+            mv "$snapshot_db" "$tenant_stage/accounts/$workspace_id/app.db"
+        fi
+    done
+    tar -czf "${BACKUP_DIR}/accounts-${DATE}.tar.gz" -C "$tenant_stage" accounts
+    chmod 600 "${BACKUP_DIR}/accounts-${DATE}.tar.gz"
+    rm -rf -- "$tenant_stage"
+fi
+prune 'identity-*.db'
+prune 'accounts-*.tar.gz'
 
 echo "backup.sh: done at $(date '+%Y-%m-%d %H:%M:%S %Z')"

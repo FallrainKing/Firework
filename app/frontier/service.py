@@ -83,6 +83,7 @@ def save_topic(db,body,ident=None):
 
 
 async def trigger(db,state,topic_id,key):
+    require(db,'frontier_topics',topic_id)
     reconcile(db)
     prior=db.execute('SELECT * FROM frontier_runs WHERE request_key=?',(key,)).fetchone()
     if prior:

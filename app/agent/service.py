@@ -11,6 +11,7 @@ import uuid
 import httpx
 
 from ..core.db import get_conn
+from ..core.workspaces import workspace_context
 from ..core.errors import ServiceError
 from ..reader.service import validate_context
 from ..sessions.service import require_session
@@ -300,6 +301,7 @@ async def execute_run(run_id: str, state):
     stream marks the run failed; a possibly billed request is never replayed.
     """
     db = get_conn(state.settings)
+    workspace_token=workspace_context.set(getattr(state.settings,'workspace_key','legacy'))
     try:
         row = repo.find_run(db, run_id)
         session = require_session(db, row['conversation_id'])
@@ -372,6 +374,7 @@ async def execute_run(run_id: str, state):
         raise
     finally:
         db.close()
+        workspace_context.reset(workspace_token)
 
 
 async def validate_skill_run(skill_id: str, body, state) -> dict:

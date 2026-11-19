@@ -233,9 +233,9 @@ class JobEngine:
                 env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(skill['max_output_tokens'])
                 mcp = {'mcpServers': {}}
                 if allowed:
-                    tool_env = {'RESEARCH_DB_PATH': str(self.runtime.parent / 'app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS': json.dumps(body.get('paper_ids') or []), 'RESEARCH_MAX_TOOL_CALLS': str(skill['max_calls']), 'RESEARCH_IMPORT_ID': body.get('import_request_id') or '', 'RESEARCH_RUN_ID': job['run_id'], 'RESEARCH_TOKEN_FILE': str(self.runtime / 'internal-token')}
+                    tool_env = {'RESEARCH_DB_PATH': str(self.runtime.parent / 'app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS': json.dumps(body.get('paper_ids') or []), 'RESEARCH_MAX_TOOL_CALLS': str(skill['max_calls']), 'RESEARCH_IMPORT_ID': body.get('import_request_id') or '', 'RESEARCH_RUN_ID': job['run_id'], 'RESEARCH_TOKEN_FILE': str(self.runtime / 'internal-token'), 'RESEARCH_WORKSPACE': body.get('workspace_key','legacy')}
                     if 'skill_resource' in allowed and skill.get('storage_key'):
-                        tool_env['RESEARCH_SKILL_ROOT'] = str(self.root / 'data' / 'skills' / skill['storage_key'])
+                        tool_env['RESEARCH_SKILL_ROOT'] = str(self.runtime.parent / 'skills' / skill['storage_key'])
                         tool_env['RESEARCH_SKILL_HASH'] = str(skill.get('skill_hash') or '')
                         tool_env['RESEARCH_SKILL_VERSION_ID'] = str(skill.get('version_id') or '')
                     if job['skill'] in ('frontier_monitor','paper_guide'):
@@ -244,11 +244,15 @@ class JobEngine:
                 if any(name in allowed for name in ('paper_import','frontier_context','reader_guide_context')):
                     token = self.runtime / 'internal-token'
                     if not token.exists():
-                        fd = os.open(token, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-                        with os.fdopen(fd, 'w') as f:
-                            f.write(secrets.token_urlsafe(32))
+                        try:
+                            fd = os.open(token, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+                        except FileExistsError:
+                            pass
+                        else:
+                            with os.fdopen(fd, 'w') as f:
+                                f.write(secrets.token_urlsafe(32))
                 model = cli.current_model(env, vision=bool(body.get('attachment_ids')))
-                skill_md = ((self.root / 'data' / 'skills' / skill['storage_key'] / skill['entry']).read_text() if skill.get('storage_key') else (self.root / 'skills' / job['skill'] / 'SKILL.md').read_text())
+                skill_md = ((self.runtime.parent / 'skills' / skill['storage_key'] / skill['entry']).read_text() if skill.get('storage_key') else (self.root / 'skills' / job['skill'] / 'SKILL.md').read_text())
                 req = _Body(body)
                 blocks = cli.image_blocks(req, self.runtime) if body.get('attachment_ids') else []
                 args = cli.build_args(skill, model, session_id, resume, mcp, skill_md, bool(blocks))

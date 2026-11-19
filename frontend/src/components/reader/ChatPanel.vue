@@ -51,6 +51,47 @@ const mentionQuery = ref('')
 const dragging = ref(false)
 const chatBox = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
+const questionInput = ref<HTMLTextAreaElement | null>(null)
+const composing = ref(false)
+const menuIndex = ref(0)
+
+function resizeInput() {
+  const input = questionInput.value
+  if (!input) return
+  input.style.height = 'auto'
+  input.style.height = `${Math.min(220, Math.max(88, input.scrollHeight))}px`
+}
+watch(question, () => { void nextTick(resizeInput) })
+watch([slashMenuOpen, mentionMenuOpen, slashQuery, mentionQuery], () => { menuIndex.value = 0 })
+
+function focusInput() { void nextTick(() => questionInput.value?.focus()) }
+
+function onComposerKeydown(event: KeyboardEvent) {
+  // Enter confirms a Chinese/Japanese IME candidate without sending a message.
+  if (event.isComposing || composing.value || event.keyCode === 229) return
+  if (event.key === 'Escape') { closeMenus(); event.preventDefault(); return }
+  const menuOpen = slashMenuOpen.value || mentionMenuOpen.value
+  const count = slashMenuOpen.value ? visibleTemplates.value.length : visiblePapers.value.length
+  if (menuOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+    event.preventDefault()
+    if (count) menuIndex.value = (menuIndex.value + (event.key === 'ArrowDown' ? 1 : -1) + count) % count
+    void nextTick(() => questionInput.value?.closest('form')?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }))
+    return
+  }
+  if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.repeat) return
+  event.preventDefault()
+  if (menuOpen && !event.ctrlKey && !event.metaKey) {
+    if (slashMenuOpen.value) {
+      const template = visibleTemplates.value[menuIndex.value]
+      if (template) chooseTemplate(template)
+    } else {
+      const paper = visiblePapers.value[menuIndex.value]
+      if (paper) void choosePaper(paper)
+    }
+    return
+  }
+  submit()
+}
 
 let epoch = 0
 let saveTimer: ReturnType<typeof setTimeout> | null = null
@@ -61,7 +102,7 @@ onUnmounted(() => { stopped = true })
 const currentSession = ref<Session | null>(props.session)
 
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
-const canSend = computed(() => !loading.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
+const canSend = computed(() => !loading.value && !loadError.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
 const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
 const activeRun = computed(() => [...runs.value].reverse().find(run => run.status === 'queued' || run.status === 'running') ?? null)
 const latestRun = computed(() => runs.value.at(-1) ?? null)
@@ -393,6 +434,7 @@ function chooseTemplate(template: Template) {
   removeMenuToken('/')
   if (template.prompt) question.value = [question.value, template.prompt].filter(Boolean).join('\n\n')
   closeMenus()
+  focusInput()
   scheduleDraft()
 }
 
@@ -446,6 +488,7 @@ async function ask(prompt: string, selectedContexts: SelectionContext[] = [], pu
   const sid = currentSession.value.id
   const storage = 'reader-pending-' + sid
   const attachment_ids = attachments.value.map(a => a.id)
+  const sentDraft = JSON.stringify({ prompt: question.value, contexts: contexts.value, attachments: attachment_ids })
   let body: Record<string, unknown> | null = null
   try {
     const old = JSON.parse(localStorage.getItem(storage) || 'null')
@@ -458,10 +501,15 @@ async function ask(prompt: string, selectedContexts: SelectionContext[] = [], pu
     const run = await agentApi.createRun(body as never)
     if (currentSession.value?.id === sid) {
       upsertRun(run)
-      question.value = ''
-      attachments.value = []
-      contexts.value = []
-      await flushDraft()
+      // Only clear the snapshot submitted; edits made during the request stay in the draft.
+      if (sentDraft === JSON.stringify({ prompt: question.value, contexts: contexts.value, attachments: attachments.value.map(a => a.id) })) {
+        question.value = ''
+        attachments.value = []
+        contexts.value = []
+      }
+      closeMenus()
+      focusInput()
+      void flushDraft().catch(e => showToast('消息已发送，草稿保存失败：' + (e instanceof Error ? e.message : '')))
       scroll()
     }
     void watchRun(run.id, sid)
@@ -511,6 +559,8 @@ function reedit(run: Run) {
 }
 
 function submit() {
+  if (!canSend.value || !question.value.trim()) return
+  closeMenus()
   void ask(question.value, contexts.value).catch(e => showToast(e instanceof Error ? e.message : '发送失败'))
 }
 
@@ -744,13 +794,13 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     />
     <form class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
       <div v-if="slashMenuOpen" class="command-menu" role="listbox" aria-label="提问模板">
-        <button v-for="t in visibleTemplates" :key="t.id" type="button" role="option" @mousedown.prevent="chooseTemplate(t)">
+        <button v-for="(t, i) in visibleTemplates" :key="t.id" type="button" role="option" :aria-selected="menuIndex === i" @click="chooseTemplate(t)" @mousedown.prevent>
           <strong>{{ t.name }}</strong><span>{{ t.description || t.prompt }}</span>
         </button>
         <StateFeedback v-if="!visibleTemplates.length" empty empty-text="暂无匹配模板。" />
       </div>
       <div v-if="mentionMenuOpen" class="command-menu" role="listbox" aria-label="论文引用">
-        <button v-for="p in visiblePapers" :key="p.id" type="button" role="option" @mousedown.prevent="choosePaper(p)">
+        <button v-for="(p, i) in visiblePapers" :key="p.id" type="button" role="option" :aria-selected="menuIndex === i" @click="choosePaper(p)" @mousedown.prevent>
           <strong>{{ p.title }}</strong><span>已授权当前会话</span>
         </button>
         <StateFeedback v-if="!visiblePapers.length" empty empty-text="当前会话没有匹配论文。" />
@@ -760,7 +810,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
         <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
       </div>
-      <textarea v-model="question" rows="3" maxlength="3000" placeholder="输入 / 选模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown.esc="closeMenus" @paste="onPaste"></textarea>
+      <textarea ref="questionInput" v-model="question" aria-label="向智能体提问" aria-describedby="composer-help" rows="3" maxlength="3000" placeholder="输入 / 选模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown="onComposerKeydown" @compositionstart="composing = true" @compositionend="composing = false" @paste="onPaste"></textarea>
       <StateFeedback
         v-if="uploadError"
         class="upload-error"
@@ -768,7 +818,8 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         retry-text="重试上传"
         @retry="retryUpload"
       />
-      <div class="composer-footer"><span class="muted">上下文最多 3 条 · 图片最多 3 张 · 图片需 PNG/JPEG</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">发送 ↑</button></div>
+      <div id="composer-help" class="composer-help muted">Enter 发送 · Shift+Enter 换行 · / 模板 · @ 论文</div>
+      <div class="composer-footer"><span class="muted">{{ question.length }}/3000 · 图片 {{ attachments.length }}/3 · 引用 {{ contexts.length }}/3</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">{{ uploading ? '上传中…' : busy ? '处理中…' : '发送 ↑' }}</button></div>
     </form>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>
   </div>
@@ -832,13 +883,14 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .image-attachment button { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 50%; }
 .reader-composer { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); position:relative; }
 .reader-composer.dragging::after { content:'松开以上传图片'; position:absolute; inset:4px; display:grid; place-items:center; border:1px dashed var(--accent); border-radius:var(--radius); background:rgb(255 255 255 / .82); color:var(--accent); font-size:12px; pointer-events:none; }
-.composer-tools { display: flex; gap: var(--space-2); align-items: center; }
+.composer-help { font-size:10px; line-height:1.6; }
+.composer-tools { flex-wrap:wrap; display: flex; gap: var(--space-2); align-items: center; }
 .composer-tools select { flex: 1; min-width:0; font-size:11px; padding:6px; }
 .menu-toggle,.image-picker { font-size:11px; padding:6px 8px; }
 .image-picker { flex-shrink:0; }
-.command-menu { position:absolute; left:var(--space-3); right:var(--space-3); bottom:145px; z-index:8; max-height:230px; overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:0 8px 24px rgb(0 0 0 / .12); }
+.command-menu { position:absolute; left:var(--space-3); right:var(--space-3); bottom:calc(100% - 8px); z-index:8; max-height:230px; overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:0 8px 24px rgb(0 0 0 / .12); }
 .command-menu button { display:grid; gap:2px; width:100%; padding:7px; border:0; background:none; text-align:left; }
-.command-menu button:hover { background:var(--accent-soft); }
+.command-menu button:hover,.command-menu button[aria-selected="true"] { background:var(--accent-soft); }
 .command-menu strong { font-size:12px; }
 .command-menu span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:var(--text-muted); }
 .upload-error { display:flex; align-items:center; gap:6px; margin:0; font-size:11px; }
@@ -860,5 +912,5 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .new-content { position:absolute; right:var(--space-4); bottom:205px; z-index:7; padding:5px 10px; font-size:11px; border-color:var(--accent); color:var(--accent); background:var(--surface); box-shadow:0 5px 16px rgb(0 0 0 / .12); }
 .answer :deep(table) { display:block; max-width:100%; overflow-x:auto; }
 .answer :deep(img) { max-width:100%; height:auto; }
-@media(max-width:700px) { .command-menu { bottom:150px; } }
+
 </style>

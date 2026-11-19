@@ -1,6 +1,7 @@
 """Business rules for task sessions, templates and session categories."""
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 
@@ -122,9 +123,44 @@ def link_paper(db: sqlite3.Connection, session_id: int, paper_id: int) -> None:
     repo.link_paper(db, session_id, paper_id)
 
 
+def usage_summary(db: sqlite3.Connection, session_id: int) -> dict:
+    """Sum only usage fields actually recorded in agent_runs.
+
+    The totals are accounting records, not an estimate of current context-window
+    occupancy; absent fields remain absent rather than being fabricated.
+    """
+    totals = {'input_tokens': 0, 'output_tokens': 0, 'total_tokens': 0, 'runs_with_usage': 0, 'runs_with_input_tokens': 0, 'runs_with_output_tokens': 0, 'runs_with_total_tokens': 0}
+    costs = []
+    for row in db.execute('SELECT usage_json,cli_estimated_cost_usd FROM agent_runs WHERE conversation_id=?', (session_id,)):
+        try:
+            usage = json.loads(row['usage_json'] or '{}')
+        except (TypeError, json.JSONDecodeError):
+            usage = {}
+        if not isinstance(usage, dict):
+            usage = {}
+        has_input = 'input_tokens' in usage
+        has_output = 'output_tokens' in usage
+        has_total = 'total_tokens' in usage
+        if has_input or has_output or has_total:
+            totals['runs_with_usage'] += 1
+        if has_input:
+            totals['runs_with_input_tokens'] += 1
+            totals['input_tokens'] += int(usage.get('input_tokens') or 0)
+        if has_output:
+            totals['runs_with_output_tokens'] += 1
+            totals['output_tokens'] += int(usage.get('output_tokens') or 0)
+        if has_total or (has_input and has_output):
+            totals['runs_with_total_tokens'] += 1
+            totals['total_tokens'] += int(usage.get('total_tokens') or ((usage.get('input_tokens') or 0) + (usage.get('output_tokens') or 0)))
+        if row['cli_estimated_cost_usd'] is not None:
+            costs.append(float(row['cli_estimated_cost_usd']))
+    totals['cli_estimated_cost_usd'] = sum(costs) if costs else None
+    return totals
+
+
 def session_detail(db: sqlite3.Connection, session_id: int) -> dict:
     row = require_session(db, session_id)
-    return {'session': session_view(db, row), 'papers': [dict(r) for r in repo.session_papers(db, session_id)]}
+    return {'session': session_view(db, row), 'papers': [dict(r) for r in repo.session_papers(db, session_id)], 'usage': usage_summary(db, session_id)}
 
 
 def session_runs(db: sqlite3.Connection, session_id: int, before: int | None = None, limit: int = 50) -> dict:

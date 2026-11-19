@@ -125,6 +125,27 @@ def test_paper_read_tool_enforces_session_scope_and_reports_coverage(client,monk
     assert len(paper_read(pid,first['next_chunk_idx'],str(s.db_path))['chunks'])==2
     with pytest.raises(ValueError):paper_read(pid+1,0,str(s.db_path))
 
+def test_session_detail_reports_recorded_usage_without_fabricating_missing_fields(client):
+    c,s=client
+    sid=c.post('/api/sessions',json={'template_id':'chat'}).json()['session']['id']
+    with sqlite3.connect(s.db_path) as db:
+        db.execute(
+            "INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status,answer,model,usage_json,tool_calls_json,metadata_json,cli_estimated_cost_usd,context_json,purpose,attachment_ids_json,progress_json) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ('usage-run','usage-key',sid,'chat','q','succeeded','a','m',json.dumps({'input_tokens':12}),'[]','{}',0.0123,'[]','chat','[]','{}'),
+        )
+        db.commit()
+    data=c.get(f'/api/sessions/{sid}').json()
+    assert data['usage']=={
+        'input_tokens':12,
+        'output_tokens':0,
+        'total_tokens':0,
+        'runs_with_usage':1,
+        'runs_with_input_tokens':1,
+        'runs_with_output_tokens':0,
+        'runs_with_total_tokens':0,
+        'cli_estimated_cost_usd':0.0123,
+    }
+
 def test_native_missing_transcript_is_not_silently_replayed(monkeypatch,tmp_path):
     from agent_runner import server
     monkeypatch.setattr(server,'RUNTIME',tmp_path)

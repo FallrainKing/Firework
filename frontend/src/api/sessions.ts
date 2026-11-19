@@ -1,5 +1,5 @@
 import { api } from './client'
-import type { Category, Run, Session, SessionCreate, SessionPatch, Template } from './types'
+import type { Category, Run, Session, SessionCreate, SessionPatch, SessionUsage, Template } from './types'
 
 export const sessionsApi = {
   list(params: { q?: string; kind?: string; paper_id?: number; category_id?: number; archived?: boolean; limit?: number } = {}): Promise<{ sessions: Session[] }> {
@@ -11,7 +11,7 @@ export const sessionsApi = {
   create(body: SessionCreate): Promise<{ session: Session; starting_prompt: string }> {
     return api('/api/sessions', { body })
   },
-  get(id: number): Promise<{ session: Session; papers: Array<{ id: number; title: string }> }> {
+  get(id: number): Promise<{ session: Session; papers: Array<{ id: number; title: string }>; usage: SessionUsage }> {
     return api(`/api/sessions/${id}`)
   },
   update(id: number, body: SessionPatch): Promise<Session> {

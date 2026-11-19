@@ -6,7 +6,7 @@ import { readerApi } from '@/api/reader'
 import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
-import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
+import type { Attachment, Run, SelectionContext, Session, SessionUsage, Template } from '@/api/types'
 
 const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
 const wb = useWorkbenchStore()
@@ -23,6 +23,8 @@ const contexts = ref<SelectionContext[]>([])
 const attachments = ref<Attachment[]>([])
 const templates = ref<Template[]>([])
 const associatedPapers = ref<Array<{ id: number; title: string }>>([])
+const sessionUsage = ref<SessionUsage | null>(null)
+const detailsOpen = ref(false)
 const busy = ref(false)
 const uploading = ref(false)
 const loading = ref(true)
@@ -55,6 +57,9 @@ const STATES: Record<string, string> = { queued: '排队', running: '执行中',
 const canSend = computed(() => !loading.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
 const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
 const activeRun = computed(() => [...runs.value].reverse().find(run => run.status === 'queued' || run.status === 'running') ?? null)
+const latestRun = computed(() => runs.value.at(-1) ?? null)
+const runStatus = computed(() => activeRun.value ? STATES[activeRun.value.status] : latestRun.value ? STATES[latestRun.value.status] : '暂无运行')
+const sessionModel = computed(() => latestRun.value?.model || null)
 watch([() => props.paperId, question, contexts, attachments, activeRun], () => {
   wb.setTabStatus(props.paperId, {
     draft: Boolean(question.value.trim() || contexts.value.length || attachments.value.length),
@@ -99,6 +104,27 @@ function jumpToBottom() {
   atBottom.value = true
   newContent.value = false
 }
+function numberOrMissing(value: number | null | undefined): string {
+  return value === null || value === undefined ? '未提供' : String(value)
+}
+
+function usageText(usage: Record<string, number> | null | undefined): string {
+  const input = usage && 'input_tokens' in usage ? usage.input_tokens : null
+  const output = usage && 'output_tokens' in usage ? usage.output_tokens : null
+  return `输入 ${numberOrMissing(input)} / 输出 ${numberOrMissing(output)}`
+}
+
+function sessionUsageText(usage: SessionUsage | null): string {
+  if (!usage || !usage.runs_with_usage) return '未提供'
+  const input = usage.runs_with_input_tokens ? usage.input_tokens : null
+  const output = usage.runs_with_output_tokens ? usage.output_tokens : null
+  return `输入 ${numberOrMissing(input)} / 输出 ${numberOrMissing(output)}`
+}
+
+function costText(cost: number | null | undefined): string {
+  return cost === null || cost === undefined ? '未提供' : `$${cost.toFixed(4)}（CLI 估算，非实际账单）`
+}
+
 function paperTitle(id: number): string {
   return associatedPapers.value.find(p => p.id === id)?.title ?? (id === props.paperId ? (props.paperTitle || `论文 ${id}`) : `论文 ${id}`)
 }
@@ -131,6 +157,7 @@ async function load(session: Session) {
   contexts.value = draft.contexts?.length ? draft.contexts : draft.context ? [draft.context] : []
   attachments.value = draft.attachments ?? []
   associatedPapers.value = detail.papers.map(p => ({ id: p.id, title: p.title }))
+  sessionUsage.value = detail.usage ?? null
   runs.value = data.runs
   hasMoreRuns.value = data.has_more
   nextBefore.value = data.next_before
@@ -424,8 +451,11 @@ async function watchRun(id: string, sid = currentSession.value?.id) {
         localStorage.removeItem('reader-pending-' + sid)
         if (currentSession.value?.id === sid) {
           busy.value = false
-          const updated = (await sessionsApi.get(sid!)).session
-          if (currentSession.value?.id === sid) currentSession.value = updated
+          const detail = await sessionsApi.get(sid!)
+          if (currentSession.value?.id === sid) {
+            currentSession.value = detail.session
+            sessionUsage.value = detail.usage
+          }
           scroll()
         }
         await props.orchestrator?.refreshAnnotations()
@@ -468,7 +498,51 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 
 <template>
   <div class="chat-panel">
-    <header class="chat-heading"><div><span class="agent-dot"></span><strong>论文助手</strong><small>当前论文</small></div><p :title="paperTitle">{{ paperTitle || ('论文 ' + paperId) }}</p><slot name="session-controls" /></header>
+    <header class="chat-heading">
+      <div class="session-summary">
+        <div class="session-title">
+          <span class="agent-dot" :class="{ running: activeRun, failed: latestRun?.status === 'failed' }"></span>
+          <div class="session-text">
+            <strong :title="paperTitle || ('论文 ' + paperId)">{{ paperTitle || ('论文 ' + paperId) }}</strong>
+            <small><span :title="currentSession?.title">{{ currentSession?.title || '未选择会话' }}</span> · {{ currentSession?.skill || '未提供' }} · {{ runStatus }}</small>
+          </div>
+        </div>
+        <slot name="session-controls" />
+        <button class="detail-toggle" type="button" :aria-expanded="detailsOpen" @click="detailsOpen = !detailsOpen">详情</button>
+      </div>
+      <div class="usage-summary" aria-label="会话用量">
+        <span>本轮 tokens：{{ usageText(latestRun?.usage) }}</span>
+        <span>会话累计 tokens：{{ sessionUsageText(sessionUsage) }}</span>
+        <span>费用估算：{{ costText(sessionUsage?.cli_estimated_cost_usd ?? latestRun?.cli_estimated_cost_usd) }}</span>
+      </div>
+    </header>
+    <section v-if="detailsOpen" class="session-details" aria-label="会话详情">
+      <dl>
+        <div><dt>平台会话 ID</dt><dd>{{ currentSession?.id ?? '未提供' }}</dd></div>
+        <div><dt>原生会话 ID</dt><dd>{{ currentSession?.native_session_id || '未提供' }}</dd></div>
+        <div><dt>模型</dt><dd>{{ sessionModel || '未提供' }}</dd></div>
+        <div><dt>运行状态</dt><dd>{{ runStatus }}</dd></div>
+      </dl>
+      <h4>运行记录</h4>
+      <p v-if="!runs.length" class="muted">未提供</p>
+      <div v-for="run in [...runs].reverse()" :key="'record-' + run.id" class="run-record">
+        <strong>{{ run.id }}</strong>
+        <span>{{ STATES[run.status] }} · {{ run.created_at || '未提供' }}</span>
+        <span>{{ run.model || '未提供' }} · {{ usageText(run.usage) }}</span>
+        <span>{{ costText(run.cli_estimated_cost_usd) }}</span>
+      </div>
+      <h4>附件详情</h4>
+      <p v-if="!attachments.length && !runs.some(run => run.attachment_ids.length)" class="muted">未提供</p>
+      <div v-for="a in attachments" :key="'attachment-' + a.id" class="run-record">
+        <strong>{{ a.filename || '未命名附件' }}</strong>
+        <span>{{ a.mime || '未提供' }} · {{ a.size || 0 }} bytes</span>
+        <span>当前草稿</span>
+      </div>
+      <div v-for="run in runs.filter(r => r.attachment_ids.length)" :key="'run-attachments-' + run.id" class="run-record">
+        <strong>运行 {{ run.id }}</strong>
+        <span>附件：{{ run.attachment_ids.join('、') }}</span>
+      </div>
+    </section>
     <div class="agent-state muted">
       <span>{{ agentState }}</span>
       <template v-if="activeRun">
@@ -556,11 +630,28 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 </template>
 
 <style scoped>
-.chat-heading { padding:16px 16px 12px; border-bottom:1px solid var(--border); }
+.chat-heading { padding:12px 16px; border-bottom:1px solid var(--border); }
+.session-summary { display:flex; align-items:center; gap:8px; min-width:0; }
+.session-title { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }
+.session-text { display:grid; min-width:0; }
+.session-text strong,.session-text small span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.session-text small { color:var(--text-muted); }
+.detail-toggle { flex-shrink:0; font-size:11px; padding:5px 8px; }
+.usage-summary { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:8px; font-size:10px; color:var(--text-muted); }
+.session-details { padding:12px 16px; border-bottom:1px solid var(--border); background:var(--surface); }
+.session-details dl { display:grid; gap:6px; margin:0; }
+.session-details dl div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:8px; font-size:11px; }
+.session-details dt { color:var(--text-muted); }
+.session-details dd { margin:0; overflow-wrap:anywhere; }
+.session-details h4 { margin:12px 0 6px; font-size:11px; }
+.run-record { display:flex; flex-wrap:wrap; gap:4px 10px; padding:6px 0; border-top:1px dashed var(--border); font-size:10px; }
+.run-record strong,.run-record span { min-width:0; overflow-wrap:anywhere; }
 .chat-heading > div { display:flex; gap:8px; align-items:center; }
 .chat-heading strong { font-size:13px; }
 .chat-heading small { margin-left:auto; font-size:10px; color:var(--text-muted); }
 .chat-heading p { font-size:11px; margin:7px 0 12px; color:var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.agent-dot.running { background:var(--accent); animation:tab-pulse 1.2s infinite; }
+.agent-dot.failed { background:var(--danger); }
 .agent-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; }
 .chat-empty { margin:auto 0; padding:32px 8px; text-align:center; color:var(--text-muted); font-size:12px; }
 .chat-empty > span { display:block; color:var(--accent); font-size:32px; margin-bottom:12px; }

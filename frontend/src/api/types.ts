@@ -1,3 +1,14 @@
+export interface SessionUsage {
+  input_tokens: number
+  output_tokens: number
+  total_tokens: number
+  runs_with_usage: number
+  runs_with_input_tokens: number
+  runs_with_output_tokens: number
+  runs_with_total_tokens: number
+  cli_estimated_cost_usd: number | null
+}
+
 export interface Session {
   id: number
   title: string

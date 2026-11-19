@@ -8,13 +8,14 @@ import { sessionsApi } from '@/api/sessions'
 import { readerApi } from '@/api/reader'
 import type { Run, Session } from '@/api/types'
 
-const session = { id: 5, title: '阅读', skill: 'paper_read', paper_ids: [1], native_ready: true, draft_prompt: '起始问题', archived: false } as Session
+const session = { id: 5, title: '阅读', skill: 'paper_read', paper_ids: [1], native_session_id: 'native-5', native_ready: true, draft_prompt: '起始问题', archived: false } as Session
 
 function run(overrides: Partial<Run> = {}): Run {
   return { id: 'r1', request_key: 'k', conversation_id: 5, skill: 'paper_read', skill_version: '', prompt: '问题', status: 'succeeded', answer: '答案', model: null, usage: {}, tool_calls: [], metadata: {}, contexts: [], attachment_ids: [], progress: {}, purpose: 'chat', cli_estimated_cost_usd: null, cost_verified: false, error: null, created_at: '', finished_at: null, ...overrides }
 }
 
 const orch = { jump: vi.fn(), refreshAnnotations: vi.fn(async () => {}), savePosition: vi.fn() }
+const emptyUsage = { input_tokens: 0, output_tokens: 0, total_tokens: 0, runs_with_usage: 0, runs_with_input_tokens: 0, runs_with_output_tokens: 0, runs_with_total_tokens: 0, cli_estimated_cost_usd: null }
 
 beforeEach(() => {
   localStorage.clear()
@@ -22,7 +23,7 @@ beforeEach(() => {
   vi.useFakeTimers()
   vi.spyOn(sessionsApi, 'runs').mockResolvedValue({ runs: [], has_more: false, next_before: null })
   vi.spyOn(sessionsApi, 'templates').mockResolvedValue({ templates: [], kinds: {}, skills: [] })
-  vi.spyOn(sessionsApi, 'get').mockResolvedValue({ session, papers: [] })
+  vi.spyOn(sessionsApi, 'get').mockResolvedValue({ session, papers: [], usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0, runs_with_usage: 0, runs_with_input_tokens: 0, runs_with_output_tokens: 0, runs_with_total_tokens: 0, cli_estimated_cost_usd: null } })
   vi.spyOn(workbenchApi, 'getDraft').mockResolvedValue({ prompt: '', context: null, attachment_ids: [], attachments: [] })
   vi.spyOn(workbenchApi, 'saveDraft').mockResolvedValue({ saved: true })
 })
@@ -144,7 +145,7 @@ describe('ChatPanel research composer', () => {
   })
 
   it('adds an authorized paper with @ and sends it as a run context', async () => {
-    vi.spyOn(sessionsApi, 'get').mockResolvedValue({ session, papers: [{ id: 2, title: '第二篇论文' }] })
+    vi.spyOn(sessionsApi, 'get').mockResolvedValue({ session, papers: [{ id: 2, title: '第二篇论文' }], usage: emptyUsage })
     vi.spyOn(readerApi, 'document').mockResolvedValue({ paper_id: 2, title: '第二篇论文', file_version: 'b'.repeat(64), page_count: 3, width: 600, height: 800, outline: [], pdf_url: '/x' })
     vi.spyOn(agentApi, 'createRun').mockResolvedValue(run())
     const wrapper = await mountPanel()
@@ -231,6 +232,34 @@ describe('ChatPanel long conversation', () => {
     await wrapper.find('.stop-run').trigger('click')
     await flushPromises()
     expect(agentApi.cancelRun).toHaveBeenCalledWith('r-active')
+    wrapper.unmount()
+  })
+
+  it('shows session header, usage and detail layer without fabricating missing usage', async () => {
+    vi.spyOn(sessionsApi, 'runs').mockResolvedValue({
+      runs: [run({ id: 'r-usage', model: 'test-model', usage: { input_tokens: 12 }, cli_estimated_cost_usd: 0.0123, attachment_ids: ['image-1'] })],
+      has_more: false,
+      next_before: null,
+    })
+    vi.mocked(sessionsApi.get).mockResolvedValue({
+      session,
+      papers: [],
+      usage: { input_tokens: 12, output_tokens: 0, total_tokens: 12, runs_with_usage: 1, runs_with_input_tokens: 1, runs_with_output_tokens: 0, runs_with_total_tokens: 1, cli_estimated_cost_usd: 0.0123 },
+    })
+    const wrapper = await mountPanel()
+    const header = wrapper.find('.session-summary').text()
+    expect(header).toContain('阅读')
+    expect(header).toContain('paper_read')
+    expect(header).toContain('已完成')
+    expect(wrapper.find('.usage-summary').text()).toContain('本轮 tokens：输入 12 / 输出 未提供')
+    expect(wrapper.find('.usage-summary').text()).toContain('会话累计 tokens：输入 12 / 输出 未提供')
+    expect(wrapper.find('.usage-summary').text()).toContain('CLI 估算，非实际账单')
+    await wrapper.find('.detail-toggle').trigger('click')
+    const details = wrapper.find('.session-details').text()
+    expect(details).toContain('平台会话 ID')
+    expect(details).toContain('native-5')
+    expect(details).toContain('test-model')
+    expect(details).toContain('image-1')
     wrapper.unmount()
   })
 

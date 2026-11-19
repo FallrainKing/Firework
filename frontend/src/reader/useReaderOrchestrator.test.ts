@@ -66,13 +66,13 @@ describe('reader orchestrator', () => {
   it('activate epoch guard keeps only the last session', async () => {
     const { orch } = setup()
     await orch.boot()
-    let resolveFirst!: (v: { session: import('@/api/types').Session; papers: Array<{ id: number; title: string }> }) => void
+    let resolveFirst!: (v: { session: import('@/api/types').Session; papers: Array<{ id: number; title: string }>; usage: import('@/api/types').SessionUsage }) => void
     vi.spyOn(sessionsApi, 'get')
       .mockImplementationOnce(() => new Promise(r => { resolveFirst = r }))
       .mockResolvedValue({ session: { ...session, id: 9, paper_ids: [1] }, papers: [] } as never)
     const first = orch.activate(5)
     const second = orch.activate(9)
-    resolveFirst({ session: session as import('@/api/types').Session, papers: [] })
+    resolveFirst({ session: session as import('@/api/types').Session, papers: [], usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0, runs_with_usage: 0, runs_with_input_tokens: 0, runs_with_output_tokens: 0, runs_with_total_tokens: 0, cli_estimated_cost_usd: null } })
     await Promise.all([first, second])
     expect(orch.session.value?.id).toBe(9)
   })

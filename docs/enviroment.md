@@ -20,7 +20,7 @@
 
 当前提交均保存在服务器 Git，最近功能尚未推送远端。本次认证改动需要同时重建 app/backup 并同步 Runner。
 
-SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。现有公网访问认证和隧道配置另由运维管理，本轮未变更其链路。
+SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。公网网关位于 root@matchesai.vip，站点配置 /etc/nginx/conf.d/paper-matchesai.conf。旧 Basic Auth 已关闭，仅保留应用网页登录；HTTPS 与反向隧道链路不变。配置镜像见 ops/paper-matchesai.conf，配置回退记录见 AUTHENTICATION.md。
 
 ## 2. 服务和目录
 

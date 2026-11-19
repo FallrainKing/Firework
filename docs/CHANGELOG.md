@@ -33,3 +33,7 @@ Chrome 在内网入口实际看到禁止 HTTP 密码提交并提供 HTTPS 入口
 - 发布后认证备份：`/home/f/research-assistant/backups/after-auth-20261119-2250/`，身份 SQLite integrity_check=ok，包含空账号归档（生产当前只有管理员）。
 
 生产分支仍为 `release/frontier-workbench-20261119`；服务器本地 Git 提交，未推送远端。应用和 Runner 同步；数据恢复需身份与研究资源成套，旧浏览器会话失效。没有执行生产恢复或开放普通账号。
+
+## 单次网页登录修复
+
+2026-11-19：移除 paper.matchesai.vip 网关遗留的 Basic Auth，解决浏览器密码弹窗与应用网页登录重复。保留 HTTPS、应用登录、关闭注册及 admin-only 限制；未登录资源 401 不带认证挑战。公网实际登录、PDF、退出与匿名拦截已通过，Chrome 无旧弹窗。网关配置已备份并经 nginx -t 验证和平滑重载；无应用重建或研究模型调用。详见 AUTHENTICATION 第 8 节。

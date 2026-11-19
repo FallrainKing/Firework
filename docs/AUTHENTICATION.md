@@ -8,7 +8,7 @@
 - 登录页 `/login`；注册页 `/register` 已建立，表单禁用，注册 API 始终返回 403。
 - 当前 `RESEARCH_AUTH_ADMIN_ONLY=1`。只有 primary admin 可以登录，管理员创建或启用的普通账号也受此发布限制。
 - 管理员可创建账号、启停、重设普通账号密码；创建默认停用。管理界面只提供身份和状态，不提供进入其他账号研究空间的入口。
-- 现有网关 Basic 访问认证保留；应用内登录作为研究空间的认证。初始凭据相同，后续应用密码修改不改变网关认证。
+- 公网只使用应用网页登录；旧网关 Basic Auth 已关闭，避免浏览器弹窗后再次登录。管理员账号沿用原站点凭据。HTTPS 与应用会话认证保持启用。
 
 当前不支持公开自助注册、邮件找回、邀请注册、MFA、共享资料库或跨账号协作。
 
@@ -64,7 +64,7 @@ WorkspaceManager 复用只读模型权重和 Qdrant 客户端，但创建不同 
 
 ## 5. 初始化与恢复
 
-以下命令在项目目录、受信任维护者终端执行。初始化只可执行一次，已有管理员时不覆盖：
+以下命令记录本次从旧 Basic Auth 迁移的初始化过程，仅适用于仍有旧认证挑战的环境。当前站点已完成初始化并关闭 Basic Auth，无需重跑；已有管理员不会覆盖：
 
 ```sh
 # 当前部署的私有文件仅保存原入口密码；不输出文件内容
@@ -81,7 +81,7 @@ WorkspaceManager 复用只读模型权重和 Qdrant 客户端，但创建不同 
 .venv/bin/python -m app.auth.bootstrap reset-admin-password --confirm
 ```
 
-此操作要求两次输入新密码，撤销全部旧会话；网关入口认证独立管理。普通账号密码由管理员管理页重设。
+此操作要求两次输入新密码，撤销全部旧会话；当前站点没有额外的网关密码登录。普通账号密码由管理员管理页重设。
 
 ## 6. 部署与验证
 
@@ -108,3 +108,11 @@ AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_t
 功能提交 `79e6cb2`、HTTPS 入口修复 `b46f89e` 已发布；生产仅 1 个管理员，使用原站点凭据验证登录成功。匿名论文库/PDF/SSE/账号管理/接口文档均 401，注册 403，缺 CSRF/错误 Origin 写入 403，退出后的旧会话 401；PDF Range 206，原 9 篇论文和 1 个导读任务保留，协议 5 兼容。五步冒烟通过，维护会话已撤销。前端 189 项、后端相关 189 项通过；模型调用 0。
 
 生产安全 Cookie 仅在 HTTPS 使用；HTTP 登录页已禁用密码提交并引导到配置的 HTTPS 登录地址。Chrome 已核对该提示及关闭注册的页面，不在 HTTP 页面发送真实凭据；公网管理员认证由实际 HTTPS/本地受信任请求验证。隔离测试使用临时多账号，生产未创建额外测试账号。备份与回退位置见 [变更记录](CHANGELOG.md)。
+
+## 8. 重复登录修复
+
+2026-11-19：旧 nginx Basic Auth 与新应用登录叠加，导致浏览器弹窗后再次填写网页表单。已仅对 paper.matchesai.vip 关闭旧 Basic Auth，保留 TLS、反向隧道和应用登录。未登录私有接口继续返回 401，但不含 WWW-Authenticate，不会触发浏览器密码弹窗。未开放注册或普通账号登录。
+
+公网无 Basic 凭据验收：首页/登录页/注册页/匿名状态 200，论文库/PDF/SSE/账号管理/接口文档 401；HTTPS 应用登录、Secure Cookie、PDF Range 206、退出失效通过；原论文 9 篇。Chrome 打开公网未出现旧认证弹窗。未调用研究模型。
+
+实际网关配置：root@matchesai.vip:/etc/nginx/conf.d/paper-matchesai.conf。修改前配置备份在 /root/research-auth-gateway-backups/20261119-before-app-login-only.conf；nginx 校验通过后平滑重载。旧 htpasswd 文件保留但不再用于本站认证。回滚此配置会恢复双重登录，并不会替代应用登录。仓库 ops/paper-matchesai.conf 保存当前站点配置（无凭据）；初次发布的双层认证验收作为历史记录保留。

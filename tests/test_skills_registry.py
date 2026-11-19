@@ -13,11 +13,11 @@ from app.core.db import get_conn
 from app.main import create_app
 
 
-def _zip_bytes(*, manifest: bool = True) -> bytes:
+def _zip_bytes(*, manifest: bool = True, version: str = '1.0.0', prompt: str = 'Please review the method.') -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w') as zf:
         zf.writestr('demo/SKILL.md', '# Demo skill\n\nDo useful work.')
-        zf.writestr('demo/templates/prompt.md', 'Please review the method.')
+        zf.writestr('demo/templates/prompt.md', prompt)
         if manifest:
             zf.writestr(
                 'demo/skill.json',
@@ -25,7 +25,7 @@ def _zip_bytes(*, manifest: bool = True) -> bytes:
                     {
                         'name': 'Demo',
                         'description': 'Demo skill',
-                        'version': '1.0.0',
+                        'version': version,
                         'requested_tools': ['library_search'],
                         'templates': [{'name': 'Demo prompt', 'file': 'templates/prompt.md'}],
                     }
@@ -159,6 +159,92 @@ def test_skill_version_history_and_default_rollback(tmp_path):
     assert any(template['skill'] == skill_id for template in visible_templates)
 
 
+def test_skill_version_resources_and_audit(tmp_path):
+    client = _client(tmp_path)
+    upload = client.post('/api/skills/imports', files={'archive': ('demo.zip', _zip_bytes(), 'application/zip')})
+    install = client.post(
+        f"/api/skills/imports/{upload.json()['import_id']}/install",
+        json={'name': 'Demo skill', 'description': 'Demo skill', 'category_names': ['阅读理解'], 'budget_profile': 'short'},
+    )
+    assert install.status_code == 200, install.text
+    installed = install.json()
+    skill_id = installed['skill']['id']
+    version_id = installed['version']['id']
+
+    resources = client.get(f'/api/skills/{skill_id}/versions/{version_id}/resources')
+    assert resources.status_code == 200, resources.text
+    resource_data = resources.json()
+    paths = [item['path'] for item in resource_data['resources']]
+    assert paths == ['SKILL.md', 'skill.json', 'templates/prompt.md']
+    assert resource_data['resources'][0]['is_entry'] is True
+
+    content = client.get(
+        f'/api/skills/{skill_id}/versions/{version_id}/resources/content',
+        params={'path': 'templates/prompt.md'},
+    )
+    assert content.status_code == 200, content.text
+    assert content.json()['content'] == 'Please review the method.'
+
+    traversal = client.get(
+        f'/api/skills/{skill_id}/versions/{version_id}/resources/content',
+        params={'path': '../outside.md'},
+    )
+    assert traversal.status_code == 404
+    assert 'relative paths' in traversal.json()['detail']
+
+    enabled = client.post(f'/api/skills/{skill_id}/enable')
+    assert enabled.status_code == 200
+    audit = client.get(f'/api/skills/{skill_id}/audit')
+    assert audit.status_code == 200, audit.text
+    audit_data = audit.json()['audit']
+    assert [item['action'] for item in audit_data] == ['enable', 'install']
+    assert audit_data[1]['detail']['archive_hash'] == installed['version']['content_hash']
+
+
+def test_install_new_version_for_existing_skill(tmp_path):
+    client = _client(tmp_path)
+    first = client.post(
+        '/api/skills/imports',
+        files={'archive': ('demo.zip', _zip_bytes(), 'application/zip')},
+    )
+    installed = client.post(
+        f"/api/skills/imports/{first.json()['import_id']}/install",
+        json={'name': 'Demo skill', 'category_names': ['阅读理解'], 'budget_profile': 'short'},
+    ).json()
+    skill_id = installed['skill']['id']
+    old_version_id = installed['version']['id']
+
+    second = client.post(
+        '/api/skills/imports',
+        files={'archive': ('demo-v2.zip', _zip_bytes(version='1.1.0', prompt='Review the new method.'), 'application/zip')},
+    )
+    assert second.status_code == 200, second.text
+    upgrade = client.post(
+        f"/api/skills/imports/{second.json()['import_id']}/install",
+        json={
+            'name': 'Demo skill',
+            'skill_id': skill_id,
+            'budget_profile': 'short',
+        },
+    )
+    assert upgrade.status_code == 200, upgrade.text
+    upgraded = upgrade.json()
+    assert upgraded['skill']['id'] == skill_id
+    assert len(upgraded['skill']['versions']) == 2
+    assert upgraded['skill']['default_version_id'] == old_version_id
+
+    conflict_zip = client.post(
+        '/api/skills/imports',
+        files={'archive': ('demo-conflict.zip', _zip_bytes(version='1.1.0', prompt='Conflict.'), 'application/zip')},
+    )
+    conflict = client.post(
+        f"/api/skills/imports/{conflict_zip.json()['import_id']}/install",
+        json={'name': 'Demo skill', 'skill_id': skill_id, 'budget_profile': 'short'},
+    )
+    assert conflict.status_code == 409
+    assert 'version already exists' in conflict.json()['detail']
+
+
 def test_rejects_path_traversal(tmp_path):
     client = _client(tmp_path)
     bad = io.BytesIO()
@@ -188,3 +274,36 @@ def test_skill_resource_is_version_and_path_scoped(tmp_path, monkeypatch):
         skill_resource('../outside.md')
     with pytest.raises(ValueError, match='skill package'):
         skill_resource('/etc/passwd')
+
+
+def test_skill_validate_run_is_explicit_and_audited(tmp_path, monkeypatch):
+    client = _client(tmp_path)
+    seen = {}
+
+    async def fake_create_run(body, state):
+        seen['skill'] = body.skill
+        seen['purpose'] = body.purpose
+        seen['prompt'] = body.prompt
+        return {
+            'id': 'run-validate',
+            'status': 'queued',
+            'purpose': body.purpose,
+            'skill_version_id': 123,
+        }
+
+    from app.agent import service as agent_service
+
+    monkeypatch.setattr(agent_service, 'create_run', fake_create_run)
+    response = client.post('/api/skills/chat/validate-run', json={'request_key': 'validate-key'})
+    assert response.status_code == 202, response.text
+    assert seen == {
+        'skill': 'chat',
+        'purpose': 'skill-validation',
+        'prompt': '请执行一次最小技能验证，并简要说明结果。',
+    }
+    assert response.json()['model_invocation'] is True
+
+    audit = client.get('/api/skills/chat/audit').json()['audit']
+    event = next(item for item in audit if item['action'] == 'validate-run')
+    assert event['version_id'] == 123
+    assert event['detail'] == {'run_id': 'run-validate', 'explicit_model_invocation': True}

@@ -20,7 +20,7 @@ class Workspace(BaseModel):
     layout: Layout = Field(default_factory=Layout)
     tabs: list[Tab] = Field(default_factory=list, max_length=20)
     active_paper_id: int | None = None
-    view: str = Field('read', pattern=r'^(read|compare|schedules|library)$')
+    view: str = Field('read', pattern=r'^(read|compare|schedules|library|skills|settings)$')
 
 
 class Draft(BaseModel):

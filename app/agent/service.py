@@ -14,6 +14,7 @@ from ..core.db import get_conn
 from ..core.errors import ServiceError
 from ..reader.service import validate_context
 from ..sessions.service import require_session
+from ..skills import repository as skills_repository
 from ..skills import service as skills_service
 from . import repository as repo, runner_client
 from .catalog import SKILLS as CATALOG, TEMPLATES
@@ -368,3 +369,44 @@ async def execute_run(run_id: str, state):
         raise
     finally:
         db.close()
+
+
+async def validate_skill_run(skill_id: str, body, state) -> dict:
+    """Create an explicit, minimal real run for an enabled dynamic skill.
+
+    This endpoint intentionally does not fake validation: the caller sees that a
+    model invocation will be submitted, and no upload/check/install path calls
+    it automatically. The test suite mocks ``create_run`` at this boundary.
+    """
+    db = state.db
+    skills_service.ensure_builtin_skills(db)
+    skill = skills_repository.find_skill(db, skill_id)
+    if skill is None:
+        raise ServiceError(404, 'Skill not found')
+    if skill['status'] != 'enabled':
+        raise ServiceError(409, 'Skill must be enabled before validation')
+
+    prompt = body.prompt.strip()
+    request_key = body.request_key
+    prior = repo.find_run_by_key(db, request_key)
+    run = await create_run(RunCreate(
+        prompt=prompt,
+        skill=skill_id,
+        purpose='skill-validation',
+        request_key=request_key,
+    ), state)
+    if prior is None:
+        skills_service.record_validate_run(
+            db,
+            skill_id=skill_id,
+            version_id=run.get('skill_version_id'),
+            run_id=run['id'],
+        )
+    return {
+        'skill_id': skill_id,
+        'version_id': run.get('skill_version_id'),
+        'run_id': run['id'],
+        'status': run['status'],
+        'purpose': run['purpose'],
+        'model_invocation': True,
+    }

@@ -16,6 +16,7 @@ app.db, so that branch exercises its graceful-skip path instead.
 import json
 import os
 import subprocess
+import tarfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -212,3 +213,25 @@ def test_native_sessions_are_archived_with_private_permissions(tmp_path):
     with tarfile.open(archive) as tar:
         assert 'agent/claude-config/projects/session.jsonl' in tar.getnames()
         assert 'agent/sessions/example/context.txt' in tar.getnames()
+
+
+def test_dynamic_skill_and_avatar_state_is_archived(tmp_path):
+    data_dir, backup_dir = _make_backup_dir(tmp_path)
+    (data_dir / 'skills/archives').mkdir(parents=True)
+    (data_dir / 'skills/packages/demo').mkdir(parents=True)
+    (data_dir / 'skills/archives/demo.zip').write_bytes(b'zip')
+    (data_dir / 'skills/packages/demo/SKILL.md').write_text('# Demo')
+    (data_dir / 'avatars').mkdir()
+    (data_dir / 'avatars/abc.png').write_bytes(b'png')
+
+    result = run_backup(data_dir, backup_dir, 'http://127.0.0.1:1')
+    assert result.returncode == 0, result.stderr
+
+    skills_archive = next(backup_dir.glob('skills-*.tar.gz'))
+    avatars_archive = next(backup_dir.glob('avatars-*.tar.gz'))
+    with tarfile.open(skills_archive) as tar:
+        names = tar.getnames()
+        assert 'skills/archives/demo.zip' in names
+        assert 'skills/packages/demo/SKILL.md' in names
+    with tarfile.open(avatars_archive) as tar:
+        assert 'avatars/abc.png' in tar.getnames()

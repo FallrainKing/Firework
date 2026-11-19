@@ -26,6 +26,40 @@ export interface SkillVersionHistoryItem extends SkillVersion {
   }
 }
 
+export interface SkillResource {
+  path: string
+  size_bytes: number
+  is_entry: boolean
+  readable: boolean
+}
+
+export interface SkillResourceContent {
+  skill_id: string
+  version_id: number
+  path: string
+  size_bytes: number
+  content: string
+  truncated: boolean
+}
+
+export interface SkillValidationRun {
+  skill_id: string
+  version_id: number | null
+  run_id: string
+  status: string
+  purpose: 'skill-validation'
+  model_invocation: true
+}
+
+export interface SkillAuditEvent {
+  id: number
+  skill_id: string
+  version_id: number | null
+  action: string
+  detail: Record<string, unknown>
+  created_at: string
+}
+
 export interface SkillCategory {
   id: number
   name: string
@@ -86,7 +120,7 @@ export const skillsApi = {
     form.append('archive', file)
     return api('/api/skills/imports', { form })
   },
-  install(importId: string, body: { name: string; description?: string; category_names: string[]; budget_profile: string }): Promise<{ status: string; skill: Skill; version: SkillVersion }> {
+  install(importId: string, body: { name: string; description?: string; category_names: string[]; budget_profile: string; skill_id?: string }): Promise<{ status: string; skill: Skill; version: SkillVersion }> {
     return api(`/api/skills/imports/${importId}/install`, { body })
   },
   enable(skillId: string): Promise<Skill> {
@@ -102,5 +136,20 @@ export const skillsApi = {
     return api(`/api/skills/${encodeURIComponent(skillId)}/default-version`, {
       body: { version_id: versionId, expected_revision: expectedRevision },
     })
+  },
+  versionResources(skillId: string, versionId: number): Promise<{ skill_id: string; version_id: number; resources: SkillResource[] }> {
+    return api(`/api/skills/${encodeURIComponent(skillId)}/versions/${versionId}/resources`)
+  },
+  versionResourceContent(skillId: string, versionId: number, path: string): Promise<SkillResourceContent> {
+    const query = new URLSearchParams({ path })
+    return api(`/api/skills/${encodeURIComponent(skillId)}/versions/${versionId}/resources/content?${query}`)
+  },
+  validateRun(skillId: string, prompt?: string, requestKey?: string): Promise<SkillValidationRun> {
+    return api(`/api/skills/${encodeURIComponent(skillId)}/validate-run`, {
+      body: { prompt, request_key: requestKey },
+    })
+  },
+  audit(skillId: string): Promise<{ skill_id: string; audit: SkillAuditEvent[] }> {
+    return api(`/api/skills/${encodeURIComponent(skillId)}/audit`)
   },
 }

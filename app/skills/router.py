@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, Query, Request, UploadFile
 
 from ..core.errors import ServiceError
 from . import service
-from .schemas import CategoryCreate, CategoryUpdate, SkillDefaultVersion, SkillInstall, SkillUpdate
+from .schemas import CategoryCreate, CategoryUpdate, SkillValidateRun, SkillDefaultVersion, SkillInstall, SkillUpdate
 
 router = APIRouter(prefix='/api/skills', tags=['skills'])
 
@@ -96,6 +96,13 @@ async def delete_category(category_id: int, request: Request):
         raise ServiceError(404, str(exc)) from exc
 
 
+@router.post('/{skill_id}/validate-run', status_code=202)
+async def validate_run(skill_id: str, body: SkillValidateRun, request: Request):
+    from ..agent import service as agent_service
+
+    return await agent_service.validate_skill_run(skill_id, body, request.app.state)
+
+
 @router.get('/{skill_id}')
 async def get_skill(skill_id: str, request: Request):
     try:
@@ -108,6 +115,51 @@ async def get_skill(skill_id: str, request: Request):
 async def get_skill_versions(skill_id: str, request: Request):
     try:
         return service.versions_view(request.app.state.db, skill_id)
+    except ValueError as exc:
+        raise ServiceError(404, str(exc)) from exc
+
+
+@router.get('/{skill_id}/versions/{version_id}/resources')
+async def get_skill_version_resources(skill_id: str, version_id: int, request: Request):
+    try:
+        return service.version_resources_view(
+            request.app.state.db,
+            request.app.state.settings,
+            skill_id,
+            version_id,
+        )
+    except ValueError as exc:
+        raise ServiceError(404, str(exc)) from exc
+
+
+@router.get('/{skill_id}/versions/{version_id}/resources/content')
+async def get_skill_version_resource_content(
+    skill_id: str,
+    version_id: int,
+    request: Request,
+    path: str = Query(..., max_length=500),
+):
+    try:
+        return service.version_resource_content_view(
+            request.app.state.db,
+            request.app.state.settings,
+            skill_id,
+            version_id,
+            path,
+        )
+    except ValueError as exc:
+        raise ServiceError(404, str(exc)) from exc
+
+
+@router.get('/{skill_id}/audit')
+async def get_skill_audit(
+    skill_id: str,
+    request: Request,
+    limit: int = Query(100, ge=1, le=200),
+    offset: int = Query(0, ge=0, le=10000),
+):
+    try:
+        return service.skill_audit_view(request.app.state.db, skill_id, limit=limit, offset=offset)
     except ValueError as exc:
         raise ServiceError(404, str(exc)) from exc
 

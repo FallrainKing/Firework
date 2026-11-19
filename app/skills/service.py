@@ -202,24 +202,37 @@ def _install_skill(db, settings: Settings, import_id: str, body) -> dict:
     if not archive_path.exists():
         raise ValueError('Archive file missing; please upload again')
 
-    skill_id = f'custom:{uuid.uuid4().hex}'
-    repo.insert_skill(
-        db,
-        ident=skill_id,
-        name=body.name,
-        description=body.description or manifest.get('description', ''),
-        source='zip',
-        status='disabled',
-    )
-
     version = body.default_version or str(manifest.get('version') or '1.0.0')
+    if body.skill_id:
+        target = repo.find_skill(db, body.skill_id)
+        if target is None or target['source'] != 'zip':
+            raise ValueError('Target skill does not exist or is not a custom skill')
+        if repo.find_version_by_skill_version(db, body.skill_id, version) is not None:
+            raise ValueError('Skill version already exists; use a different version number')
+        skill_id = body.skill_id
+        created_skill = False
+    else:
+        skill_id = f'custom:{uuid.uuid4().hex}'
+        repo.insert_skill(
+            db,
+            ident=skill_id,
+            name=body.name,
+            description=body.description or manifest.get('description', ''),
+            source='zip',
+            status='disabled',
+        )
+        created_skill = True
+    entry = candidate.get('entry') or 'SKILL.md'
+    top_prefix = candidate.get('top_prefix') or ''
+    if top_prefix and entry.startswith(top_prefix):
+        entry = entry[len(top_prefix):]
     version_id = repo.insert_version(
         db,
         skill_id=skill_id,
         version=version,
         content_hash=archive_hash,
         storage_key=f'packages/{archive_hash}',
-        entry=candidate.get('entry') or 'SKILL.md',
+        entry=entry,
         manifest_json=json.dumps({**manifest, 'budget_profile': body.budget_profile}, ensure_ascii=False),
         validation_status='validated',
     )
@@ -232,7 +245,8 @@ def _install_skill(db, settings: Settings, import_id: str, body) -> dict:
         temp_root = Path(temp)
         package.extract_into(archive_path.read_bytes(), temp_root, candidate.get('top_prefix') or '')
         shutil.move(str(temp_root), str(package_root))
-    repo.set_default_version(db, skill_id, version_id)
+    if created_skill:
+        repo.set_default_version(db, skill_id, version_id)
 
     manifest_templates = manifest.get('templates') or []
     if not manifest_templates:
@@ -260,8 +274,9 @@ def _install_skill(db, settings: Settings, import_id: str, body) -> dict:
             source_template_key=template_file,
         )
 
-    category_names = body.category_names or ['未分类']
-    repo.set_categories(db, skill_id, _category_ids_by_names(db, category_names))
+    if created_skill:
+        category_names = body.category_names or ['未分类']
+        repo.set_categories(db, skill_id, _category_ids_by_names(db, category_names))
     repo.update_import(
         db,
         import_id,
@@ -277,7 +292,11 @@ def _install_skill(db, settings: Settings, import_id: str, body) -> dict:
         detail_json=json.dumps({'import_id': import_id, 'archive_hash': archive_hash}, ensure_ascii=False),
     )
     db.commit()
-    return {'status': 'installed', 'skill': view_skill(db, skill_id), 'version': view_version(repo.find_version(db, version_id))}
+    return {
+        'status': 'installed',
+        'skill': view_skill(db, skill_id),
+        'version': view_version(repo.find_version(db, version_id)),
+    }
 
 
 def view_skill(db, skill_id: str) -> dict:
@@ -508,3 +527,110 @@ def skill_markdown_path(settings: Settings, policy: dict[str, Any]) -> Path:
     if not policy.get('storage_key'):
         return Path(__file__).resolve().parents[2] / 'skills' / policy['id'] / policy.get('entry', 'SKILL.md')
     return Path(settings.data_dir) / 'skills' / policy['storage_key'] / policy.get('entry', 'SKILL.md')
+
+
+def _version_root(settings: Settings, version) -> Path:
+    if version['storage_key']:
+        return Path(settings.data_dir) / 'skills' / version['storage_key']
+    return Path(__file__).resolve().parents[2] / 'skills' / version['skill_id']
+
+
+def _version_for_skill(db, skill_id: str, version_id: int):
+    version = repo.find_version(db, version_id)
+    if version is None or version['skill_id'] != skill_id:
+        raise ValueError('Version does not belong to this skill')
+    return version
+
+
+def version_resources_view(db, settings: Settings, skill_id: str, version_id: int) -> dict:
+    ensure_builtin_skills(db)
+    if repo.find_skill(db, skill_id) is None:
+        raise ValueError('Skill not found')
+    version = _version_for_skill(db, skill_id, version_id)
+    root = _version_root(settings, version).resolve()
+    resources = []
+    for path in root.rglob('*'):
+        if len(resources) >= 1000:
+            raise ValueError('Skill package contains too many previewable resources')
+        if path.is_symlink() or not path.is_file():
+            continue
+        if path.suffix.lower() not in package.TEXT_EXT:
+            continue
+        rel = path.relative_to(root).as_posix()
+        resources.append({
+            'path': rel,
+            'size_bytes': path.stat().st_size,
+            'is_entry': rel == version['entry'],
+            'readable': path.stat().st_size <= 1024 * 1024,
+        })
+    return {
+        'skill_id': skill_id,
+        'version_id': version_id,
+        'resources': sorted(resources, key=lambda item: (not item['is_entry'], item['path'])),
+    }
+
+
+def version_resource_content_view(db, settings: Settings, skill_id: str, version_id: int, path: str) -> dict:
+    ensure_builtin_skills(db)
+    if repo.find_skill(db, skill_id) is None:
+        raise ValueError('Skill not found')
+    version = _version_for_skill(db, skill_id, version_id)
+    rel = Path(path)
+    if rel.is_absolute() or '..' in rel.parts:
+        raise ValueError('Only relative paths inside the skill package are allowed')
+    root = _version_root(settings, version).resolve()
+    target = (root / rel).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise ValueError('Path escapes the skill package') from None
+    if target.is_symlink() or target.suffix.lower() not in package.TEXT_EXT:
+        raise ValueError('Resource type is not allowed')
+    if not target.is_file():
+        raise ValueError('Resource not found')
+    if target.stat().st_size > 1024 * 1024:
+        raise ValueError('Resource exceeds the 1MB limit')
+    try:
+        content = target.read_text(encoding='utf-8')
+    except UnicodeDecodeError:
+        raise ValueError('Resource is not valid UTF-8 text') from None
+    return {
+        'skill_id': skill_id,
+        'version_id': version_id,
+        'path': rel.as_posix(),
+        'size_bytes': target.stat().st_size,
+        'content': content[:200_000],
+        'truncated': len(content) > 200_000,
+    }
+
+
+def record_validate_run(db, skill_id: str, version_id: int | None, run_id: str) -> None:
+    repo.audit(
+        db,
+        skill_id=skill_id,
+        version_id=version_id,
+        action='validate-run',
+        detail_json=json.dumps({'run_id': run_id, 'explicit_model_invocation': True}, ensure_ascii=False),
+    )
+    db.commit()
+
+
+def skill_audit_view(db, skill_id: str, limit: int = 100, offset: int = 0) -> dict:
+    ensure_builtin_skills(db)
+    if repo.find_skill(db, skill_id) is None:
+        raise ValueError('Skill not found')
+    rows = repo.audits_for_skill(db, skill_id, limit=limit, offset=offset)
+    return {
+        'skill_id': skill_id,
+        'audit': [
+            {
+                'id': row['id'],
+                'skill_id': row['skill_id'],
+                'version_id': row['version_id'],
+                'action': row['action'],
+                'detail': json.loads(row['detail_json'] or '{}'),
+                'created_at': row['created_at'],
+            }
+            for row in rows
+        ],
+    }

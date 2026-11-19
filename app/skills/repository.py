@@ -108,6 +108,13 @@ def find_version_by_hash(db, content_hash: str):
     return db.execute('SELECT * FROM skill_versions WHERE content_hash=?', (content_hash,)).fetchone()
 
 
+def find_version_by_skill_version(db, skill_id: str, version: str):
+    return db.execute(
+        'SELECT * FROM skill_versions WHERE skill_id=? AND version=?',
+        (skill_id, version),
+    ).fetchone()
+
+
 def default_version(db, skill_id: str):
     skill = find_skill(db, skill_id)
     if not skill or not skill['default_version_id']:
@@ -196,6 +203,13 @@ def audit(db, *, skill_id=None, version_id=None, action: str, detail_json='{}'):
         'INSERT INTO skill_audit(skill_id,version_id,action,detail_json) VALUES (?,?,?,?)',
         (skill_id, version_id, action, detail_json),
     )
+
+
+def audits_for_skill(db, skill_id: str, limit: int = 100, offset: int = 0):
+    return db.execute(
+        'SELECT * FROM skill_audit WHERE skill_id=? ORDER BY id DESC LIMIT ? OFFSET ?',
+        (skill_id, limit, offset),
+    ).fetchall()
 
 
 def get_pref(db, key: str):

@@ -20,6 +20,11 @@ def test_create_app_registers_skill_version_routes():
     assert set(paths['/api/skills/{skill_id}/default-version']) == {'post'}
 
 
+def test_create_app_registers_skill_validation_route():
+    paths = create_app().openapi()['paths']
+    assert set(paths['/api/skills/{skill_id}/validate-run']) == {'post'}
+
+
 def test_create_app_registers_every_domain():
     paths = create_app().openapi()['paths']
     for p in ('/health', '/api/agent/status', '/api/skills', '/api/sessions', '/api/library/papers',

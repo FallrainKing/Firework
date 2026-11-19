@@ -18,6 +18,7 @@ EXPECTED_TABLES = {
     "knowledge_map",
     "llm_usage",
     "schema_migrations",
+    "user_profile",
 }
 
 
@@ -83,6 +84,14 @@ def test_papers_schema(conn):
             "INSERT INTO papers(title, source, status)"
             " VALUES ('t3', 'upload', 'nope')"
         )
+
+
+def test_user_profile_schema(conn):
+    row = conn.execute("SELECT * FROM user_profile WHERE singleton_id=1").fetchone()
+    assert row["display_name"] == "本地研究用户"
+    assert row["auth_mode"] == "local"
+    assert row["avatar_storage_key"] == ""
+    assert row["revision"] == 1
 
 
 def test_import_jobs_schema(conn):
@@ -231,7 +240,7 @@ def test_0008_preserves_rows_and_foreign_keys(tmp_path):
     raw.commit()
     raw.close()
 
-    db = core_db.get_conn(settings)  # applies 0008, 0009, and 0010 in order
+    db = core_db.get_conn(settings)  # applies migrations from 0008 through 0011 in order
     try:
         row = db.execute("SELECT * FROM agent_runs WHERE id='r1'").fetchone()
         assert row["prompt"] == "p" and row["status"] == "succeeded"

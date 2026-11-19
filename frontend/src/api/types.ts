@@ -144,7 +144,7 @@ export interface WorkspaceState {
   layout: Layout
   tabs: Tab[]
   active_paper_id: number | null
-  view: 'read' | 'compare' | 'schedules' | 'library' | 'skills'
+  view: 'read' | 'compare' | 'schedules' | 'library' | 'skills' | 'settings'
 }
 
 export interface Attachment {

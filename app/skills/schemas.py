@@ -10,6 +10,7 @@ class SkillInstall(BaseModel):
     budget_profile: str = Field(default='short', pattern='^(short|read)$')
     tags: list[str] = Field(default_factory=list, max_length=20)
     default_version: str | None = Field(default=None, max_length=40)
+    skill_id: str | None = Field(default=None, max_length=120)
 
 
 class SkillUpdate(BaseModel):
@@ -33,3 +34,16 @@ class CategoryCreate(BaseModel):
 class CategoryUpdate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     sort_order: int = Field(default=0, ge=0, le=100000)
+
+
+class SkillValidateRun(BaseModel):
+    prompt: str = Field(
+        '请执行一次最小技能验证，并简要说明结果。',
+        min_length=1,
+        max_length=1000,
+    )
+    request_key: str = Field(
+        default_factory=lambda: __import__('uuid').uuid4().hex,
+        min_length=1,
+        max_length=80,
+    )

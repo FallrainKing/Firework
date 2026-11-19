@@ -69,6 +69,16 @@ if [ -d "${DATA_DIR}/agent/claude-config" ] && [ -d "${DATA_DIR}/agent/sessions"
     echo "backup.sh: native agent sessions archived"
 fi
 
+# Dynamic skills are irreplaceable runtime state: original immutable archives,
+# expanded packages, user avatars, and their DB references must be paired.
+for folder in skills avatars; do
+    if [ -d "${DATA_DIR}/$folder" ]; then
+        tar -czf "${BACKUP_DIR}/${folder}-${DATE}.tar.gz" -C "$DATA_DIR" "$folder"
+        chmod 600 "${BACKUP_DIR}/${folder}-${DATE}.tar.gz"
+        echo "backup.sh: $folder archived"
+    fi
+done
+
 # Original PDFs and staged imports are needed alongside reader records.
 for folder in papers imports attachments; do
     if [ -d "${DATA_DIR}/$folder" ]; then
@@ -87,6 +97,8 @@ prune() {
     done
 }
 prune 'attachments-*.tar.gz'
+prune 'skills-*.tar.gz'
+prune 'avatars-*.tar.gz'
 prune 'papers-*.tar.gz'
 prune 'imports-*.tar.gz'
 prune 'agent-sessions-*.tar.gz'

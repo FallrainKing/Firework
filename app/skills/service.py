@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import tempfile
 import uuid
@@ -168,13 +169,25 @@ def install_skill(db, settings: Settings, import_id: str, body) -> dict:
     """Install a validated ZIP as an immutable, initially disabled version."""
     row = repo.find_import(db, import_id)
     package_root = _package_root(settings, f"packages/{row['archive_hash']}") if row else None
+    package_existed = package_root is not None and package_root.exists()
     try:
         return _install_skill(db, settings, import_id, body)
     except Exception:
         db.rollback()
-        if package_root is not None and package_root.exists():
+        if package_root is not None and not package_existed and package_root.exists():
             shutil.rmtree(package_root, ignore_errors=True)
         raise
+
+
+def _prepare_package_for_runner(settings: Settings, package_root: Path) -> None:
+    """Root container writes; host Runner reads as the shared data owner."""
+    skills_root = _skills_dir(settings)
+    paths = [skills_root, skills_root / 'packages', package_root, *package_root.rglob('*')]
+    owner = Path(settings.data_dir).stat()
+    for path in paths:
+        if os.geteuid() == 0:
+            os.chown(path, owner.st_uid, owner.st_gid)
+        path.chmod(0o700 if path.is_dir() else 0o600)
 
 
 def _install_skill(db, settings: Settings, import_id: str, body) -> dict:
@@ -245,6 +258,7 @@ def _install_skill(db, settings: Settings, import_id: str, body) -> dict:
         temp_root = Path(temp)
         package.extract_into(archive_path.read_bytes(), temp_root, candidate.get('top_prefix') or '')
         shutil.move(str(temp_root), str(package_root))
+    _prepare_package_for_runner(settings, package_root)
     if created_skill:
         repo.set_default_version(db, skill_id, version_id)
 
@@ -304,6 +318,7 @@ def view_skill(db, skill_id: str) -> dict:
     if row is None:
         raise ValueError('Skill not found')
     versions = repo.versions_for_skill(db, skill_id)
+    category_ids = set(repo.skill_category_ids(db, skill_id))
     default_version = repo.find_version(db, row['default_version_id']) if row['default_version_id'] else None
     return {
         'id': row['id'],
@@ -315,7 +330,7 @@ def view_skill(db, skill_id: str) -> dict:
         'default_version': view_version(default_version) if default_version else None,
         'revision': row['revision'],
         'created_at': row['created_at'],
-        'categories': [dict(c) for c in repo.list_categories(db) if row['id'] in repo.skill_category_ids(db, row['id'])],
+        'categories': [dict(c) for c in repo.list_categories(db) if c['id'] in category_ids],
         'versions': [view_version(v) for v in versions],
     }
 

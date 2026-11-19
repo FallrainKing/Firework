@@ -5,7 +5,7 @@ withDefaults(defineProps<{
   empty?: boolean
   emptyText?: string
   saving?: boolean
-  saved?: boolean | string
+  saved?: string | boolean
   saveError?: string | null
   retryText?: string
 }>(), {
@@ -32,7 +32,7 @@ defineEmits<{ retry: [] }>()
     <p v-if="empty && !loading && !error" class="state empty">{{ emptyText }}</p>
     <p v-if="saving" class="state saving" role="status">保存中…</p>
     <p v-if="saveError" class="state error save-error" role="alert">保存失败：{{ saveError }}</p>
-    <p v-else-if="saved" class="state saved" role="status">{{ typeof saved === 'string' ? saved : '已保存' }}</p>
+    <p v-else-if="saved && !saving" class="state saved" role="status">{{ typeof saved === 'string' ? saved : '已保存' }}</p>
   </div>
 </template>
 

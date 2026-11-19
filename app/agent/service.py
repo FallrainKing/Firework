@@ -19,6 +19,7 @@ from ..skills import service as skills_service
 from . import repository as repo, runner_client
 from .catalog import SKILLS as CATALOG, TEMPLATES
 from .schemas import RunCreate
+from .protocol import RUNNER_PROTOCOL_VERSION
 
 logger = logging.getLogger(__name__)
 SKILLS = {k: v['name'] for k, v in CATALOG.items()}
@@ -94,6 +95,8 @@ async def status_view(db) -> dict:
     registry = skills_service.registry_view(db)
     return {
         'runner': runner,
+        'required_runner_protocol': RUNNER_PROTOCOL_VERSION,
+        'runner_protocol_compatible': runner.get('status') == 'ok' and runner.get('protocol_version') == RUNNER_PROTOCOL_VERSION,
         'runs': counts,
         'database': 'ok',
         'registry_revision': registry['registry_revision'],

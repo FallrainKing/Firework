@@ -40,6 +40,16 @@ async function mountPanel() {
 }
 
 describe('ChatPanel', () => {
+  it('shows the paper title rather than the title resolver function', async () => {
+    const wrapper = mount(ChatPanel, { props: { session, paperId: 1, paperTitle: '正确的论文标题' } })
+    await flushPromises()
+    expect(wrapper.find('.session-title strong').text()).toBe('正确的论文标题')
+    expect(wrapper.find('.session-title strong').attributes('title')).toBe('正确的论文标题')
+    await wrapper.setProps({ paperTitle: undefined })
+    expect(wrapper.find('.session-title strong').text()).toBe('论文 1')
+    wrapper.unmount()
+  })
+
   it('ask reuses pending request_key from localStorage', async () => {
     const created: unknown[] = []
     vi.spyOn(agentApi, 'createRun').mockImplementation(async body => { created.push(body); return run({ status: 'queued' }) })

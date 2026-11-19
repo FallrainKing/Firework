@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent.catalog import SKILLS
+from app.agent.protocol import RUNNER_PROTOCOL_VERSION
 from . import cli, jobs
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,7 +65,7 @@ def image_blocks(body):
 @app.get('/health')
 async def health():
     queued, running = engine.counts() if engine else (0, 0)
-    return {'status': 'ok', 'agent': 'claude_cli', 'model': current_model(load_environment()), 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
+    return {'status': 'ok', 'protocol_version': RUNNER_PROTOCOL_VERSION, 'agent': 'claude_cli', 'model': current_model(load_environment()), 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
 
 
 @app.post('/runs', status_code=202)

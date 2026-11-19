@@ -258,6 +258,11 @@ def test_http_protocol(runtime, monkeypatch):
         assert c.post('/run', json={'run_id': '1' * 32, 'skill': 'chat', 'prompt': 'hi'}).status_code == 404
         h = c.get('/health').json()
         assert h['concurrency'] == 2 and 'queued' in h and 'running' in h
+        assert h['protocol_version'] == 2
+        invalid = c.post('/runs', json={'run_id': '0' * 32, 'skill': 'chat', 'skill_version_id': 'invalid', 'skill_hash': []})
+        assert invalid.status_code == 422
+        fields = {error['loc'][-1] for error in invalid.json()['detail']}
+        assert {'prompt', 'skill_version_id', 'skill_hash'} <= fields
         sub = c.post('/runs', json={'run_id': '2' * 32, 'skill': 'chat', 'prompt': 'hi'})
         assert sub.status_code == 202 and sub.json()['run_id'] == '2' * 32
         got = c.get('/runs/' + '2' * 32)

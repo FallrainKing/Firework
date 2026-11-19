@@ -19,6 +19,13 @@ beforeEach(() => {
 })
 
 describe('SettingsView', () => {
+  it('does not announce a save on initial load', async () => {
+    const wrapper = mount(SettingsView)
+    await flushPromises()
+    expect(wrapper.findAll('.state.saved')).toHaveLength(0)
+    wrapper.unmount()
+  })
+
   it('edits the local profile and preferences with real capabilities', async () => {
     const updateProfile = vi.spyOn(meApi, 'updateProfile').mockResolvedValue({ ...profile, display_name: '新研究者', revision: 2 })
     const updatePreferences = vi.spyOn(meApi, 'updatePreferences').mockResolvedValue({ preferences: { theme: 'light' }, revision: 5 })

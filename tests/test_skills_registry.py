@@ -307,3 +307,53 @@ def test_skill_validate_run_is_explicit_and_audited(tmp_path, monkeypatch):
     event = next(item for item in audit if item['action'] == 'validate-run')
     assert event['version_id'] == 123
     assert event['detail'] == {'run_id': 'run-validate', 'explicit_model_invocation': True}
+
+
+def test_skill_categories_round_trip_and_filter(tmp_path):
+    client = _client(tmp_path)
+    uploaded = client.post('/api/skills/imports', files={'archive': ('categories.zip', _zip_bytes(), 'application/zip')}).json()
+    installed = client.post(f"/api/skills/imports/{uploaded['import_id']}/install", json={
+        'name': '分类回归技能', 'category_names': ['阅读理解', '审查比较'], 'budget_profile': 'short',
+    }).json()
+    skill = installed['skill']
+    assert {c['name'] for c in skill['categories']} == {'阅读理解', '审查比较'}
+    for category in skill['categories']:
+        found = client.get('/api/skills', params={'category_id': category['id']}).json()['skills']
+        assert any(s['id'] == skill['id'] and category['id'] in {c['id'] for c in s['categories']} for s in found)
+    other = client.post('/api/skills/categories', json={'name': '回归验证分类'}).json()
+    changed = client.patch('/api/skills/' + skill['id'], json={'category_ids': [other['id']]}).json()
+    assert [c['name'] for c in changed['categories']] == ['回归验证分类']
+    assert client.get('/api/skills/' + skill['id']).json()['categories'] == changed['categories']
+
+
+def test_repeated_install_preserves_the_installed_package(tmp_path):
+    client = _client(tmp_path)
+    imported = client.post('/api/skills/imports', files={'archive': ('repeat.zip', _zip_bytes(), 'application/zip')}).json()
+    route = f"/api/skills/imports/{imported['import_id']}/install"
+    installed = client.post(route, json={'name': '不可变技能'}).json()
+    root = tmp_path / 'skills' / installed['version']['storage_key']
+    assert (root / 'SKILL.md').is_file()
+    assert root.stat().st_mode & 0o777 == 0o700
+    assert (root / 'SKILL.md').stat().st_mode & 0o777 == 0o600
+    before = (root / 'SKILL.md').read_bytes()
+    assert client.post(route, json={'name': '重复请求'}).status_code == 409
+    assert (root / 'SKILL.md').read_bytes() == before
+
+
+def test_container_created_package_is_owned_by_host_data_user(tmp_path, monkeypatch):
+    from pathlib import Path
+    from app.skills import service
+    package_root = tmp_path / 'skills' / 'packages' / 'probe'
+    (package_root / 'references').mkdir(parents=True)
+    (package_root / 'SKILL.md').write_text('# Probe')
+    (package_root / 'references' / 'a.md').write_text('reference')
+    owner = tmp_path.stat()
+    changed = []
+    monkeypatch.setattr(service.os, 'geteuid', lambda: 0)
+    monkeypatch.setattr(service.os, 'chown', lambda path, uid, gid: changed.append((Path(path), uid, gid)))
+    service._prepare_package_for_runner(Settings(data_dir=tmp_path, qdrant_url='http://localhost'), package_root)
+    assert {entry[0] for entry in changed} == {
+        tmp_path / 'skills', tmp_path / 'skills' / 'packages', package_root,
+        package_root / 'references', package_root / 'SKILL.md', package_root / 'references' / 'a.md',
+    }
+    assert all(uid == owner.st_uid and gid == owner.st_gid for _, uid, gid in changed)

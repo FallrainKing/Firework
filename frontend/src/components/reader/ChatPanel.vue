@@ -132,7 +132,7 @@ function costText(cost: number | null | undefined): string {
   return cost === null || cost === undefined ? '未提供' : `$${cost.toFixed(4)}（CLI 估算，非实际账单）`
 }
 
-function paperTitle(id: number): string {
+function resolvePaperTitle(id: number): string {
   return associatedPapers.value.find(p => p.id === id)?.title ?? (id === props.paperId ? (props.paperTitle || `论文 ${id}`) : `论文 ${id}`)
 }
 
@@ -544,7 +544,7 @@ async function allRunsForExport(): Promise<Run[]> {
 
 function buildMarkdown(exportRuns: Run[]): string {
   const sessionValue = currentSession.value
-  const papers = associatedPapers.value.length ? associatedPapers.value : (sessionValue?.paper_ids.length ? sessionValue.paper_ids.map(id => ({ id, title: paperTitle(id) })) : [{ id: props.paperId, title: props.paperTitle || `论文 ${props.paperId}` }])
+  const papers = associatedPapers.value.length ? associatedPapers.value : (sessionValue?.paper_ids.length ? sessionValue.paper_ids.map(id => ({ id, title: resolvePaperTitle(id) })) : [{ id: props.paperId, title: props.paperTitle || `论文 ${props.paperId}` }])
   const lines: string[] = [
     '# 研究会话导出',
     '',
@@ -577,7 +577,7 @@ function buildMarkdown(exportRuns: Run[]): string {
     if (!run.contexts.length) lines.push('- 未提供')
     for (const context of run.contexts) {
       lines.push(
-        `- 论文：[P${context.paper_id}] ${paperTitle(context.paper_id)}（paper_id=${context.paper_id}）`,
+        `- 论文：[P${context.paper_id}] ${resolvePaperTitle(context.paper_id)}（paper_id=${context.paper_id}）`,
         `  - 物理页：${context.page}`,
         `  - 文件版本锚点：\`${context.file_version || '未提供'}\``,
       )
@@ -627,7 +627,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <div class="session-title">
           <span class="agent-dot" :class="{ running: activeRun, failed: latestRun?.status === 'failed' }"></span>
           <div class="session-text">
-            <strong :title="paperTitle || ('论文 ' + paperId)">{{ paperTitle || ('论文 ' + paperId) }}</strong>
+            <strong :title="props.paperTitle || ('论文 ' + paperId)">{{ props.paperTitle || ('论文 ' + paperId) }}</strong>
             <small><span :title="currentSession?.title">{{ currentSession?.title || '未选择会话' }}</span> · {{ currentSession?.skill || '未提供' }} · {{ runStatus }}</small>
           </div>
         </div>
@@ -691,7 +691,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <p v-if="run.status === 'running' && progressText(run)" class="muted">{{ progressText(run) }}</p>
         <img v-for="id in run.attachment_ids" :key="id" class="chat-image" :src="'/api/workbench/images/' + id" alt="本轮提问的图片" />
         <div v-for="(c, i) in run.contexts" :key="i" class="original-context">
-          <button @click="orchestrator?.jump(c)">{{ c.quote ? '原文' : '论文引用' }} · {{ paperTitle(c.paper_id) }} 第 {{ c.page }} 页</button>
+          <button @click="orchestrator?.jump(c)">{{ c.quote ? '原文' : '论文引用' }} · {{ resolvePaperTitle(c.paper_id) }} 第 {{ c.page }} 页</button>
           <div v-if="c.quote">{{ c.quote }}</div>
         </div>
         <div v-if="run.answer" class="answer" v-html="renderMd(run.answer)"></div>
@@ -725,8 +725,8 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
       <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">
         <strong>{{ c.paper_id === paperId ? '当前论文' : '引用论文' }}</strong>
-        <span>{{ paperTitle(c.paper_id) }}<template v-if="c.quote"> · 第 {{ c.page }} 页原文</template></span>
-        <button :aria-label="'移除上下文 ' + paperTitle(c.paper_id)" type="button" @click="removeContext(i)">×</button>
+        <span>{{ resolvePaperTitle(c.paper_id) }}<template v-if="c.quote"> · 第 {{ c.page }} 页原文</template></span>
+        <button :aria-label="'移除上下文 ' + resolvePaperTitle(c.paper_id)" type="button" @click="removeContext(i)">×</button>
       </div>
     </div>
     <div v-if="attachments.length" class="reader-attachments">

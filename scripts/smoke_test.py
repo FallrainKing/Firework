@@ -10,7 +10,7 @@
   2. GET  /api/library/papers          → 200 且含 papers 列表
   3. GET  /api/sessions/templates      → 200 且含内置 read/compare 模板
   4. PUT/GET /api/workbench/states/{探针} → 写入后读回一致，再恢复原值
-  5. GET  /api/agent/status            → runner.status == "ok"
+  5. GET  /api/agent/status            → Runner 在线且协议兼容
 
 智能体执行链路（真实模型）不在冒烟内，避免重复计费；用最小材料单独验证。
 脚本幂等可重跑：工作区探针先读原值、结束后恢复。
@@ -61,6 +61,18 @@ def wait_health(client: httpx.Client) -> None:
     fail("health", "服务未就绪（/health 非 ok）")
 
 
+def check_agent(client: httpx.Client) -> dict:
+    """An old but healthy Runner must not pass a release check."""
+    r = client.get('/api/agent/status')
+    data = r.json() if r.status_code == 200 else {}
+    runner = data.get('runner', {})
+    if runner.get('status') != 'ok':
+        fail('agent', f'Runner 不在线: {runner}')
+    if data.get('runner_protocol_compatible') is not True:
+        fail('agent', f"Runner 协议不匹配：需要 {data.get('required_runner_protocol')}，实际 {runner.get('protocol_version')}；请同步发布并重启宿主 Runner")
+    return runner
+
+
 def main() -> None:
     with httpx.Client(base_url=BASE_URL, timeout=10) as client:
         wait_health(client)
@@ -80,11 +92,8 @@ def main() -> None:
         check_workspace(client)
         print("ok [4/5] workspace")
 
-        r = client.get("/api/agent/status")
-        runner = r.json().get("runner", {}) if r.status_code == 200 else {}
-        if runner.get("status") != "ok":
-            fail("agent", f"Runner 不在线: {runner}")
-        print(f"ok [5/5] agent（model={runner.get('model')} concurrency={runner.get('concurrency')}）")
+        runner = check_agent(client)
+        print(f"ok [5/5] agent（model={runner.get('model')} concurrency={runner.get('concurrency')} protocol={runner.get('protocol_version')}）")
 
     print("SMOKE PASS")
 

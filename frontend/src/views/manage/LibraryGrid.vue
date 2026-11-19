@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { papersApi } from '@/api/papers'
 import type { Collection, Paper } from '@/api/types'
 import PaperEditDialog from '@/components/manage/PaperEditDialog.vue'
@@ -7,7 +7,8 @@ import StateFeedback from '@/components/StateFeedback.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 import type { Session } from '@/api/types'
 
-const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number] }>()
+const props = withDefaults(defineProps<{ filterCollection?: string; filterStatus?: '' | 'unread' | 'reading' | 'read' }>(), { filterCollection: '', filterStatus: '' })
+const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number]; 'filter-change': [collection: string, status: '' | 'unread' | 'reading' | 'read'] }>()
 
 const papers = ref<Paper[]>([])
 const loading = ref(false)
@@ -20,10 +21,11 @@ const total = ref(0)
 const offset = ref(0)
 const hasMore = ref(false)
 const query = ref('')
-const collectionId = ref('')
+const collectionId = ref(props.filterCollection)
 const selected = ref<Set<number>>(new Set())
 const density = ref<'card' | 'compact'>(localStorage.getItem('library-density') === 'compact' ? 'compact' : 'card')
-const readingStatus = ref<'' | 'unread' | 'reading' | 'read'>('')
+const readingStatus = ref<'' | 'unread' | 'reading' | 'read'>(props.filterStatus)
+watch(() => [props.filterCollection, props.filterStatus], () => { collectionId.value = props.filterCollection; readingStatus.value = props.filterStatus; selected.value = new Set(); reload() })
 const failedThumbnails = ref<Set<number>>(new Set())
 const openMenuId = ref<number | null>(null)
 const batchCollectionOpen = ref(false)
@@ -155,12 +157,12 @@ function onSaved() {
         <input v-model="query" type="search" placeholder="搜索标题 / 摘要 / 作者…" aria-label="搜索论文" />
         <button type="submit">搜索</button>
       </form>
-      <select v-model="collectionId" class="collection-filter" aria-label="按分类筛选" @change="reload()">
+      <select v-model="collectionId" class="collection-filter" aria-label="按分类筛选" @change="emit('filter-change', collectionId, readingStatus); reload()">
         <option value="">全部论文</option>
         <option value="0">未分类</option>
         <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
       </select>
-      <select v-model="readingStatus" class="reading-filter" aria-label="按阅读状态筛选" @change="reload()">
+      <select v-model="readingStatus" class="reading-filter" aria-label="按阅读状态筛选" @change="emit('filter-change', collectionId, readingStatus); reload()">
         <option value="">全部阅读状态</option>
         <option value="unread">未开始阅读</option>
         <option value="reading">阅读中</option>

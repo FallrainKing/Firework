@@ -7,6 +7,7 @@ cap is the runaway guardrail, not a wall-clock kill.
 _SHORT = {'max_turns': 6, 'max_output_tokens': 1024, 'timeout_s': 120, 'max_budget_usd': 0.10}
 _READ = {'max_turns': 30, 'max_output_tokens': 8192, 'timeout_s': None, 'max_budget_usd': 1.00}
 SKILLS = {
+ 'frontier_monitor': {'name':'前沿追踪 · Nature 发现流程适配','tools':['frontier_context','frontier_search','frontier_report','skill_resource'],'max_calls':10,'max_turns':12,'max_output_tokens':4096,'timeout_s':240,'max_budget_usd':0.20},
  'paper_discover': {'name':'多源论文搜索','tools':['paper_search'],'max_calls':2, **_SHORT},
  'paper_import': {'name':'论文入库','tools':['paper_import'],'max_calls':1,'max_turns':6,'max_output_tokens':2048,'timeout_s':180,'max_budget_usd':0.20},
  'chat': {'name':'科研对话','tools':[],'max_calls':0, **_SHORT},

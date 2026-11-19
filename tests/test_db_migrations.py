@@ -66,6 +66,7 @@ def test_papers_schema(conn):
         "metadata_version",
         "doi",
         "source_url",
+        "frontier_entity_id",
     }
     # defaults
     assert cols["status"][4] == "'new'"

@@ -23,6 +23,7 @@ READ_PROFILE = {'max_turns': 30, 'max_output_tokens': 8192, 'timeout_s': None, '
 ALLOWED_TOOLS = {
     'paper_search', 'paper_import', 'library_search', 'arxiv_search',
     'paper_read', 'paper_page', 'skill_resource',
+    'frontier_context','frontier_search','frontier_report',
 }
 
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import uuid
 from datetime import datetime, timedelta, timezone
 
 
@@ -45,14 +46,22 @@ def enable_schedule(db, ident: int, body: Enable) -> dict:
     return {'saved': True}
 
 
-async def fire_schedule(ident: int, db, state) -> dict:
+async def fire_schedule(ident: int, db, state, slot: str | None = None) -> dict:
     from ..agent.schemas import RunCreate
     from ..agent.service import create_run
 
     r = repo.find_schedule(db, ident)
     if r is None:
         raise ServiceError(404, '定时任务不存在')
+    if r['kind'] == 'frontier':
+        from ..frontier.service import trigger
+        result = await trigger(db, state, r['frontier_topic_id'], f"schedule:{ident}:{slot}" if slot else "manual:"+uuid.uuid4().hex)
+        db.execute('UPDATE research_schedules SET last_error=NULL WHERE id=?',(ident,))
+        repo.set_last_run(db, ident, result['agent_run_id'], next_time(r['interval_hours']))
+        db.commit()
+        return result
     run = await create_run(RunCreate(conversation_id=r['conversation_id'], prompt=r['prompt']), state)
+    db.execute('UPDATE research_schedules SET last_error=NULL WHERE id=?',(ident,))
     repo.set_last_run(db, ident, run['id'], next_time(r['interval_hours']))
     db.commit()
     return run
@@ -62,12 +71,15 @@ async def schedule_loop(app):
     while True:
         await asyncio.sleep(60)
         db = app.state.db
+        from ..frontier.service import reconcile
+        reconcile(db)
         for row in repo.due_schedules(db):
             # Advance before dispatch: a restart must never replay billed work.
             repo.advance_next(db, row['id'], next_time(row['interval_hours']))
             db.commit()
             # Busy/full queues are normal refusals: skip, never hammer retries.
             try:
-                await fire_schedule(row['id'], db, app.state)
-            except ServiceError:
-                pass
+                await fire_schedule(row['id'], db, app.state, slot=row['next_at'])
+            except ServiceError as exc:
+                db.execute('UPDATE research_schedules SET last_error=? WHERE id=?',(str(exc.detail)[:300],row['id']))
+                db.commit()

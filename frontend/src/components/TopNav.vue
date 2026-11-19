@@ -15,6 +15,7 @@ const emit = defineEmits<{ 'toggle-side': [] }>()
 
 const views = [
   { id: 'read', label: '读论文' },
+  { id: 'frontier', label: '前沿追踪' },
   { id: 'compare', label: '论文比较' },
   { id: 'schedules', label: '定时任务' },
   { id: 'library', label: '论文库管理' },

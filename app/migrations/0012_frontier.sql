@@ -1,0 +1,24 @@
+CREATE TABLE frontier_topics(id INTEGER PRIMARY KEY,title TEXT NOT NULL,revision INTEGER NOT NULL DEFAULT 1,config_json TEXT NOT NULL,conversation_id INTEGER REFERENCES conversations(id),schedule_id INTEGER REFERENCES research_schedules(id),created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE frontier_topic_versions(topic_id INTEGER REFERENCES frontier_topics(id),revision INTEGER,config_json TEXT NOT NULL,PRIMARY KEY(topic_id,revision));
+CREATE TABLE frontier_runs(id TEXT PRIMARY KEY,topic_id INTEGER NOT NULL REFERENCES frontier_topics(id),revision INTEGER NOT NULL,config_json TEXT NOT NULL,request_key TEXT NOT NULL UNIQUE,agent_run_id TEXT UNIQUE REFERENCES agent_runs(id),conversation_id INTEGER REFERENCES conversations(id),status TEXT NOT NULL DEFAULT 'dispatching',window_start TEXT NOT NULL,window_end TEXT NOT NULL,coverage_json TEXT NOT NULL DEFAULT '[]',report_md TEXT NOT NULL DEFAULT '',citations_json TEXT NOT NULL DEFAULT '[]',error TEXT,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,finished_at TEXT);
+CREATE INDEX idx_frontier_topic_runs ON frontier_runs(topic_id,created_at DESC,id DESC);
+CREATE UNIQUE INDEX idx_frontier_active_topic ON frontier_runs(topic_id) WHERE status IN ('dispatching','queued','running');
+CREATE TABLE frontier_entities(id INTEGER PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN ('paper','project')),canonical_key TEXT NOT NULL UNIQUE,metadata_json TEXT NOT NULL,content_hash TEXT NOT NULL,paper_id INTEGER REFERENCES papers(id),project_id INTEGER,first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE frontier_aliases(alias TEXT PRIMARY KEY,entity_id INTEGER NOT NULL REFERENCES frontier_entities(id));
+CREATE TABLE frontier_items(topic_id INTEGER REFERENCES frontier_topics(id),entity_id INTEGER REFERENCES frontier_entities(id),decision TEXT NOT NULL DEFAULT 'pending',revision INTEGER NOT NULL DEFAULT 1,approved_hash TEXT,first_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,last_seen TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,PRIMARY KEY(topic_id,entity_id));
+CREATE TABLE frontier_evidence(id TEXT PRIMARY KEY,run_id TEXT NOT NULL REFERENCES frontier_runs(id),entity_id INTEGER NOT NULL REFERENCES frontier_entities(id),snapshot_json TEXT NOT NULL,content_hash TEXT NOT NULL,change_type TEXT NOT NULL,source TEXT NOT NULL,query TEXT NOT NULL,reason TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE INDEX idx_frontier_evidence_run ON frontier_evidence(run_id);
+CREATE TABLE frontier_reports(id INTEGER PRIMARY KEY,run_id TEXT NOT NULL REFERENCES frontier_runs(id),version INTEGER NOT NULL,body_md TEXT NOT NULL,citations_json TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,UNIQUE(run_id,version));
+CREATE TABLE frontier_report_reads(run_id TEXT PRIMARY KEY REFERENCES frontier_runs(id),version INTEGER NOT NULL DEFAULT 1,read_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE frontier_decisions(id INTEGER PRIMARY KEY,request_key TEXT NOT NULL UNIQUE,topic_id INTEGER NOT NULL REFERENCES frontier_topics(id),entity_id INTEGER NOT NULL REFERENCES frontier_entities(id),action TEXT NOT NULL,body_json TEXT NOT NULL,result_json TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE frontier_cursors(topic_id INTEGER REFERENCES frontier_topics(id),source TEXT,revision INTEGER,watermark TEXT NOT NULL,PRIMARY KEY(topic_id,source,revision));
+CREATE TABLE projects(id INTEGER PRIMARY KEY,repo_key TEXT NOT NULL UNIQUE,title TEXT NOT NULL,url TEXT NOT NULL,description TEXT NOT NULL DEFAULT '',owner TEXT NOT NULL DEFAULT '',license TEXT,metadata_json TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE project_collection_items(project_id INTEGER REFERENCES projects(id),collection_id INTEGER REFERENCES paper_collections(id),PRIMARY KEY(project_id,collection_id));
+ALTER TABLE research_schedules ADD COLUMN kind TEXT NOT NULL DEFAULT 'session';
+ALTER TABLE research_schedules ADD COLUMN frontier_topic_id INTEGER REFERENCES frontier_topics(id);
+ALTER TABLE papers ADD COLUMN frontier_entity_id INTEGER REFERENCES frontier_entities(id);
+CREATE UNIQUE INDEX idx_papers_frontier_entity ON papers(frontier_entity_id) WHERE frontier_entity_id IS NOT NULL;
+CREATE TABLE frontier_pages(topic_id INTEGER REFERENCES frontier_topics(id),source TEXT,revision INTEGER,query_key TEXT,window_start TEXT NOT NULL,window_end TEXT NOT NULL,next_offset INTEGER NOT NULL,PRIMARY KEY(topic_id,source,revision,query_key));
+ALTER TABLE frontier_runs ADD COLUMN discussion_session_id INTEGER REFERENCES conversations(id);
+
+ALTER TABLE research_schedules ADD COLUMN last_error TEXT;

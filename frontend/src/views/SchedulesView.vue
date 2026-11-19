@@ -62,7 +62,8 @@ async function run(id: number) {
       />
       <article v-for="s in store.schedules" :key="s.id" class="schedule-card">
         <div class="schedule-info">
-          <strong>{{ s.title }}</strong>
+          <strong>{{ s.title }}<small v-if="s.kind === 'frontier'"> · 前沿追踪</small></strong>
+          <span v-if="s.last_error" class="schedule-error">最近未执行：{{ s.last_error }}</span>
           <span class="muted">{{ s.session_title ?? '会话 ' + s.conversation_id }} · 每 {{ s.interval_hours }} 小时</span>
           <span class="muted">下次：{{ s.next_at ?? '—' }}<template v-if="s.last_run_id"> · 最近已提交</template></span>
         </div>
@@ -92,3 +93,5 @@ h1 { margin: 0 0 var(--space-1); font-size: 22px; }
 .state.on { color: var(--success); }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }
 </style>
+
+<style scoped>.schedule-error{color:var(--danger);font-size:12px;overflow-wrap:anywhere}</style>

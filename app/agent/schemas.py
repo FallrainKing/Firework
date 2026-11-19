@@ -12,5 +12,5 @@ class RunCreate(BaseModel):
     conversation_id: int | None = None
     contexts: list[Context] = Field(default_factory=list, max_length=3)
     attachment_ids: list[str] = Field(default_factory=list, max_length=3)
-    purpose: str = Field('chat', pattern=r'^(chat|translate|explain|skill-validation)$')
+    purpose: str = Field('chat', pattern=r'^(chat|translate|explain|skill-validation|frontier)$')
     request_key: str = Field(default_factory=lambda: uuid.uuid4().hex, min_length=1, max_length=80)

@@ -16,6 +16,7 @@ import ReadingView from './ReadingView.vue'
 import LibraryView from './LibraryView.vue'
 import CompareView from './CompareView.vue'
 import SchedulesView from './SchedulesView.vue'
+import FrontierView from './FrontierView.vue'
 import SkillsView from './SkillsView.vue'
 import SettingsView from './SettingsView.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
@@ -172,7 +173,7 @@ async function createDomain() {
     <TopNav @toggle-side="sideHidden = !sideHidden" />
     <div class="work-layout">
       <SideNav
-        v-show="!sideHidden"
+        v-show="!sideHidden && !['frontier','library'].includes(wb.view)"
         @new-task="taskRequest = { mode: 'read' }"
         @open-import="openImport()"
         @new-domain="openDomainDialog"
@@ -204,6 +205,7 @@ async function createDomain() {
           />
         </section>
         <CompareView v-if="wb.view === 'compare'" />
+        <FrontierView v-if="wb.view === 'frontier'" @open-paper="openPaper" @open-session="openSessionInLibrary" @library-updated="lib.refresh()" />
         <SchedulesView v-if="wb.view === 'schedules'" />
       <SkillsView v-if="wb.view === 'skills'" />
       <SettingsView v-if="wb.view === 'settings'" />

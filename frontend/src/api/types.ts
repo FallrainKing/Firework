@@ -156,7 +156,7 @@ export interface WorkspaceState {
   layout: Layout
   tabs: Tab[]
   active_paper_id: number | null
-  view: 'read' | 'compare' | 'schedules' | 'library' | 'skills' | 'settings'
+  view: 'read' | 'frontier' | 'compare' | 'schedules' | 'library' | 'skills' | 'settings'
 }
 
 export interface Attachment {
@@ -180,6 +180,9 @@ export interface Draft {
 }
 
 export interface Schedule {
+  kind?: 'session' | 'frontier'
+  frontier_topic_id?: number | null
+  last_error?: string | null
   id: number
   title: string
   conversation_id: number

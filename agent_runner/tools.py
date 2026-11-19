@@ -18,6 +18,9 @@ SCHEMA = {"type": "object", "properties": {"query": {"type": "string", "maxLengt
 _last_arxiv_request = 0.0
 
 TOOLS = [
+    {"name":"frontier_context","description":"Read the current authorized tracker configuration, source windows and limits.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+    {"name":"frontier_search","description":"Search a configured academic/project source. Persists actual evidence and returns global dedup labels; never approves or imports.","inputSchema":{"type":"object","properties":{"source":{"type":"string","enum":["arxiv","crossref","github"]},"query":{"type":"string","maxLength":200}},"required":["source","query"],"additionalProperties":False}},
+    {"name":"frontier_report","description":"Save a Chinese evidence-grounded frontier digest after searches. Reference evidence IDs returned by frontier_search. Include failures and truncated coverage.","inputSchema":{"type":"object","properties":{"markdown":{"type":"string","maxLength":20000},"citations":{"type":"array","items":{"type":"string"}},"reasons":{"type":"object","additionalProperties":{"type":"string"}}},"required":["markdown","citations"],"additionalProperties":False}},
     {"name": "library_search", "description": "Search the user's saved paper titles, abstracts and original text. Empty query lists papers. Read only. Page numbers from legacy chunks are unverified.", "inputSchema": SCHEMA},
     {"name": "arxiv_search", "description": "Search real arXiv papers by short English keywords. Returns titles, IDs, abstracts and source URLs. No PDF download or model call.", "inputSchema": SCHEMA},
     {"name":"paper_read", "description":"Read indexed original text for a paper associated with this task session. Returns bounded chunks and explicit coverage; not a full-paper or figure reading guarantee.", "inputSchema":{"type":"object","properties":{"paper_id":{"type":"integer","minimum":1},"start_chunk":{"type":"integer","minimum":0}},"required":["paper_id"],"additionalProperties":False}},
@@ -50,6 +53,11 @@ def paper_search(query,source):
         from app.imports.sources import crossref_search
         return asyncio.run(crossref_search(query))
     raise ValueError('Unknown academic source')
+
+def frontier_call(action,arguments):
+    token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
+    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/frontier/'+action,data=json.dumps(arguments,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID']})
+    with urllib.request.urlopen(req,timeout=45) as response:return json.load(response)
 
 def paper_import(request_id):
     if request_id!=os.environ.get('RESEARCH_IMPORT_ID') or not request_id:raise ValueError('Import request not authorized for this task')
@@ -192,6 +200,7 @@ def serve() -> None:
                     elif name=='paper_page':payload=paper_page(arguments.get('paper_id'),arguments.get('page'),os.environ['RESEARCH_DB_PATH'])
                     elif name=='paper_search':payload=paper_search(query,arguments.get('source'))
                     elif name=='paper_import':payload=paper_import(arguments.get('request_id'))
+                    elif name in ('frontier_context','frontier_search','frontier_report'):payload=frontier_call(name.removeprefix('frontier_'),arguments)
                     elif name=='skill_resource':payload=skill_resource(arguments.get('path',''))
                     else:payload=None
                     if payload is None:

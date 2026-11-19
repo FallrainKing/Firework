@@ -21,6 +21,7 @@ from .agent.router import router as agent_router
 from .agent import service as agent_service
 from .skills.router import router as skills_router
 from .users.router import router as users_router
+from .frontier.router import router as frontier_router, internal as frontier_internal
 from .reader.router import router as reader_router
 from .sessions.router import router as sessions_router
 from .core.config import Settings
@@ -125,6 +126,8 @@ def create_app() -> FastAPI:
     app.include_router(agent_router)
     app.include_router(skills_router)
     app.include_router(users_router)
+    app.include_router(frontier_router)
+    app.include_router(frontier_internal)
     app.include_router(sessions_router)
     app.include_router(papers_router)
     app.include_router(reader_router)

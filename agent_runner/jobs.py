@@ -238,8 +238,10 @@ class JobEngine:
                         tool_env['RESEARCH_SKILL_ROOT'] = str(self.root / 'data' / 'skills' / skill['storage_key'])
                         tool_env['RESEARCH_SKILL_HASH'] = str(skill.get('skill_hash') or '')
                         tool_env['RESEARCH_SKILL_VERSION_ID'] = str(skill.get('version_id') or '')
+                    if job['skill'] == 'frontier_monitor':
+                        tool_env['RESEARCH_SKILL_ROOT'] = str(self.root / 'skills/frontier_monitor')
                     mcp['mcpServers']['research'] = {'command': sys.executable, 'args': [str(self.root / 'agent_runner/tools.py')], 'env': tool_env}
-                if job['skill'] == 'paper_import':
+                if job['skill'] in ('paper_import','frontier_monitor'):
                     token = self.runtime / 'internal-token'
                     if not token.exists():
                         fd = os.open(token, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)

@@ -23,6 +23,7 @@ from .skills.router import router as skills_router
 from .users.router import router as users_router
 from .frontier.router import router as frontier_router, internal as frontier_internal
 from .reader.router import router as reader_router
+from .reader.guides.router import router as guide_router,internal as guide_internal
 from .sessions.router import router as sessions_router
 from .core.config import Settings
 from .core.db import get_conn
@@ -131,6 +132,8 @@ def create_app() -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(papers_router)
     app.include_router(reader_router)
+    app.include_router(guide_router)
+    app.include_router(guide_internal)
     app.include_router(imports_router)
     app.include_router(imports_internal)
     app.include_router(workbench_router)

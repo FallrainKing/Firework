@@ -8,6 +8,8 @@ import type { SelectionContext, Session } from '@/api/types'
 import ReaderSidebar from '@/components/reader/ReaderSidebar.vue'
 import ChatPanel from '@/components/reader/ChatPanel.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
+import GuideActions from '@/components/reader/GuideActions.vue'
+import { usePaperGuide } from '@/reader/usePaperGuide'
 
 const props = defineProps<{ paperId: number; sessionId?: number | null }>()
 const emit = defineEmits<{
@@ -41,7 +43,7 @@ const orch = useReaderOrchestrator({
     load: (info, pos) => engine!.load(info, pos),
     layout: () => engine!.layout(),
     jump: (p, f) => engine!.jump(p, f),
-    setAnnotations: items => engine!.setAnnotations(items),
+    setAnnotations: items => engine!.setAnnotations(items.filter(a=>a.origin!=='ai'||guide.showAI.value)),
     get currentPage() { return engine?.currentPage ?? 1 },
     set currentPage(v: number) { if (engine) engine.currentPage = v },
     get zoom() { return engine?.zoom ?? 'fit' },
@@ -54,6 +56,17 @@ const orch = useReaderOrchestrator({
   onOpenImport: pid => emit('open-import', pid),
   onSessionBound: sid => { emit('session-bound', sid); void refreshSessions(sid) },
 })
+
+const readingBusy=ref(false)
+const guide=usePaperGuide(orch.doc,()=>orch.refreshAnnotations(),toast)
+function openGuide(){orch.setTab('guide');orch.savePosition();if(layout.layout.value.left_hidden)layout.toggle('left');if(narrow.value)layout.setMobile('left')}
+watch(guide.showAI,()=>{void orch.refreshAnnotations()})
+async function startReading(prompt:string){
+  if(readingBusy.value||!orch.doc.value)return
+  readingBusy.value=true
+  try{const created=await sessionsApi.create({template_id:'read',paper_ids:[props.paperId],starting_prompt:prompt,title:'阅读：'+(orch.profile.value?.title??'论文').slice(0,80)});await orch.activate(created.session.id);await chatRef.value?.bridge.ask(prompt);layout.setMobile('chat')}
+  catch(e){toast(e instanceof Error?e.message:'阅读提交失败')}finally{readingBusy.value=false}
+}
 
 async function refreshSessions(current?: number) {
   const { sessions: list } = await sessionsApi.list({ paper_id: props.paperId, limit: 100 })
@@ -113,6 +126,7 @@ onMounted(async () => {
   engine.addEventListener('zoom', () => orch.savePosition())
   engine.addEventListener('selection', onSelection)
   engine.addEventListener('ink', e => orch.saveInk((e as CustomEvent).detail))
+  engine.addEventListener('guide-annotation',e=>{guide.focusItem.value=(e as CustomEvent).detail;openGuide()})
   engine.addEventListener('erase', e => orch.eraseAnnotation((e as CustomEvent).detail))
   const bridge = (chatRef.value as unknown as { bridge?: Parameters<typeof orch.registerChat>[0] })?.bridge
   if (bridge) orch.registerChat(bridge)
@@ -143,7 +157,7 @@ defineExpose({ flush, orchestrator: orch })
   >
     <div class="reader-body">
       <aside class="left-pane">
-        <ReaderSidebar ref="sidebarRef" :doc="orch.doc.value" :session="orch.session.value" :orchestrator="orch" />
+        <ReaderSidebar ref="sidebarRef" :doc="orch.doc.value" :session="orch.session.value" :orchestrator="orch" :guide-controller="guide" />
       </aside>
       <div
         class="resizer" role="separator" aria-orientation="vertical" tabindex="0" aria-label="调整侧栏宽度"
@@ -209,7 +223,7 @@ defineExpose({ flush, orchestrator: orch })
         <option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.title }}</option>
       </select>
       <button class="new-session" @click="dialogOpen = true">＋ 新会话</button>
-</div></template></ChatPanel>
+</div></template><template #paper-actions><GuideActions :controller="guide" :ready="!!orch.doc.value && !orch.loading.value" :page-count="orch.doc.value?.page_count??0" :reading-busy="readingBusy" @read="startReading" @show-guide="openGuide" /></template></ChatPanel>
       </aside>
     </div>
 
@@ -306,3 +320,5 @@ defineExpose({ flush, orchestrator: orch })
 .pdf-page.erase-mode .annotation-overlay { pointer-events: auto; cursor: pointer; }
 .pdf-page.flash { outline: 3px solid var(--accent); outline-offset: 2px; }
 </style>
+
+<style>.pdf-page .annotation-overlay .ai-marker{pointer-events:auto;cursor:pointer;fill:var(--accent);stroke:white;stroke-width:.002}.pdf-page .annotation-overlay .ai-highlight{stroke:var(--accent);stroke-width:.001;stroke-dasharray:.004 .002}</style>

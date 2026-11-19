@@ -54,13 +54,19 @@ def annotations(db: sqlite3.Connection, paper_id: int) -> dict:
     return {'annotations': [annotation_view(r) for r in repo.list_annotations(db, paper_id)]}
 
 
+def insert_annotation_record(db,body:Annotation):
+    """Shared insert primitive; caller owns validation and transaction boundary."""
+    ident=uuid.uuid4().hex
+    repo.insert_annotation(db,ident,body.paper_id,body.conversation_id,body.file_version,body.page,body.kind,body.quote,body.content,body.color,json.dumps(body.rects),json.dumps(body.points))
+    return ident
+
+
 def annotate(db: sqlite3.Connection, settings, body: Annotation) -> dict:
     try:
         ctx = validate_context(settings, db, body.model_dump(include={'paper_id', 'page', 'file_version', 'quote', 'rects'}), body.conversation_id)
     except ValueError as e:
         raise ServiceError(409, str(e))
-    ident = uuid.uuid4().hex
-    repo.insert_annotation(db, ident, body.paper_id, body.conversation_id, body.file_version, body.page, body.kind, body.quote, body.content, body.color, json.dumps(body.rects), json.dumps(body.points))
+    ident = insert_annotation_record(db,body)
     db.commit()
     return {**annotation_view(repo.find_annotation(db, ident)), 'validation': ctx['validation']}
 
@@ -69,6 +75,8 @@ def edit_annotation(db: sqlite3.Connection, ident: str, body: AnnotationPatch) -
     row = repo.find_annotation(db, ident)
     if row is None:
         raise ServiceError(404, '批注不存在')
+    if row['origin']=='ai' and (body.content is not None or body.color is not None):
+        raise ServiceError(409,'请先采纳为个人批注再编辑；AI 原始批注可以移除或恢复')
     if row['kind'] == 'note' and body.content is not None and not body.content.strip():
         raise ServiceError(400, '批注不能为空')
     for key, value in body.model_dump(exclude_unset=True).items():

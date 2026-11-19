@@ -803,6 +803,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         </button>
         <StateFeedback v-if="!visiblePapers.length" empty empty-text="当前会话没有匹配论文。" />
       </div>
+      <slot name="paper-actions" />
       <div class="composer-tools">
         <button type="button" class="menu-toggle" @click="slashMenuOpen = !slashMenuOpen; mentionMenuOpen = false">/ 模板</button>
         <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>

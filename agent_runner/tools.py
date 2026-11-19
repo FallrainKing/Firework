@@ -17,7 +17,12 @@ sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 SCHEMA = {"type": "object", "properties": {"query": {"type": "string", "maxLength": 200}}, "required": ["query"], "additionalProperties": False}
 _last_arxiv_request = 0.0
 
+from app.reader.guides.schemas import GuideResult
+
 TOOLS = [
+    {"name":"reader_guide_context","description":"Read this explicitly triggered guide task, exact PDF version, outline and allowed scope.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
+    {"name":"reader_guide_material","description":"Read bounded real PDF text blocks. Only returned block_id and material_id can be cited. No figure or code understanding.","inputSchema":{"type":"object","properties":{"pages":{"type":"array","items":{"type":"integer","minimum":1},"minItems":1,"maxItems":6}},"required":["pages"],"additionalProperties":False}},
+    {"name":"reader_guide_submit","description":"Stage a paper-guide/v1 structured result from actual blocks. Never output rectangles or invented evidence; unavailable topics go into unknown_fields.","inputSchema":GuideResult.model_json_schema()},
     {"name":"frontier_context","description":"Read the current authorized tracker configuration, source windows and limits.","inputSchema":{"type":"object","properties":{},"additionalProperties":False}},
     {"name":"frontier_search","description":"Search a configured academic/project source. Persists actual evidence and returns global dedup labels; never approves or imports.","inputSchema":{"type":"object","properties":{"source":{"type":"string","enum":["arxiv","crossref","github"]},"query":{"type":"string","maxLength":200}},"required":["source","query"],"additionalProperties":False}},
     {"name":"frontier_report","description":"Save a Chinese evidence-grounded frontier digest after searches. Reference evidence IDs returned by frontier_search. Include failures and truncated coverage.","inputSchema":{"type":"object","properties":{"markdown":{"type":"string","maxLength":20000},"citations":{"type":"array","items":{"type":"string"}},"reasons":{"type":"object","additionalProperties":{"type":"string"}}},"required":["markdown","citations"],"additionalProperties":False}},
@@ -53,6 +58,16 @@ def paper_search(query,source):
         from app.imports.sources import crossref_search
         return asyncio.run(crossref_search(query))
     raise ValueError('Unknown academic source')
+
+def internal_call(path,arguments):
+    token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
+    req=urllib.request.Request('http://127.0.0.1:8600/api/internal/'+path,data=json.dumps(arguments,ensure_ascii=False).encode(),headers={'Content-Type':'application/json','X-Research-Tool-Token':token,'X-Research-Run-Id':os.environ['RESEARCH_RUN_ID']})
+    try:
+        with urllib.request.urlopen(req,timeout=45) as response:return json.load(response)
+    except urllib.error.HTTPError as exc:
+        try:detail=json.loads(exc.read(2500)).get('detail','请求被拒绝')
+        except (ValueError,AttributeError):detail='请求被拒绝'
+        raise ValueError(str(detail)[:1800]) from None
 
 def frontier_call(action,arguments):
     token=Path(os.environ['RESEARCH_TOKEN_FILE']).read_text().strip()
@@ -200,6 +215,7 @@ def serve() -> None:
                     elif name=='paper_page':payload=paper_page(arguments.get('paper_id'),arguments.get('page'),os.environ['RESEARCH_DB_PATH'])
                     elif name=='paper_search':payload=paper_search(query,arguments.get('source'))
                     elif name=='paper_import':payload=paper_import(arguments.get('request_id'))
+                    elif name in ('reader_guide_context','reader_guide_material','reader_guide_submit'):payload=internal_call('reader-guide/'+name.removeprefix('reader_guide_'),arguments)
                     elif name in ('frontier_context','frontier_search','frontier_report'):payload=frontier_call(name.removeprefix('frontier_'),arguments)
                     elif name=='skill_resource':payload=skill_resource(arguments.get('path',''))
                     else:payload=None
@@ -209,7 +225,7 @@ def serve() -> None:
                     result = {'content': [{'type': 'text', 'text': json.dumps(payload, ensure_ascii=False)}], 'isError': False}
                 except Exception as exc:
                     record = {'tool': name, 'query': query, 'ok': False, 'error': type(exc).__name__}
-                    result = {'content': [{'type': 'text', 'text': 'Tool failed (' + type(exc).__name__ + '). Report the failure; do not invent results.'}], 'isError': True}
+                    result = {'content': [{'type': 'text', 'text': ('导读工具失败：'+str(exc)[:1800]) if name.startswith('reader_guide_') else 'Tool failed (' + type(exc).__name__ + '). Report the failure; do not invent results.'}], 'isError': True}
                 record['duration_ms'] = round((time.monotonic() - started) * 1000)
                 log = os.environ.get('RESEARCH_TOOL_LOG')
                 if log:

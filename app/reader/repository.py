@@ -16,7 +16,7 @@ def is_linked(db: sqlite3.Connection, sid: int, pid: int):
 
 def list_annotations(db: sqlite3.Connection, pid: int):
     return db.execute(
-        'SELECT * FROM reader_annotations WHERE paper_id=? AND deleted=0 ORDER BY page,created_at',
+        "SELECT * FROM reader_annotations WHERE paper_id=? AND deleted=0 AND (origin!='ai' OR EXISTS(SELECT 1 FROM reader_guide_tasks g WHERE g.id=reader_annotations.guide_task_id AND g.active=1 AND g.hidden=0 AND g.status IN ('published','partial'))) ORDER BY page,created_at",
         (pid,),
     ).fetchall()
 

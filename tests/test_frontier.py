@@ -115,7 +115,7 @@ def test_http_end_to_end_with_tool_evidence(client,monkeypatch):
     import httpx
     c,settings=client;c.app.include_router(router);c.app.include_router(internal)
     async def handler(req):
-        if req.url.path=='/health':return httpx.Response(200,json={'status':'ok','protocol_version':3})
+        if req.url.path=='/health':return httpx.Response(200,json={'status':'ok','protocol_version':__import__('app.agent.protocol',fromlist=['RUNNER_PROTOCOL_VERSION']).RUNNER_PROTOCOL_VERSION})
         return await runner_mock_handler(req)
     runner_mock_handler=runner_mock(CANNED_RESULT,hang=True)
     monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(handler),base_url='http://test'))

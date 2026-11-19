@@ -24,6 +24,7 @@ ALLOWED_TOOLS = {
     'paper_search', 'paper_import', 'library_search', 'arxiv_search',
     'paper_read', 'paper_page', 'skill_resource',
     'frontier_context','frontier_search','frontier_report',
+    'reader_guide_context','reader_guide_material','reader_guide_submit',
 }
 
 

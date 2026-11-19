@@ -49,7 +49,7 @@ class Position(BaseModel):
     conversation_id: int
     page: int = Field(ge=1)
     zoom: Literal['fit', '1', '1.25', '1.5', '2'] = 'fit'
-    tab: Literal['outline', 'notes', 'highlights', 'translations', 'info'] = 'outline'
+    tab: Literal['guide', 'outline', 'notes', 'highlights', 'translations', 'info'] = 'outline'
 
 
 class Translation(Context):

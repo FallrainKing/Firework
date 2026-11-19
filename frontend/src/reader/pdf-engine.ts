@@ -46,6 +46,8 @@ export interface EngineAnnotation {
   file_version: string
   kind: string
   color: string
+  origin?: string
+  guide_item_id?: string | null
   rects?: number[][]
   points?: number[][]
 }
@@ -276,8 +278,17 @@ export class PDFReader extends EventTarget {
       if (a.kind === 'ink') {
         overlay.append(svg('polyline', { points: (a.points ?? []).map(p => p.join(',')).join(' '), stroke: a.color, 'class': 'ink', 'data-annotation-id': a.id }))
       } else {
-        for (const r of a.rects || []) overlay.append(svg('rect', { x: r[0], y: r[1], width: r[2], height: r[3], fill: a.color, 'class': 'highlight', 'data-annotation-id': a.id }))
+        for (const r of a.rects || []) overlay.append(svg('rect', { x: r[0], y: r[1], width: r[2], height: r[3], fill: a.color, 'class': a.origin==='ai'?'highlight ai-highlight':'highlight', 'data-annotation-id': a.id }))
       }
+    }
+    let markerIndex=0
+    for(const a of this.annotations.filter(a=>a.origin==='ai'&&a.guide_item_id&&a.page===Number(holder.dataset.page)&&a.file_version===this.info.file_version)){
+      const cy=Math.min(.96,Math.max(.035,(a.rects?.[0]?.[1]??(.07+markerIndex*.045))))
+      const marker=svg('circle',{cx:.975,cy,r:.012,'class':'ai-marker','data-annotation-id':a.id,'role':'button','aria-label':'查看 AI 批注解释','tabindex':0})
+      const activate=()=>this.emit('guide-annotation',a.guide_item_id)
+      marker.addEventListener('click',e=>{if(this.mode==='erase')return;e.stopPropagation();activate()})
+      marker.addEventListener('keydown',e=>{if((e as KeyboardEvent).key==='Enter'){e.preventDefault();activate()}})
+      overlay.append(marker);markerIndex++
     }
     holder.append(overlay)
     this.modeOn(holder)

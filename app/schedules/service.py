@@ -73,6 +73,8 @@ async def schedule_loop(app):
         db = app.state.db
         from ..frontier.service import reconcile
         reconcile(db)
+        from ..reader.guides.service import reconcile as reconcile_guides
+        reconcile_guides(db,app.state.settings)
         for row in repo.due_schedules(db):
             # Advance before dispatch: a restart must never replay billed work.
             repo.advance_next(db, row['id'], next_time(row['interval_hours']))

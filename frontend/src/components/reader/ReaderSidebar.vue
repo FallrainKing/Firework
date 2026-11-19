@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import GuidePanel from './GuidePanel.vue'
+import type { PaperGuideController } from '@/reader/usePaperGuide'
 import { renderMarkdown } from '@/shared/markdown'
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import StateFeedback from '@/components/StateFeedback.vue'
 import { readerApi } from '@/api/reader'
 import type { Annotation, Position, ReaderDoc, SelectionContext, Session, TranslationRecord } from '@/api/types'
@@ -19,10 +21,11 @@ interface Orch {
   positionSnapshot: () => { page: number } | null
 }
 
-const props = defineProps<{ doc: ReaderDoc | null; session: Session | null; orchestrator?: unknown }>()
+const props = defineProps<{ doc: ReaderDoc | null; session: Session | null; orchestrator?: unknown; guideController?: PaperGuideController }>()
 const orch = props.orchestrator as Orch | undefined
 
 const TABS: Array<{ id: Position['tab']; label: string }> = [
+  { id: 'guide', label: '导读' },
   { id: 'outline', label: '目录' },
   { id: 'notes', label: '批注' },
   { id: 'highlights', label: '高亮' },
@@ -31,8 +34,10 @@ const TABS: Array<{ id: Position['tab']; label: string }> = [
 ]
 
 const tab = ref<Position['tab']>('outline')
+const originFilter=ref('all')
 const annotations = ref<Annotation[]>([])
 const translations = ref<TranslationRecord[]>([])
+const visibleAnnotations=computed(()=>annotations.value.filter(a=>originFilter.value==='all'||(originFilter.value==='ai'?a.origin==='ai':a.origin!=='ai')))
 const noteText = ref('')
 const toast = ref<{ message: string; undo?: () => Promise<void> } | null>(null)
 const loading = ref(false)
@@ -162,6 +167,8 @@ defineExpose({ focusNote, refresh, setTab })
       <button v-for="t in TABS" :key="t.id" role="tab" :data-tab="t.id" :aria-selected="tab === t.id" @click="setTab(t.id)">{{ t.label }}</button>
     </div>
 
+    <select v-if="tab==='notes'||tab==='highlights'" v-model="originFilter" aria-label="批注来源"><option value="all">全部批注</option><option value="user">我的批注</option><option value="ai">AI 导读批注</option></select>
+    <GuidePanel class="tab-pane" v-if="tab === 'guide' && guideController && doc && orch" :controller="guideController" :paper-id="doc.paper_id" :jump="orch.jump" :refresh-annotations="orch.refreshAnnotations" />
     <div v-show="tab === 'outline'" class="tab-pane">
       <button v-for="(item, i) in doc?.outline ?? []" :key="i" class="outline-button" :style="{ paddingLeft: Math.min(item.level - 1, 3) * 10 + 'px' }" @click="locate({ page: item.page, file_version: doc!.file_version })">
         <span>{{ item.title }}</span><small class="muted">第 {{ item.page }} 页</small>
@@ -186,10 +193,10 @@ defineExpose({ focusNote, refresh, setTab })
           :save-error="noteSaveError"
         />
       </div>
-      <article v-for="a in annotations.filter(x => x.kind === 'note')" :key="a.id" class="aux-entry">
-        <strong><span class="entry-color" :style="{ background: a.color }"></span>批注 · 第 {{ a.page }} 页</strong>
+      <article v-for="a in visibleAnnotations.filter(x => x.kind === 'note')" :key="a.id" class="aux-entry">
+        <strong><span class="entry-color" :style="{ background: a.color }"></span>批注 · 第 {{ a.page }} 页 <small>{{a.origin==='ai'?'AI':a.origin==='ai_adopted'?'已采纳':''}}</small></strong>
         <blockquote v-if="a.quote">{{ a.quote }}</blockquote>
-        <p v-if="a.content">{{ a.content }}</p>
+        <div v-if="a.content" class="markdown-content" v-html="renderMd(a.content)"></div>
         <div class="entry-actions">
           <button :disabled="versionMismatch(a.file_version)" @click="locate(a)">定位</button>
           <button v-if="a.quote" @click="quoteToChat(a)">加入对话</button>
@@ -198,17 +205,17 @@ defineExpose({ focusNote, refresh, setTab })
         <p v-if="versionMismatch(a.file_version)" class="muted">来自旧 PDF 版本，暂不自动定位。</p>
       </article>
       <StateFeedback
-        :loading="loading && !annotations.some(x => x.kind === 'note')"
+        :loading="loading && !visibleAnnotations.some(x => x.kind === 'note')"
         :error="loadError"
-        :empty="!loading && !loadError && !annotations.some(x => x.kind === 'note')"
+        :empty="!loading && !loadError && !visibleAnnotations.some(x => x.kind === 'note')"
         empty-text="这里会保存你的阅读记录。"
         @retry="refresh()"
       />
     </div>
 
     <div v-show="tab === 'highlights'" class="tab-pane">
-      <article v-for="a in annotations.filter(x => x.kind !== 'note')" :key="a.id" class="aux-entry">
-        <strong><span class="entry-color" :style="{ background: a.color }"></span>{{ a.kind === 'ink' ? '笔迹' : '高亮' }} · 第 {{ a.page }} 页</strong>
+      <article v-for="a in visibleAnnotations.filter(x => x.kind !== 'note')" :key="a.id" class="aux-entry">
+        <strong><span class="entry-color" :style="{ background: a.color }"></span>{{ a.kind === 'ink' ? '笔迹' : '高亮' }} · 第 {{ a.page }} 页 <small>{{a.origin==='ai'?'AI':a.origin==='ai_adopted'?'已采纳':''}}</small></strong>
         <blockquote v-if="a.quote">{{ a.quote }}</blockquote>
         <div class="entry-actions">
           <button :disabled="versionMismatch(a.file_version)" @click="locate(a)">定位</button>
@@ -218,9 +225,9 @@ defineExpose({ focusNote, refresh, setTab })
         <p v-if="versionMismatch(a.file_version)" class="muted">来自旧 PDF 版本，暂不自动定位。</p>
       </article>
       <StateFeedback
-        :loading="loading && !annotations.some(x => x.kind !== 'note')"
+        :loading="loading && !visibleAnnotations.some(x => x.kind !== 'note')"
         :error="loadError"
-        :empty="!loading && !loadError && !annotations.some(x => x.kind !== 'note')"
+        :empty="!loading && !loadError && !visibleAnnotations.some(x => x.kind !== 'note')"
         empty-text="这里会保存你的阅读记录。"
         @retry="refresh()"
       />

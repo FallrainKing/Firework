@@ -235,6 +235,10 @@ export interface ReaderDoc {
 }
 
 export interface Annotation {
+  origin?: 'user' | 'ai' | 'ai_adopted'
+  guide_task_id?: string | null
+  guide_item_id?: string | null
+  derived_from?: string | null
   id: string
   paper_id: number
   conversation_id: number | null
@@ -263,7 +267,7 @@ export interface Position {
   conversation_id: number
   page: number
   zoom: 'fit' | '1' | '1.25' | '1.5' | '2'
-  tab: 'outline' | 'notes' | 'highlights' | 'translations' | 'info'
+  tab: 'guide' | 'outline' | 'notes' | 'highlights' | 'translations' | 'info'
 }
 
 export interface TranslationRecord {

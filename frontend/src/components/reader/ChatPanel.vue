@@ -2,6 +2,7 @@
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
+import { readerApi } from '@/api/reader'
 import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
@@ -16,13 +17,21 @@ const QUICK: Template[] = [
 
 const runs = ref<Run[]>([])
 const question = ref('')
-const context = ref<SelectionContext | null>(null)
+const contexts = ref<SelectionContext[]>([])
 const attachments = ref<Attachment[]>([])
 const templates = ref<Template[]>([])
+const associatedPapers = ref<Array<{ id: number; title: string }>>([])
 const busy = ref(false)
 const uploading = ref(false)
 const loading = ref(true)
 const toast = ref('')
+const uploadError = ref('')
+const failedFiles = ref<File[]>([])
+const slashMenuOpen = ref(false)
+const mentionMenuOpen = ref(false)
+const slashQuery = ref('')
+const mentionQuery = ref('')
+const dragging = ref(false)
 const chatBox = ref<HTMLElement | null>(null)
 const fileInput = ref<HTMLInputElement | null>(null)
 
@@ -37,9 +46,20 @@ const currentSession = ref<Session | null>(props.session)
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const canSend = computed(() => !loading.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
 const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
+const visibleTemplates = computed(() => {
+  const q = slashQuery.value.trim().toLowerCase()
+  return templates.value.filter(t => !q || t.name.toLowerCase().includes(q) || t.prompt.toLowerCase().includes(q)).slice(0, 8)
+})
+const visiblePapers = computed(() => {
+  const q = mentionQuery.value.trim().toLowerCase()
+  return associatedPapers.value.filter(p => !q || p.title.toLowerCase().includes(q)).slice(0, 8)
+})
 
 function showToast(m: string) { toast.value = m; setTimeout(() => { toast.value = '' }, 5000) }
 function scroll() { if (chatBox.value) chatBox.value.scrollTop = chatBox.value.scrollHeight }
+function paperTitle(id: number): string {
+  return associatedPapers.value.find(p => p.id === id)?.title ?? (id === props.paperId ? (props.paperTitle || `论文 ${id}`) : `论文 ${id}`)
+}
 
 async function loadTemplates() {
   const data = await sessionsApi.templates()
@@ -51,14 +71,20 @@ async function load(session: Session) {
   currentSession.value = session
   loading.value = true
   busy.value = false
-  context.value = null
+  contexts.value = []
   attachments.value = []
   runs.value = []
-  const [data, draft] = await Promise.all([sessionsApi.runs(session.id, undefined, 100), workbenchApi.getDraft(session.id, props.paperId)])
+  closeMenus()
+  const [data, draft, detail] = await Promise.all([
+    sessionsApi.runs(session.id, undefined, 100),
+    workbenchApi.getDraft(session.id, props.paperId),
+    sessionsApi.get(session.id),
+  ])
   if (e !== epoch) return
   question.value = draft.prompt || (!data.runs.length ? session.draft_prompt : '') || ''
-  context.value = draft.context
+  contexts.value = draft.contexts?.length ? draft.contexts : draft.context ? [draft.context] : []
   attachments.value = draft.attachments ?? []
+  associatedPapers.value = detail.papers.map(p => ({ id: p.id, title: p.title }))
   runs.value = data.runs
   for (const r of data.runs) if (['queued', 'running'].includes(r.status)) { busy.value = true; void watchRun(r.id, session.id) }
   loading.value = false
@@ -72,7 +98,7 @@ async function restoreDraft() {
   const draft = await workbenchApi.getDraft(sid, props.paperId)
   if (currentSession.value?.id !== sid) return
   question.value = draft.prompt
-  context.value = draft.context
+  contexts.value = draft.contexts?.length ? draft.contexts : draft.context ? [draft.context] : []
   attachments.value = draft.attachments ?? []
 }
 
@@ -85,14 +111,23 @@ function scheduleDraft() {
 function flushDraft(): Promise<unknown> {
   if (saveTimer) clearTimeout(saveTimer)
   if (loading.value || !currentSession.value) return saveQueue
-  const snapshot = { prompt: question.value, context: context.value, attachment_ids: attachments.value.map(a => a.id) }
+  const snapshot = { prompt: question.value, contexts: contexts.value, attachment_ids: attachments.value.map(a => a.id) }
   const sid = currentSession.value.id
   saveQueue = saveQueue.catch(() => {}).then(() => workbenchApi.saveDraft(sid, props.paperId, snapshot))
   return saveQueue
 }
 
 function setContext(ctx: SelectionContext | null) {
-  context.value = ctx
+  if (!ctx) {
+    contexts.value = contexts.value.filter(c => !c.quote)
+  } else {
+    contexts.value = [ctx, ...contexts.value.filter(c => c.paper_id !== ctx.paper_id || !c.quote)].slice(0, 3)
+  }
+  scheduleDraft()
+}
+
+function removeContext(index: number) {
+  contexts.value = contexts.value.filter((_, i) => i !== index)
   scheduleDraft()
 }
 
@@ -101,12 +136,29 @@ function removeAttachment(id: string) {
   scheduleDraft()
 }
 
+function validateImageFiles(files: File[]) {
+  if (!files.length) return
+  if (!currentSession.value) throw new Error('请先选择论文会话')
+  if (files.length + attachments.value.length > 3) throw new Error('每次提问最多 3 张图片')
+  for (const file of files) {
+    if (!['image/png', 'image/jpeg'].includes(file.type)) throw new Error('图片仅支持 PNG 或 JPEG')
+    if (file.size > 5 * 1024 * 1024) throw new Error('每张图片不超过 5MB')
+    if (file.size === 0) throw new Error('图片文件不能为空')
+  }
+}
+
 async function uploadFiles(files: File[]) {
   if (!files.length || !currentSession.value) return
-  if (files.length + attachments.value.length > 3) throw new Error('每次提问最多 3 张图片')
-  if (files.some(f => f.size > 5 * 1024 * 1024)) throw new Error('每张图片不超过 5MB')
+  try {
+    validateImageFiles(files)
+  } catch (e) {
+    uploadError.value = e instanceof Error ? e.message : '图片校验失败'
+    failedFiles.value = files
+    throw e
+  }
   const sid = currentSession.value.id
   uploading.value = true
+  uploadError.value = ''
   try {
     for (const file of files) {
       const form = new FormData()
@@ -119,9 +171,14 @@ async function uploadFiles(files: File[]) {
         await flushDraft()
       } else {
         const old = await workbenchApi.getDraft(sid, props.paperId)
-        await workbenchApi.saveDraft(sid, props.paperId, { prompt: old.prompt, context: old.context, attachment_ids: [...old.attachment_ids, a.id].slice(0, 3) })
+        await workbenchApi.saveDraft(sid, props.paperId, { prompt: old.prompt, contexts: old.contexts ?? (old.context ? [old.context] : []), attachment_ids: [...old.attachment_ids, a.id].slice(0, 3) })
       }
     }
+    failedFiles.value = []
+  } catch (e) {
+    uploadError.value = e instanceof Error ? e.message : '上传失败'
+    failedFiles.value = files
+    throw e
   } finally {
     uploading.value = false
     if (fileInput.value) fileInput.value.value = ''
@@ -133,10 +190,79 @@ function onFiles() {
   void uploadFiles(files).catch(e => showToast(e instanceof Error ? e.message : '上传失败'))
 }
 
+function retryUpload() {
+  const files = failedFiles.value
+  failedFiles.value = []
+  void uploadFiles(files).catch(e => showToast(e instanceof Error ? e.message : '上传失败'))
+}
+
+function closeMenus() {
+  slashMenuOpen.value = false
+  mentionMenuOpen.value = false
+}
+
+function updateMenus(event: Event) {
+  const target = event.target as HTMLTextAreaElement
+  const before = target.value.slice(0, target.selectionStart ?? target.value.length)
+  const slash = /\/([^/\n]*)$/.exec(before)
+  const mention = /@([^@\n]*)$/.exec(before)
+  slashMenuOpen.value = Boolean(slash)
+  slashQuery.value = slash?.[1] ?? ''
+  mentionMenuOpen.value = Boolean(mention)
+  mentionQuery.value = mention?.[1] ?? ''
+  if (slashMenuOpen.value) mentionMenuOpen.value = false
+  if (mentionMenuOpen.value) slashMenuOpen.value = false
+  scheduleDraft()
+}
+
+function removeMenuToken(marker: '/' | '@') {
+  const pattern = marker === '/' ? /\/[^/\n]*$/ : /@[^@\n]*$/
+  question.value = question.value.replace(pattern, '').trimEnd()
+}
+
+function chooseTemplate(template: Template) {
+  removeMenuToken('/')
+  if (template.prompt) question.value = [question.value, template.prompt].filter(Boolean).join('\n\n')
+  closeMenus()
+  scheduleDraft()
+}
+
+async function choosePaper(paper: { id: number; title: string }) {
+  removeMenuToken('@')
+  if (contexts.value.length >= 3) {
+    showToast('上下文最多 3 条，请先移除一条')
+    return
+  }
+  try {
+    const doc = await readerApi.document(paper.id)
+    if (!contexts.value.some(c => c.paper_id === paper.id && !c.quote)) {
+      contexts.value.push({ paper_id: paper.id, page: 1, file_version: doc.file_version, quote: '', rects: [] })
+      scheduleDraft()
+    }
+  } catch (e) {
+    showToast((e instanceof Error ? e.message : '论文引用失败') + '；缺全文或未关联论文不能加入上下文')
+  } finally {
+    closeMenus()
+  }
+}
+
+function onPaste(event: ClipboardEvent) {
+  const files = Array.from(event.clipboardData?.files ?? []).filter(f => f.type.startsWith('image/'))
+  if (!files.length) return
+  event.preventDefault()
+  void uploadFiles(files).catch(e => showToast(e instanceof Error ? e.message : '上传失败'))
+}
+
+function onDrop(event: DragEvent) {
+  dragging.value = false
+  const files = Array.from(event.dataTransfer?.files ?? []).filter(f => f.type.startsWith('image/'))
+  if (!files.length) return
+  void uploadFiles(files).catch(e => showToast(e instanceof Error ? e.message : '上传失败'))
+}
+
 function applyTemplate(id: string) {
   const t = templates.value.find(x => x.id === id)
-  if (t?.prompt) question.value = [question.value, t.prompt].filter(Boolean).join('\n\n')
-  scheduleDraft()
+  if (t) chooseTemplate(t)
 }
 
 function upsertRun(r: Run) {
@@ -145,7 +271,7 @@ function upsertRun(r: Run) {
   else runs.value.push(r)
 }
 
-async function ask(prompt: string, contexts: SelectionContext[] = [], purpose = 'chat') {
+async function ask(prompt: string, selectedContexts: SelectionContext[] = [], purpose = 'chat') {
   if (!prompt.trim() || !currentSession.value) return
   if (busy.value || uploading.value) throw new Error('当前会话仍在处理，请稍候')
   const sid = currentSession.value.id
@@ -154,9 +280,9 @@ async function ask(prompt: string, contexts: SelectionContext[] = [], purpose = 
   let body: Record<string, unknown> | null = null
   try {
     const old = JSON.parse(localStorage.getItem(storage) || 'null')
-    body = old && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(contexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
+    body = old && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
   } catch { /* ignore */ }
-  body = body ?? { conversation_id: sid, prompt, contexts, purpose, attachment_ids, request_key: uid32() }
+  body = body ?? { conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, request_key: uid32() }
   localStorage.setItem(storage, JSON.stringify(body))
   busy.value = true
   try {
@@ -165,7 +291,7 @@ async function ask(prompt: string, contexts: SelectionContext[] = [], purpose = 
       upsertRun(run)
       question.value = ''
       attachments.value = []
-      setContext(null)
+      contexts.value = []
       await flushDraft()
       scroll()
     }
@@ -208,12 +334,12 @@ async function watchRun(id: string, sid = currentSession.value?.id) {
 function reedit(run: Run) {
   question.value = run.prompt
   attachments.value = (run.attachment_ids || []).map(id => ({ id, url: '/api/workbench/images/' + id, filename: '本轮图片' } as Attachment))
-  setContext(run.contexts?.[0] ?? null)
+  contexts.value = run.contexts ?? []
   scheduleDraft()
 }
 
 function submit() {
-  void ask(question.value, context.value ? [context.value] : []).catch(e => showToast(e instanceof Error ? e.message : '发送失败'))
+  void ask(question.value, contexts.value).catch(e => showToast(e instanceof Error ? e.message : '发送失败'))
 }
 
 function progressText(run: Run): string {
@@ -228,7 +354,6 @@ function renderMd(text: string): string {
 
 const bridge = { ask, watch: watchRun, flushDraft, restoreDraft, setContext, load }
 defineExpose({ bridge, attachments, uploadFiles })
-
 watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 </script>
 
@@ -237,15 +362,15 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     <header class="chat-heading"><div><span class="agent-dot"></span><strong>论文助手</strong><small>当前论文</small></div><p :title="paperTitle">{{ paperTitle || ('论文 ' + paperId) }}</p><slot name="session-controls" /></header>
     <div class="agent-state muted">{{ agentState }}</div>
     <div ref="chatBox" class="reader-chat">
-      <div v-if="!runs.length && !loading" class="chat-empty"><span aria-hidden="true">✧</span><strong>和原文一起思考</strong><p>选中一段原文，或添加论文中的图片。<br />也可以从下方模板开始提问。</p></div>
+      <div v-if="!runs.length && !loading" class="chat-empty"><span aria-hidden="true">✧</span><strong>和原文一起思考</strong><p>输入 / 使用模板，输入 @ 引用论文，选中原文或添加图片。</p></div>
       <article v-for="run in runs" :key="run.id" class="chat-turn">
         <div class="turn-time muted">{{ STATES[run.status] }} · {{ run.created_at }}</div>
         <div class="question">{{ run.prompt }}</div>
         <p v-if="run.status === 'running' && progressText(run)" class="muted">{{ progressText(run) }}</p>
         <img v-for="id in run.attachment_ids" :key="id" class="chat-image" :src="'/api/workbench/images/' + id" alt="本轮提问的图片" />
         <div v-for="(c, i) in run.contexts" :key="i" class="original-context">
-          <button @click="orchestrator?.jump(c)">原文 · 论文 {{ c.paper_id }} 第 {{ c.page }} 页</button>
-          <div>{{ c.quote }}</div>
+          <button @click="orchestrator?.jump(c)">{{ c.quote ? '原文' : '论文引用' }} · {{ paperTitle(c.paper_id) }} 第 {{ c.page }} 页</button>
+          <div v-if="c.quote">{{ c.quote }}</div>
         </div>
         <div v-if="run.answer" class="answer" v-html="renderMd(run.answer)"></div>
         <p v-if="run.error" class="error">{{ run.error }}</p>
@@ -258,27 +383,40 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <p v-if="run.usage && 'input_tokens' in run.usage" class="usage muted">本轮输入 {{ run.usage.input_tokens }} / 输出 {{ run.usage.output_tokens }} tokens{{ (run.metadata as any)?.session_mode === 'native_resume' ? ' · 原生续聊' : '' }}</p>
       </article>
     </div>
-    <div v-if="context" class="quote-attachment">
-      <button aria-label="移除选区" @click="setContext(null)">×</button>
-      <strong>论文 {{ context.paper_id }} · 第 {{ context.page }} 页</strong>
-      <p>{{ context.quote }}</p>
+    <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
+      <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">
+        <strong>{{ c.paper_id === paperId ? '当前论文' : '引用论文' }}</strong>
+        <span>{{ paperTitle(c.paper_id) }}<template v-if="c.quote"> · 第 {{ c.page }} 页原文</template></span>
+        <button :aria-label="'移除上下文 ' + paperTitle(c.paper_id)" type="button" @click="removeContext(i)">×</button>
+      </div>
     </div>
     <div v-if="attachments.length" class="reader-attachments">
       <div v-for="a in attachments" :key="a.id" class="image-attachment">
         <img :src="a.url" :alt="a.filename || '提问图片'" />
-        <button aria-label="移除图片" @click="removeAttachment(a.id)">×</button>
+        <button aria-label="移除图片" type="button" @click="removeAttachment(a.id)">×</button>
       </div>
     </div>
-    <form class="reader-composer" @submit.prevent="submit">
-      <div class="composer-tools">
-        <select aria-label="提问模板" @change="applyTemplate(($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
-          <option value="">选择提问模板</option>
-          <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
-        </select>
-        <button type="button" class="image-picker" :disabled="!canSend" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!canSend" @change="onFiles" />
+    <form class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
+      <div v-if="slashMenuOpen" class="command-menu" role="listbox" aria-label="提问模板">
+        <button v-for="t in visibleTemplates" :key="t.id" type="button" role="option" @mousedown.prevent="chooseTemplate(t)">
+          <strong>{{ t.name }}</strong><span>{{ t.description || t.prompt }}</span>
+        </button>
+        <p v-if="!visibleTemplates.length" class="muted">暂无匹配模板</p>
       </div>
-      <textarea v-model="question" rows="3" maxlength="3000" placeholder="向当前论文会话提问…" :disabled="busy || !session || session.archived" @input="scheduleDraft"></textarea>
-      <div class="composer-footer"><span class="muted">原文选区 · 图片 · 文字</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">发送 ↑</button></div>
+      <div v-if="mentionMenuOpen" class="command-menu" role="listbox" aria-label="论文引用">
+        <button v-for="p in visiblePapers" :key="p.id" type="button" role="option" @mousedown.prevent="choosePaper(p)">
+          <strong>{{ p.title }}</strong><span>已授权当前会话</span>
+        </button>
+        <p v-if="!visiblePapers.length" class="muted">当前会话没有匹配论文</p>
+      </div>
+      <div class="composer-tools">
+        <button type="button" class="menu-toggle" @click="slashMenuOpen = !slashMenuOpen; mentionMenuOpen = false">/ 模板</button>
+        <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
+        <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
+      </div>
+      <textarea v-model="question" rows="3" maxlength="3000" placeholder="输入 / 选模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown.esc="closeMenus" @paste="onPaste"></textarea>
+      <p v-if="uploadError" class="form-error upload-error" role="alert">{{ uploadError }}<button v-if="failedFiles.length" type="button" @click="retryUpload">重试</button></p>
+      <div class="composer-footer"><span class="muted">上下文最多 3 条 · 图片最多 3 张 · 图片需 PNG/JPEG</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">发送 ↑</button></div>
     </form>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>
   </div>
@@ -311,14 +449,28 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .answer :deep(p) { margin: var(--space-1) 0; }
 .error { color: var(--danger); }
 .usage { font-size: 11px; }
-.quote-attachment { margin: var(--space-2) var(--space-3); padding: var(--space-2); background: var(--accent-soft); border-radius: var(--radius); font-size: 12px; }
-.reader-attachments { display: flex; gap: var(--space-2); padding: 0 var(--space-3); }
+.context-bar { display:flex; flex-wrap:wrap; gap:var(--space-1); padding:var(--space-2) var(--space-3) 0; }
+.context-chip { display:flex; align-items:center; gap:5px; max-width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:999px; background:var(--bg); font-size:11px; }
+.context-chip.current { border-color:var(--accent); background:var(--accent-soft); }
+.context-chip span { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.context-chip button { border:0; background:none; padding:0 2px; color:var(--text-muted); }
+.reader-attachments { display: flex; gap: var(--space-2); padding: var(--space-2) var(--space-3) 0; }
 .image-attachment { position: relative; }
 .image-attachment img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius); }
 .image-attachment button { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 50%; }
-.reader-composer { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); }
+.reader-composer { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); position:relative; }
+.reader-composer.dragging::after { content:'松开以上传图片'; position:absolute; inset:4px; display:grid; place-items:center; border:1px dashed var(--accent); border-radius:var(--radius); background:rgb(255 255 255 / .82); color:var(--accent); font-size:12px; pointer-events:none; }
 .composer-tools { display: flex; gap: var(--space-2); align-items: center; }
 .composer-tools select { flex: 1; min-width:0; font-size:11px; padding:6px; }
-.image-picker { flex-shrink:0; font-size:11px; padding:6px 8px; }
+.menu-toggle,.image-picker { font-size:11px; padding:6px 8px; }
+.image-picker { flex-shrink:0; }
+.command-menu { position:absolute; left:var(--space-3); right:var(--space-3); bottom:145px; z-index:8; max-height:230px; overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:0 8px 24px rgb(0 0 0 / .12); }
+.command-menu button { display:grid; gap:2px; width:100%; padding:7px; border:0; background:none; text-align:left; }
+.command-menu button:hover { background:var(--accent-soft); }
+.command-menu strong { font-size:12px; }
+.command-menu span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:var(--text-muted); }
+.upload-error { display:flex; align-items:center; gap:6px; margin:0; font-size:11px; }
+.upload-error button { padding:2px 6px; font-size:10px; }
 .chat-toast { color: var(--danger); padding: 0 var(--space-3); font-size: 12px; }
+@media(max-width:700px) { .command-menu { bottom:150px; } }
 </style>

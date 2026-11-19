@@ -32,9 +32,10 @@ def test_reader_draft_context_and_images_survive_reopen(desk):
     c,s,sid,ctx=desk
     upload=c.post('/api/workbench/images',data={'conversation_id':sid,'paper_id':1},files={'file':('figure.png',png(),'image/png')});assert upload.status_code==201,upload.text
     image=upload.json();assert c.get(image['url']).headers['content-type']=='image/png'
-    body={'prompt':'Explain this figure','context':ctx,'attachment_ids':[image['id']]}
+    body={'prompt':'Explain this figure','contexts':[ctx],'attachment_ids':[image['id']]}
     assert c.put(f'/api/workbench/drafts/{sid}/1',json=body).status_code==200
-    result=c.get(f'/api/workbench/drafts/{sid}/1').json();assert result['prompt']==body['prompt'] and result['attachments'][0]['id']==image['id']
+    result=c.get(f'/api/workbench/drafts/{sid}/1').json();assert result['prompt']==body['prompt'] and result['contexts'][0]['paper_id']==ctx['paper_id'] and result['attachments'][0]['id']==image['id']
+    assert c.put(f'/api/workbench/drafts/{sid}/1',json={'prompt':'Bad','contexts':[{**ctx,'paper_id':2}]}).status_code==400
     run=c.post('/api/agent/runs',json={'conversation_id':sid,'prompt':'Explain','attachment_ids':[image['id']],'request_key':'image-scope'}).json()
     assert wait(c,run['id'])['attachment_ids']==[image['id']]
     assert c.post('/api/agent/runs',json={'conversation_id':sid,'prompt':'Explain','request_key':'image-scope'}).status_code==409

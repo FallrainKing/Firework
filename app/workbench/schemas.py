@@ -26,4 +26,5 @@ class Workspace(BaseModel):
 class Draft(BaseModel):
     prompt: str = Field('', max_length=3000)
     context: Context | None = None
+    contexts: list[Context] = Field(default_factory=list, max_length=3)
     attachment_ids: list[str] = Field(default_factory=list, max_length=3)

@@ -5,6 +5,7 @@ import ChatPanel from './ChatPanel.vue'
 import { agentApi } from '@/api/agent'
 import { workbenchApi } from '@/api/workbench'
 import { sessionsApi } from '@/api/sessions'
+import { readerApi } from '@/api/reader'
 import type { Run, Session } from '@/api/types'
 
 const session = { id: 5, title: '阅读', skill: 'paper_read', paper_ids: [1], native_ready: true, draft_prompt: '起始问题', archived: false } as Session
@@ -128,3 +129,63 @@ describe('ChatPanel', () => {
     expect(created[0].request_key).toBe('a'.repeat(32))
   })
 })
+
+describe('ChatPanel research composer', () => {
+  it('shows slash templates and inserts the selected prompt without calling the agent', async () => {
+    vi.spyOn(agentApi, 'createRun').mockResolvedValue(run())
+    const wrapper = await mountPanel()
+    await wrapper.find('textarea').setValue('请/')
+    await wrapper.find('textarea').trigger('input')
+    expect(wrapper.find('[aria-label="提问模板"]').text()).toContain('快速概览')
+    await wrapper.find('[aria-label="提问模板"] button').trigger('mousedown')
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toContain('请\n\n请概述当前论文')
+    expect(agentApi.createRun).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('adds an authorized paper with @ and sends it as a run context', async () => {
+    vi.spyOn(sessionsApi, 'get').mockResolvedValue({ session, papers: [{ id: 2, title: '第二篇论文' }] })
+    vi.spyOn(readerApi, 'document').mockResolvedValue({ paper_id: 2, title: '第二篇论文', file_version: 'b'.repeat(64), page_count: 3, width: 600, height: 800, outline: [], pdf_url: '/x' })
+    vi.spyOn(agentApi, 'createRun').mockResolvedValue(run())
+    const wrapper = await mountPanel()
+    await wrapper.find('textarea').setValue('比较 @第二')
+    await wrapper.find('textarea').trigger('input')
+    await wrapper.find('[aria-label="论文引用"] button').trigger('mousedown')
+    await flushPromises()
+    expect(wrapper.find('[aria-label="本次提问上下文"]').text()).toContain('第二篇论文')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(agentApi.createRun).toHaveBeenCalledWith(expect.objectContaining({
+      conversation_id: 5,
+      prompt: '比较',
+      contexts: [expect.objectContaining({ paper_id: 2, page: 1, file_version: 'b'.repeat(64) })],
+    }))
+    wrapper.unmount()
+  })
+
+  it('uses one image validation rule for file selection and pasted or dropped images', async () => {
+    const wrapper = await mountPanel()
+    const vm = wrapper.vm as unknown as { uploadFiles: (files: File[]) => Promise<void> }
+    await expect(vm.uploadFiles([new File(['x'], 'x.webp', { type: 'image/webp' })])).rejects.toThrow('PNG 或 JPEG')
+    await expect(vm.uploadFiles([new File([largeBody()], 'large.png', { type: 'image/png' })])).rejects.toThrow('5MB')
+    expect(wrapper.find('.upload-error').text()).toContain('每张图片不超过 5MB')
+    wrapper.unmount()
+  })
+
+  it('allows editing the next draft while a run is active', async () => {
+    vi.spyOn(agentApi, 'createRun').mockResolvedValue(run({ status: 'running' }))
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue(run({ status: 'running' }))
+    const wrapper = await mountPanel()
+    await wrapper.find('textarea').setValue('第一条')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    await wrapper.find('textarea').setValue('运行时下一条草稿')
+    expect(wrapper.find('textarea').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    await vi.advanceTimersByTimeAsync(400)
+    expect(workbenchApi.saveDraft).toHaveBeenLastCalledWith(5, 1, expect.objectContaining({ prompt: '运行时下一条草稿' }))
+    wrapper.unmount()
+  })
+})
+
+function largeBody() { return new Array(5 * 1024 * 1024 + 1).fill('x').join('') }

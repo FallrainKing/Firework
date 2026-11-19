@@ -161,7 +161,8 @@ export interface Attachment {
 
 export interface Draft {
   prompt: string
-  context: SelectionContext | null
+  context?: SelectionContext | null
+  contexts?: SelectionContext[]
   attachment_ids: string[]
   attachments?: Attachment[]
 }

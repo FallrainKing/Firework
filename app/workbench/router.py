@@ -30,7 +30,7 @@ async def draft(sid: int, pid: int, request: Request):
 
 @router.put('/drafts/{sid}/{pid}')
 async def save_draft(sid: int, pid: int, body: Draft, request: Request):
-    return service.save_draft(request.app.state.db, sid, pid, body)
+    return service.save_draft(request.app.state.db, request.app.state.settings, sid, pid, body)
 
 
 @router.post('/images', status_code=201)

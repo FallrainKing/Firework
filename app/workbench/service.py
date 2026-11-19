@@ -9,7 +9,7 @@ from pathlib import Path
 import pymupdf
 
 from ..core.errors import ServiceError
-from ..reader.service import linked
+from ..reader.service import linked, validate_context
 from ..storage import files
 from . import repository as repo
 from .schemas import Draft, Workspace
@@ -65,15 +65,21 @@ def get_draft(db, sid: int, pid: int) -> dict:
     linked(db, sid, pid)
     r = repo.find_draft(db, sid, pid)
     data = json.loads(r[0]) if r else Draft().model_dump()
+    if not data.get('contexts') and data.get('context'):
+        data['contexts'] = [data['context']]
     data['attachments'] = [attachment_view(a) for a in image_rows(db, data['attachment_ids'], sid, pid)]
     return data
 
 
-def save_draft(db, sid: int, pid: int, body: Draft) -> dict:
+def save_draft(db, settings, sid: int, pid: int, body: Draft) -> dict:
     linked(db, sid, pid)
     image_rows(db, body.attachment_ids, sid, pid)
-    if body.context and body.context.paper_id != pid:
-        raise ServiceError(400, '选区属于其他论文')
+    contexts = body.contexts or ([body.context] if body.context else [])
+    for ctx in contexts:
+        try:
+            validate_context(settings, db, ctx.model_dump(), sid)
+        except ValueError as exc:
+            raise ServiceError(400, str(exc)) from exc
     repo.upsert_draft(db, sid, pid, json.dumps(body.model_dump(), ensure_ascii=False))
     db.commit()
     return {'saved': True}

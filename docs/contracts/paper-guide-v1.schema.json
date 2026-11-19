@@ -1,0 +1,349 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:research-assistant:paper-guide:v1",
+  "title": "Skill-produced paper guide v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "paper-guide/v1"
+    },
+    "material_manifest_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "summary": {
+      "type": "object",
+      "properties": {
+        "problem_md": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "approach_md": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "contributions_md": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "limitations_md": {
+          "type": "string",
+          "maxLength": 3000
+        }
+      },
+      "required": [
+        "problem_md",
+        "approach_md",
+        "contributions_md",
+        "limitations_md"
+      ],
+      "additionalProperties": false
+    },
+    "reading_route": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      },
+      "minItems": 1,
+      "maxItems": 8
+    },
+    "items": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/item"
+      },
+      "minItems": 0,
+      "maxItems": 12
+    },
+    "coverage": {
+      "$ref": "#/$defs/coverage"
+    },
+    "unknown_fields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 600
+          }
+        },
+        "required": [
+          "path",
+          "reason"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 20
+    }
+  },
+  "required": [
+    "schema_version",
+    "material_manifest_id",
+    "summary",
+    "reading_route",
+    "items",
+    "coverage",
+    "unknown_fields"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "anchor": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "text"
+            },
+            "block_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            },
+            "quote": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1500
+            },
+            "prefix": {
+              "type": "string",
+              "maxLength": 120
+            },
+            "suffix": {
+              "type": "string",
+              "maxLength": 120
+            }
+          },
+          "required": [
+            "type",
+            "block_id",
+            "quote"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "block"
+            },
+            "block_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          },
+          "required": [
+            "type",
+            "block_id"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "const": "asset"
+            },
+            "asset_id": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 160
+            }
+          },
+          "required": [
+            "type",
+            "asset_id"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "item": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+        },
+        "category": {
+          "enum": [
+            "problem",
+            "contribution",
+            "method",
+            "definition",
+            "formula",
+            "figure",
+            "experiment",
+            "limitation"
+          ]
+        },
+        "priority": {
+          "enum": [
+            "essential",
+            "recommended",
+            "optional"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "why_important_md": {
+          "type": "string",
+          "maxLength": 1600
+        },
+        "explanation_md": {
+          "type": "string",
+          "maxLength": 3000
+        },
+        "claim_type": {
+          "enum": [
+            "author_claim",
+            "reported_evidence",
+            "agent_interpretation",
+            "reading_question"
+          ]
+        },
+        "anchors": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/anchor"
+          },
+          "minItems": 1,
+          "maxItems": 4
+        },
+        "follow_up_questions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "minItems": 0,
+          "maxItems": 3
+        },
+        "uncertainties": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "minItems": 0,
+          "maxItems": 4
+        }
+      },
+      "required": [
+        "key",
+        "category",
+        "priority",
+        "title",
+        "why_important_md",
+        "explanation_md",
+        "claim_type",
+        "anchors",
+        "follow_up_questions",
+        "uncertainties"
+      ],
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 120
+        },
+        "goal_md": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "item_keys": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "block_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "minItems": 0,
+          "maxItems": 12
+        }
+      },
+      "required": [
+        "key",
+        "title",
+        "goal_md",
+        "item_keys",
+        "block_ids"
+      ],
+      "additionalProperties": false
+    },
+    "coverage": {
+      "type": "object",
+      "properties": {
+        "material_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "minItems": 1,
+          "maxItems": 120
+        },
+        "scope": {
+          "enum": [
+            "metadata",
+            "abstract",
+            "selected_pages",
+            "fulltext"
+          ]
+        },
+        "figures_read": {
+          "type": "boolean"
+        },
+        "code_read": {
+          "type": "boolean"
+        },
+        "limitations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "minItems": 0,
+          "maxItems": 10
+        }
+      },
+      "required": [
+        "material_ids",
+        "scope",
+        "figures_read",
+        "code_read",
+        "limitations"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

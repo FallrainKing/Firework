@@ -35,6 +35,13 @@ async function mountSidebar(orch = makeOrch()) {
 }
 
 describe('ReaderSidebar', () => {
+  it('restores an already loaded guide tab without overwriting saved position', async () => {
+    const orch=makeOrch();orch.sidebarTab.value='guide'
+    const {wrapper}=await mountSidebar(orch)
+    expect(wrapper.find('[data-tab="guide"]').attributes('aria-selected')).toBe('true')
+    expect(orch.savePosition).not.toHaveBeenCalled()
+  })
+
   it('tab switch notifies orchestrator and saves position', async () => {
     const { wrapper, orch } = await mountSidebar()
     await wrapper.find('[data-tab="translations"]').trigger('click')

@@ -80,7 +80,7 @@ async function refresh() {
 
 watch(() => orch?.annotationsVersion.value, () => { void refresh() })
 // 编排器侧的 tab 变更（恢复位置/高亮/翻译）同步到 UI，不回写位置。
-watch(() => orch?.sidebarTab.value, t => { if (t) tab.value = t })
+watch(() => orch?.sidebarTab.value, t => { if (t) tab.value = t }, { immediate: true })
 watch(() => props.doc, d => { if (d) void refresh() }, { immediate: true })
 watch(() => orch?.noteContext.value, ctx => { if (ctx) focusNote() })
 

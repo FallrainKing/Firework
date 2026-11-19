@@ -1,6 +1,6 @@
 # Skills 管理与扩展开发
 
-当前基线：2026-11-19 / `13956f9`。Skill 负责研究处理，平台提供受限工具、版本、会话和产物管理。上传 ZIP 可以扩展提示与资源组织，不能自动扩展服务端任意权限。
+更新：2026-11-19。Skill 负责研究处理，平台提供受限工具、版本、会话和产物管理。上传 ZIP 可以扩展提示与资源组织，不能自动扩展服务端任意权限。
 
 ## 1. 内置技能
 
@@ -69,7 +69,7 @@ skill_resource 只读取允许的资源范围，不启动包内命令。需要�
 
 结构字段包括 summary、reading_route、items、coverage、unknown_fields。每条 item 含 key、类别、优先级、标题、why_important_md、explanation_md、claim_type、anchors、follow_up_questions、uncertainties。引用必须来自本任务材料，不把未读页、图像或代码写成已核验。
 
-权威模型：`app/reader/guides/schemas.py`；参考 [接口设计](Skill驱动导读批注接口设计.md) 和 [验收](Skill导读与批注实现验收.md)。默认最多 6 页材料，用户确认前不执行；同配置优先复用，失败不无限重试。
+权威模型：`app/reader/guides/schemas.py`；调用约定见 [当前接口说明](API.md)。默认最多 6 页材料，用户确认前不执行；同配置优先复用，失败不无限重试。
 
 ## 6. 复用科研技能与来源
 

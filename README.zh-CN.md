@@ -1,65 +1,60 @@
 # Firework
 
-Firework 是以现有智能体和 Skills 为执行核心的论文发现、阅读与研究管理工作台。前端包名为 `firework`；保留既有 `research-assistant` 部署目录、服务与内部标识，以兼容现有资料和运维。
+**通过现有智能体与 Skills 发现、阅读和管理研究资料的工作台。**
 
-面向个人研究的论文发现、管理与阅读工作台。平台管理论文、文件、会话、技能和任务；总结、翻译、审查、比较及前沿报告由服务器已有 Claude Code 智能体通过 Skills 执行。
+[English](README.md) · [文档目录](docs/README.md) · [后续计划](docs/ROADMAP.md) · [反馈问题](https://github.com/FallrainKing/Firework/issues)
 
-当前文档核对日期：2026-11-19，认证版本基于 `e25954e` 开发，业务数据库迁移至 `0013`，身份库 schema 1，Runner 协议 **5**。发布状态见 [项目状态](docs/STATUS.md)，所有文档入口见 [文档目录](docs/README.md)。
+Firework 将论文库、PDF 阅读与智能体会话放在同一工作区。平台管理资料、账号、会话、任务与证据；阅读、总结、审查、比较和前沿报告交给现有 Claude Code 智能体，通过可扩展 Skills 执行。
 
-## 已有功能
+## 功能
 
-- 阅读起始工作台：最近阅读、领域分类、任务模板、论文搜索与导入。
-- 多论文标签与可调三栏：左侧导读/目录/批注/高亮/译文/信息，中间 PDF，右侧智能体会话；保存阅读位置、布局与草稿。
-- 会话管理：每个任务保留原生会话映射，可召回和延续；异步执行、进度、取消及用量记录。
-- 明确触发的导读批注：输入框选择“自动批注”或“阅读论文”，修改要求并确认后才执行。打开、刷新、切换论文不会自动调用导读 Skill。
-- 论文库：分类、状态、图文卡片、作者单位、摘要及全文补充；支持 PDF、arXiv、DOI、公开 URL 添加。
-- 前沿追踪：设定领域、关键词、作者/团队等，调用现有智能体发现论文和 GitHub 项目，去重后形成时间线报告，批准后入库。
-- 动态技能库：上传 ZIP、预检、安装、分类、版本、启停、模板与最小验证；本地用户资料、头像和偏好。
+- 阅读起始工作台：最近阅读、领域分类、任务模板、搜索与导入。
+- 多论文标签、可调三栏与阅读恢复：左侧辅助阅读，中间原文，右侧关联会话，保存位置、布局和草稿。
+- 多渠道论文库：PDF 上传、arXiv、DOI、公开 URL；分类、状态、图文卡片和全文补充。
+- 可延续的任务会话：原生会话映射、执行进度、取消、用量与估算费用。
+- 明确触发的 Skill 导读与批注：用户确认后生成总结、重点和解释，核验原文证据后渲染。
+- 前沿追踪：领域、关键词、作者或团队，发现论文与开源项目，去重、时间线报告和批准入库。
+- 动态 Skills：上传 ZIP、预检、安装、分类、版本、启停与最小验证。
+- 讨论输入：模板、原文选区和图片；图片理解需要真实视觉能力。
+- 独立账号空间：数据库、文件、私有技能、向量与原生会话隔离；公开注册关闭，当前仅 primary admin 可登录。
 
-已实现独立账号与数据空间，当前仅原管理员可登录，公开注册关闭；见 [认证与账号隔离](docs/AUTHENTICATION.md)。论文库、会话与批注已持久化；统一知识条目、跨任务长期记忆、OCR/图像导读和完整 kelip 六站材料链尚未实现。详见 [后续计划](docs/ROADMAP.md)。
+打开论文、切换标签、选择模板或预览图片不会自动运行研究模型。发送请求、确认生成或启用调度才会创建相应任务。
 
-## 开始使用
+统一知识条目、跨任务长期记忆、OCR/图像导读及完整六站精读材料链仍未完成，详见 [当前状态](docs/STATUS.md) 与 [后续计划](docs/ROADMAP.md)。
 
-已部署实例访问现有站点；操作步骤见 [使用指南](docs/USER-GUIDE.md)。只有书目信息时先补充 PDF，不进入空白阅读任务。模板选择、图片预览和批注配置本身不会执行模型；发送、确认生成或启用定时执行才会产生任务。
+## 架构
 
-## 部署与开发
+Vue 3 / TypeScript 前端连接 FastAPI。SQLite 保存业务与身份数据，Qdrant 配合 bge-m3 提供语义检索；宿主私有 Runner 对接现有 Claude Code 和已注册 Skills。当前 Runner 协议为 **5**。
 
-本项目需要两部分同时就绪：Docker Compose 中的 app/Qdrant，以及宿主机的私有 Runner。仅启动容器不代表智能体可用。
+## 自托管
 
-1. 准备 Docker/Compose、Python 3.12+、现有 Claude CLI 配置及宿主虚拟环境。
-2. 按 [环境与部署](docs/enviroment.md) 配置路径、监听地址、模型缓存、Runner 和权限。
-3. 构建应用并执行零模型冒烟检查。
-
-```sh
-# 已配置宿主 Runner、模型缓存与 .env 的现有环境
-# 升级前先确认无执行中任务并备份，完整步骤见部署文档
-docker compose up -d --build app
-# 认证版本需短期维护会话，按环境文档执行冒烟
-```
-
-仓库 Compose 中的 `100.64.0.7` 是当前服务器地址；新机器需修改端口绑定。Compose 默认 `HF_HUB_OFFLINE=1`，新机器没有 bge-m3 缓存时须按部署说明完成首次下载。
+需要 Docker/Compose、Python 3.12+、可用的 Claude Code CLI、嵌入模型缓存，以及用于生产登录的 HTTPS 入口。开发前端使用 Node 24，生产前端在 Docker 内构建。
 
 ```sh
-# 前端独立开发；后端仍需在 127.0.0.1:8600 提供 API
-cd frontend
-npm ci
-npm run dev
-npm test
-npm run build
+git clone https://github.com/FallrainKing/Firework.git
+cd Firework
+cp .env.example .env
 ```
 
-Python 安装、隔离测试与发布步骤见 [开发指南](docs/DEVELOPMENT.md)。生产前端由 Docker 多阶段构建，无需在服务器额外安装 Node；构建镜像使用 Node 24。
+启动前须完成：
 
-## 文档
+1. 配置实际 HTTPS Origin，保留生产 Secure Cookie。
+2. 修改 Compose 中原部署使用的 `100.64.0.7` 网卡绑定。
+3. 准备约 2.3 GB bge-m3 缓存；新机器首次下载需关闭离线模式。
+4. 配置宿主 Runner 的路径、模型和权限；仅启动容器不能使用智能体。
+5. 在准备好的虚拟环境交互初始化管理员，再启动服务。
 
-| 内容 | 入口 |
-| --- | --- |
-| 登录、账号与隔离 | [认证说明](docs/AUTHENTICATION.md) |
-| 功能操作与常见问题 | [使用指南](docs/USER-GUIDE.md) |
-| 架构、代码目录、数据模型、任务流 | [系统架构](docs/架构.md) |
-| 当前服务器、部署、排障和回退 | [环境与部署](docs/enviroment.md)、[备份恢复](docs/BACKUP-RESTORE.md) |
-| API 分组与调用规则 | [接口说明](docs/API.md)、[完整路由清单](docs/API-ROUTES.md) |
-| ZIP 技能扩展与导读契约 | [Skills 开发](docs/SKILLS.md) |
-| 已实现范围、验证和遗留项 | [项目状态](docs/STATUS.md)、[后续计划](docs/ROADMAP.md)、[变更记录](docs/CHANGELOG.md) |
+```sh
+.venv/bin/python -m app.auth.bootstrap init-admin
+docker compose up -d --build
+```
 
-文档不保存认证内容。`.env`、`data/`、`backups/`、私钥、运行日志和公网认证文件不提交 Git。旧方案与历史验收可从 [文档目录](docs/README.md) 查找，不应直接作为当前部署步骤。
+完整步骤见 [环境与部署](docs/enviroment.md)、[认证](docs/AUTHENTICATION.md) 和 [开发指南](docs/DEVELOPMENT.md)。使用方法见 [用户指南](docs/USER-GUIDE.md)。公网统一使用应用网页登录，不再有旧 Basic Auth 密码弹窗。
+
+## 文档与贡献
+
+[文档目录](docs/README.md) 汇总当前架构、接口、Skills、备份恢复与开发说明。欢迎提交问题和范围明确的改进；代码变更附上对应验证和文档更新。
+
+不要提交 `.env`、凭据、私钥、论文、运行数据或备份。部署目录和服务中仍保留 `research-assistant` 标识，用于兼容现有实例。
+
+项目尚未添加项目级许可证；仓库公开不表示已授予开源许可。第三方组件保留各自许可证。

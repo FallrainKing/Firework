@@ -1,8 +1,8 @@
 # 接口与调用约定
 
-依据：2026-11-19 / 认证改造基于 `e25954e` 的已注册 OpenAPI。交互文档 `/docs`，机器描述 `/openapi.json`，完整路径见 [路由清单](API-ROUTES.md)。字段的最终定义以各域 schemas.py 与 OpenAPI 为准。
+更新：2026-11-19，依据当前已注册 OpenAPI。交互文档 `/docs`，机器描述 `/openapi.json`，完整路径见 [路由清单](API-ROUTES.md)。字段的最终定义以各域 schemas.py 与 OpenAPI 为准。
 
-现有部署由外层访问认证保护；业务由服务端登录会话绑定独立账号工作区。当前只允许原管理员登录，公开注册关闭；认证接口、Cookie、CSRF 和账号管理详见 [认证说明](AUTHENTICATION.md)。`/api/internal/*` 为 Runner 受限工具使用，前端不得获取其私有令牌。
+公网使用 HTTPS 与应用网页登录；旧 Basic Auth 已关闭。服务端登录会话绑定独立账号工作区。当前只允许原管理员登录，公开注册关闭；认证接口、Cookie、CSRF 和账号管理详见 [认证说明](AUTHENTICATION.md)。`/api/internal/*` 为 Runner 受限工具使用，前端不得获取其私有令牌。
 
 业务 API 要求有效会话，写请求另需 X-CSRF-Token；401 应回到登录页。文件、SSE、头像和资料查询同样隔离，客户端指定其他工作区不会改变访问范围。
 
@@ -63,7 +63,7 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 - 原始 AI 批注不直接编辑内容/颜色；通过 `POST /api/reader/guide-items/{ident}/adopt` 带 request_key 采纳为个人副本。
 - `PATCH /api/reader/annotations/{ident}` 的 deleted 支持移除/恢复。隐藏任务使用 `PATCH /api/reader/guide-runs/{ident}` 的 hidden；执行中先 cancel。
 
-运行时结构见 `app/reader/guides/schemas.py`；[契约附件](contracts/paper-guide-v1.schema.json) 为设计参考，当前不接受图像 asset 锚点。完整例证见 [导读验收](Skill导读与批注实现验收.md)。
+运行时结构以 `app/reader/guides/schemas.py` 为准，注册工具使用该模型生成的 JSON Schema；当前不接受图像 asset 锚点。扩展规则见 [Skills 开发](SKILLS.md)。
 
 ## 4. 导入与审批
 
@@ -78,6 +78,7 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 | 状态 | 常见含义与处理 |
 | --- | --- |
 | 400 | 业务参数/范围/关联不合法，修正后明确重试 |
+| 401 | 会话缺失或失效，返回网页登录；响应不含浏览器密码挑战 |
 | 403 | 内部授权或任务范围不匹配，不能通过更换任意 ID 绕过 |
 | 404 | 资源或可用文件不存在 |
 | 409 | 版本、并发修订、请求键语义或执行状态冲突，先重新查询 |

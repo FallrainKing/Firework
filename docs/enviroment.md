@@ -1,6 +1,6 @@
 # 当前环境、部署与排障
 
-核对日期：2026-11-19（Asia/Shanghai）；认证版本功能提交 `79e6cb2` 与 HTTPS 修复 `b46f89e`（基于 `e25954e`）。本文件为当前维护正文，文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+核对日期：2026-11-19（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 5。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
 ## 1. 当前实例
 
@@ -18,9 +18,9 @@
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
 | 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0013_reader_guides.sql` |
 
-当前提交均保存在服务器 Git，最近功能尚未推送远端。本次认证改动需要同时重建 app/backup 并同步 Runner。
+远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
 
-SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。公网网关位于 root@matchesai.vip，站点配置 /etc/nginx/conf.d/paper-matchesai.conf。旧 Basic Auth 已关闭，仅保留应用网页登录；HTTPS 与反向隧道链路不变。配置镜像见 ops/paper-matchesai.conf，配置回退记录见 AUTHENTICATION.md。
+SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。公网网关位于 root@matchesai.vip，站点配置 /etc/nginx/conf.d/paper-matchesai.conf。旧 Basic Auth 已关闭，仅保留应用网页登录；HTTPS 与反向隧道链路不变。配置快照见 `ops/paper-matchesai.conf`，回退信息见本文第 7 节。
 
 ## 2. 服务和目录
 
@@ -28,7 +28,9 @@ Compose：app 提供 API/SPA，qdrant 保存向量，backup 负责计划备份�
 
 ```text
 data/
-  app.db                        SQLite（含导读、追踪与审批）
+  app.db                        管理员研究 SQLite（含导读、追踪与审批）
+  auth/accounts.db              身份、会话、节流与审计
+  accounts/{工作区ID}/            独立账号数据库、私有资源与原生会话
   papers/ imports/ attachments/  原始 PDF、暂存、会话图片
   skills/archives/              不可变 ZIP 原包
   skills/packages/              已安装版本资源
@@ -84,14 +86,14 @@ data/
    systemctl --user enable --now research-agent-runner
    ```
 
-6. 启动容器并验证：
+6. 新实例交互初始化管理员，再启动容器：
 
    ```sh
+   .venv/bin/python -m app.auth.bootstrap init-admin
    docker compose up -d --build
-   AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_test.py
    ```
 
-首次部署 Runner/App 的启动时序可能短暂不就绪，待应用健康后再次检查协议。宿主 Runner 工具目前回调固定 `http://127.0.0.1:8600`；修改宿主端口还须修改/适配工具端，不能只改 Compose。
+启动后按 [认证说明](AUTHENTICATION.md) 执行带维护会话的零模型冒烟。首次部署 Runner/App 的启动时序可能短暂不就绪，待应用健康后再次检查协议。宿主 Runner 工具目前回调固定 `http://127.0.0.1:8600`；修改宿主端口还须修改/适配工具端，不能只改 Compose。
 
 需要退出登录后继续运行用户服务时，按主机运维策略配置用户 linger；本次未修改系统级设置。
 
@@ -112,15 +114,13 @@ data/
 ```sh
 # 不需要模型调用
 curl -fsS http://127.0.0.1:8600/health
-curl -fsS http://127.0.0.1:8600/api/agent/status
 docker compose ps
 systemctl --user status research-agent-runner --no-pager
 journalctl --user -u research-agent-runner -n 60 --no-pager
 docker compose logs --tail=80 app
-AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_test.py
 ```
 
-查看日志时不要把认证内容、完整提示或未脱敏配置贴入公开问题。`/health` 只说明应用可响应；Runner 兼容性以 `/api/agent/status` 和五步冒烟为准。
+私有 `/api/agent/status` 需要有效登录，不能用匿名 curl 检查；协议与工作区检查使用 [认证说明](AUTHENTICATION.md) 的完整维护冒烟流程。查看日志时不要把认证内容、完整提示或未脱敏配置贴入公开问题。`/health` 只说明应用可响应；Runner 兼容性以 `/api/agent/status` 和五步冒烟为准。
 
 | 症状 | 检查 |
 | --- | --- |
@@ -131,22 +131,28 @@ AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_t
 | 新页面看不到改动 | 检查实际构建镜像和 app 容器，再刷新浏览器；仅改源码不会改镜像内静态资源 |
 | 任务重启后失败 | 当前会终止受影响任务，不自动重复付费；核实后手动重试 |
 
-## 7. 最近发布与回退资料
+## 7. 当前回退资料
 
-- 功能代码：`5dac0d7`，混合定位修正 `ea41fea`，文档 `5272525`，侧栏恢复/契约 `13956f9`。
-- 迁移前 SQLite 快照：`/home/f/.local/state/research-assistant/backups/before-reader-guides-20261119-185306/app.db`。
-- 旧镜像标签：`research-assistant-app:before-reader-guides-20261119`；正常成套备份另在 backups/。
-- 切回旧应用必须同步相应 Runner；旧代码不保证理解新数据。不要直接删除迁移记录或执行未经设计的逆向 ALTER。
-- 完整数据恢复前先停 app、Runner 与备份写入，见 [备份恢复](BACKUP-RESTORE.md)。本轮文档整理没有执行生产恢复。
+下列是当前实例保留的私有恢复资料，其他机器应记录自己的位置：
 
-## 认证版本部署补充
+| 范围 | 位置或标签 |
+| --- | --- |
+| 完整认证改造前备份 | `backups/before-auth-complete-20261119-2248/` |
+| 认证发布后成套备份 | `backups/after-auth-20261119-2250/` |
+| 改名前应用镜像 | `research-assistant-app:before-firework-20261119` |
+| 认证改造前 app/backup 镜像 | `research-assistant-app:before-auth-20261119`、`research-assistant-backup:before-auth-20261119` |
+| 网关单次登录修改前配置 | 网关 `/root/research-auth-gateway-backups/20261119-before-app-login-only.conf` |
 
-认证默认强制启用。RESEARCH_AUTH_ADMIN_ONLY=1、RESEARCH_AUTH_COOKIE_SECURE=1、RESEARCH_PUBLIC_ORIGIN=https://paper.matchesai.vip；未开放注册，普通账号仍不能登录。初始化沿用现有入口凭据，详见 [认证说明](AUTHENTICATION.md)。
+切回旧应用必须同步对应 Runner，并核对迁移和身份库兼容性。不要混合不同日期的身份库与研究资源，也不要删除迁移记录或直接逆向修改数据库。恢复旧网关配置会重新启用双重登录，不能当作应用认证的替代。
+
+完整恢复先停止 app、Runner 与备份写入，恢复后撤销旧会话并重新验证，见 [备份恢复](BACKUP-RESTORE.md)。生产全量恢复演练尚未完成。
+
+## 8. 认证与隔离配置
+
+认证默认强制启用。RESEARCH_AUTH_ADMIN_ONLY=1、RESEARCH_AUTH_COOKIE_SECURE=1、RESEARCH_PUBLIC_ORIGIN=https://paper.matchesai.vip；未开放注册，普通账号仍不能登录。当前实例已初始化管理员；新机器使用交互初始化，详见 [认证说明](AUTHENTICATION.md)。
 
 新增 data/auth/accounts.db（身份、散列、会话、节流和审计）及 data/accounts/{随机ID}/（独立研究空间）；原管理员继续使用原 data/app.db、papers、agent 和 chunks 集合。新账号集合为 chunks_{工作区ID}。原资料不迁移、不复制到新账号。
 
-旧的匿名五步冒烟在认证版会收到 401；先按认证说明签发 5 分钟私有维护会话，再设置 AUTH_SESSION_FILE 执行。生产 Cookie 只通过 HTTPS，临时维护文件只在受信任宿主使用。HTTP 本地开发可显式配置 RESEARCH_AUTH_COOKIE_SECURE=0，使用单独的 research_session_dev Cookie 名，不用于公网。
+旧的匿名五步冒烟在认证版会收到 401；先按认证说明签发 5 分钟私有维护会话，再设置 AUTH_SESSION_FILE 执行。生产 Cookie 只通过 HTTPS，临时维护文件只在受信任宿主使用。HTTP 本地开发可显式配置 RESEARCH_AUTH_COOKIE_SECURE=0，同时配置匹配的 RESEARCH_PUBLIC_ORIGIN；使用单独的 research_session_dev Cookie，不用于公网。
 
-认证升级的完整备份、旧 app/backup 镜像和提交号见本次变更记录。回退不能混合新身份库与其他日期研究库；恢复后旧浏览器会话必须撤销。
-
-认证版已实际上线：完整发布前备份为 backups/before-auth-complete-20261119-2248，发布后为 backups/after-auth-20261119-2250；app/backup 回退镜像分别带 before-auth-20261119 标签。原 backup 容器曾滞后于源码，本次已重建替换并验证包含身份库与账号归档。维护冒烟使用短期文件并在结束后撤销；源码提交与完整验证见 [变更记录](CHANGELOG.md)。
+当前实例的完整备份和回退镜像见第 7 节。回退不能混合新身份库与其他日期研究库；恢复后旧浏览器会话必须撤销。

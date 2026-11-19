@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-更新：2026-11-19。认证改造基于 e25954e，Runner 协议 5。由当前应用 OpenAPI 提取，接口文档和业务 API 需登录；调用约定见 [接口说明](API.md) 与 [认证说明](AUTHENTICATION.md)。
+更新：2026-11-19。Runner 协议 5。由当前应用 OpenAPI 提取，接口文档和业务 API 需登录；调用约定见 [接口说明](API.md) 与 [认证说明](AUTHENTICATION.md)。
 
 | 方法 | 路径 |
 | --- | --- |

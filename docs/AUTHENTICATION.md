@@ -62,57 +62,56 @@ WorkspaceManager 复用只读模型权重和 Qdrant 客户端，但创建不同 
 
 停用账号保留数据，停止已有任务并禁止后续调度；已经创建但未开放登录的账号不产生研究任务。账号管理不提供物理删除或研究数据共享。
 
-## 5. 初始化与恢复
+## 5. 初始化与密码恢复
 
-以下命令记录本次从旧 Basic Auth 迁移的初始化过程，仅适用于仍有旧认证挑战的环境。当前站点已完成初始化并关闭 Basic Auth，无需重跑；已有管理员不会覆盖：
+在受信任宿主的项目目录中执行。新部署先准备虚拟环境、依赖和正确的 DATA_DIR，再交互初始化管理员；已有管理员时不会覆盖：
 
 ```sh
-# 当前部署的私有文件仅保存原入口密码；不输出文件内容
-.venv/bin/python -m app.auth.bootstrap init-admin \
-  --legacy-file ops/public-access-credentials.txt --legacy-username paper \
-  --verify-origin https://paper.matchesai.vip
+.venv/bin/python -m app.auth.bootstrap init-admin
 ```
 
-验证既有站点的认证挑战和凭据成功后才保存管理员散列。新环境也可不带文件参数，交互输入账号和密码。禁止把明文密码放入命令行参数、.env 或 Git。
+不要在现有实例重复初始化，不使用已关闭的旧入口认证挑战作为初始化前提。密码通过交互输入，不放入命令行参数、`.env` 或 Git。
 
-忘记应用管理员密码时，可在服务器交互恢复，不会读取或输出原密码：
+忘记管理员应用密码时：
 
 ```sh
 .venv/bin/python -m app.auth.bootstrap reset-admin-password --confirm
 ```
 
-此操作要求两次输入新密码，撤销全部旧会话；当前站点没有额外的网关密码登录。普通账号密码由管理员管理页重设。
+此操作要求两次输入新密码，并撤销全部旧会话。普通账号密码由管理员管理页重设。公网只有应用网页登录，不另设网关密码。
 
-## 6. 部署与验证
+## 6. 部署与维护验证
 
-生产认证默认启用，环境变量不能切回匿名旧模式。`create_app(authentication=False)` 仅用于显式构造隔离的旧业务单元测试，不是部署开关。
+应用与宿主 Runner 必须兼容协议 5。生产认证默认启用，环境变量不能切回匿名模式。`create_app(authentication=False)` 只用于显式构造隔离业务测试。
 
-应用 Compose 与宿主 Runner 必须同时升级至协议 5。保持 `RESEARCH_AUTH_ADMIN_ONLY=1` 和 `RESEARCH_AUTH_COOKIE_SECURE=1`，Origin 为现有 HTTPS 站点。未来允许普通账号时需要同步应用/Runner 配置、启用具体账号并规划网关访问策略；本次未开放。
+保留 `RESEARCH_AUTH_ADMIN_ONLY=1`、`RESEARCH_AUTH_COOKIE_SECURE=1`，并将 `RESEARCH_PUBLIC_ORIGIN` 设为实际 HTTPS 站点。HTTP 登录页禁用密码提交，提供配置的 HTTPS 登录入口。仅在隔离的本地 HTTP 开发环境可设置 `RESEARCH_AUTH_COOKIE_SECURE=0`，同时配置匹配的开发 Origin，使用单独的 `research_session_dev` Cookie。
 
-零模型维护冒烟使用短期私有文件，不在终端打印令牌：
+以下零模型冒烟在受信任宿主执行。创建短期私有文件，完成或中断后撤销会话；输出不包含令牌：
 
 ```sh
+set -eu
+maintenance_dir=$(mktemp -d)
+cleanup_auth() {
+  if [ -f "$maintenance_dir/session.json" ]; then
+    .venv/bin/python -m app.auth.bootstrap revoke-session \
+      --input "$maintenance_dir/session.json"
+  fi
+  rmdir "$maintenance_dir"
+}
+trap cleanup_auth EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+trap 'exit 129' HUP
 .venv/bin/python -m app.auth.bootstrap issue-session \
-  --output /tmp/research-auth-smoke.json --minutes 5
-AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_test.py
-# 检查后撤销维护会话并删除私有文件
-.venv/bin/python -m app.auth.bootstrap revoke-session --input /tmp/research-auth-smoke.json
+  --output "$maintenance_dir/session.json" --minutes 5
+AUTH_SESSION_FILE="$maintenance_dir/session.json" \
+  .venv/bin/python scripts/smoke_test.py
 ```
 
-完整备份增加 `identity-日期.db` 和 `accounts-日期.tar.gz`；管理员单账号时也生成空 accounts 归档。所有账号的业务库使用 SQLite 在线快照，不归档活跃 WAL 作为数据库副本；向量快照分别按集合保留。恢复前核验身份与资源成套，并使恢复的浏览器会话全部失效。
+私有维护文件最长支持 15 分钟，不是前端登录凭据，不应上传或输出内容。`ops/deploy.sh` 会自行签发、使用并清理维护会话。
 
-回归覆盖未登录全部私有路由、CSRF/来源/节流/过期、关闭注册、仅管理员登录、同 ID 的论文/文件/批注/草稿/会话隔离、私有 Skill/向量、Runner 原生目录/查询/取消隔离、内部工具绑定和真实 SQLite 备份恢复。研究模型调用数为 0。实际发布与验收见项目状态和变更记录。
+## 7. 访问与恢复边界
 
-## 7. 本次实际验收
+公网由 HTTPS 反向代理提供服务，研究资料由应用会话保护。匿名登录页与登录状态查询可访问；论文、附件、头像、会话、SSE、账号管理和接口文档均受认证约束。未登录返回 401，不包含浏览器密码认证挑战。注册 API 固定返回 403。
 
-功能提交 `79e6cb2`、HTTPS 入口修复 `b46f89e` 已发布；生产仅 1 个管理员，使用原站点凭据验证登录成功。匿名论文库/PDF/SSE/账号管理/接口文档均 401，注册 403，缺 CSRF/错误 Origin 写入 403，退出后的旧会话 401；PDF Range 206，原 9 篇论文和 1 个导读任务保留，协议 5 兼容。五步冒烟通过，维护会话已撤销。前端 189 项、后端相关 189 项通过；模型调用 0。
-
-生产安全 Cookie 仅在 HTTPS 使用；HTTP 登录页已禁用密码提交并引导到配置的 HTTPS 登录地址。Chrome 已核对该提示及关闭注册的页面，不在 HTTP 页面发送真实凭据；公网管理员认证由实际 HTTPS/本地受信任请求验证。隔离测试使用临时多账号，生产未创建额外测试账号。备份与回退位置见 [变更记录](CHANGELOG.md)。
-
-## 8. 重复登录修复
-
-2026-11-19：旧 nginx Basic Auth 与新应用登录叠加，导致浏览器弹窗后再次填写网页表单。已仅对 paper.matchesai.vip 关闭旧 Basic Auth，保留 TLS、反向隧道和应用登录。未登录私有接口继续返回 401，但不含 WWW-Authenticate，不会触发浏览器密码弹窗。未开放注册或普通账号登录。
-
-公网无 Basic 凭据验收：首页/登录页/注册页/匿名状态 200，论文库/PDF/SSE/账号管理/接口文档 401；HTTPS 应用登录、Secure Cookie、PDF Range 206、退出失效通过；原论文 9 篇。Chrome 打开公网未出现旧认证弹窗。未调用研究模型。
-
-实际网关配置：root@matchesai.vip:/etc/nginx/conf.d/paper-matchesai.conf。修改前配置备份在 /root/research-auth-gateway-backups/20261119-before-app-login-only.conf；nginx 校验通过后平滑重载。旧 htpasswd 文件保留但不再用于本站认证。回滚此配置会恢复双重登录，并不会替代应用登录。仓库 ops/paper-matchesai.conf 保存当前站点配置（无凭据）；初次发布的双层认证验收作为历史记录保留。
+账号数据库与研究资源需成套备份和恢复；恢复后撤销浏览器会话。详见 [备份恢复](BACKUP-RESTORE.md)。发布验证范围见 [项目状态](STATUS.md)，当前网关和回退位置见 [环境与部署](enviroment.md)。

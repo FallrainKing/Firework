@@ -2,17 +2,28 @@
 import { onMounted, ref, watch } from 'vue'
 import { papersApi } from '@/api/papers'
 import type { Paper } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = defineProps<{ modelValue: number[] }>()
 const emit = defineEmits<{ 'update:modelValue': [ids: number[]]; 'open-import': [] }>()
 
 const query = ref('')
 const results = ref<Paper[]>([])
+const loading = ref(false)
+const error = ref<string | null>(null)
 const selected = ref<Set<number>>(new Set(props.modelValue))
 
 async function search() {
-  const { papers } = await papersApi.list({ q: query.value, limit: 50 })
-  results.value = papers
+  loading.value = true
+  error.value = null
+  try {
+    const { papers } = await papersApi.list({ q: query.value, limit: 50 })
+    results.value = papers
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '论文搜索失败'
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(search)
@@ -42,7 +53,7 @@ watch(() => props.modelValue, ids => { selected.value = new Set(ids) })
         </label>
       </li>
     </ul>
-    <p v-if="!results.length" class="muted">没有匹配的论文，可导入新材料。</p>
+    <StateFeedback :loading="loading && !results.length" :error="error" :empty="!loading && !error && !results.length" empty-text="没有匹配的论文，可导入新材料。" @retry="search" />
   </div>
 </template>
 

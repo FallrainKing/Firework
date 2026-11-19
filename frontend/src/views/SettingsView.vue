@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { meApi, type Profile } from '@/api/me'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const profile = ref<Profile | null>(null)
 const displayName = ref('')
@@ -13,6 +14,8 @@ const uploadingAvatar = ref(false)
 const error = ref('')
 const profileMessage = ref('')
 const preferenceMessage = ref('')
+const profileIsError = computed(() => profileMessage.value.includes('失败') || profileMessage.value.includes('不能'))
+const preferenceIsError = computed(() => preferenceMessage.value.includes('失败') || preferenceMessage.value.includes('格式') || preferenceMessage.value.includes('mismatch'))
 const avatarInput = ref<HTMLInputElement | null>(null)
 
 const parsedPreferences = computed(() => {
@@ -111,10 +114,9 @@ onMounted(refresh)
       </div>
     </div>
 
-    <p v-if="loading" class="muted" role="status">正在载入设置…</p>
-    <p v-else-if="error" class="form-error" role="alert">{{ error }}</p>
+    <StateFeedback :loading="loading" :error="error || null" :empty="!loading && !error && !profile" empty-text="未提供用户资料。" @retry="refresh" />
 
-    <template v-else-if="profile">
+    <template v-if="profile">
       <div class="settings-grid">
         <article class="settings-card">
           <h2>个人资料</h2>
@@ -130,7 +132,7 @@ onMounted(refresh)
                 <button class="primary" :disabled="savingProfile || !displayName.trim()" data-testid="save-profile" @click="saveProfile">{{ savingProfile ? '保存中…' : '保存资料' }}</button>
                 <button :disabled="uploadingAvatar" data-testid="upload-avatar" @click="uploadAvatar">{{ uploadingAvatar ? '上传中…' : '上传头像' }}</button>
               </div>
-              <p v-if="profileMessage" :class="profileMessage.includes('失败') || profileMessage.includes('不能') ? 'form-error' : 'success'" role="status">{{ profileMessage }}</p>
+              <StateFeedback :saving="savingProfile || uploadingAvatar" :saved="!profileIsError && profileMessage" :save-error="profileIsError ? profileMessage : null" />
             </div>
           </div>
         </article>
@@ -157,7 +159,7 @@ onMounted(refresh)
             <button class="primary" :disabled="savingPreferences || !!parsedPreferences.error" data-testid="save-preferences" @click="savePreferences">{{ savingPreferences ? '保存中…' : '保存偏好' }}</button>
             <button :disabled="loading || savingPreferences" @click="refresh">重新载入</button>
           </div>
-          <p v-if="preferenceMessage" :class="preferenceMessage.includes('失败') || preferenceMessage.includes('格式') || preferenceMessage.includes('mismatch') ? 'form-error' : 'success'" role="status">{{ preferenceMessage }}</p>
+          <StateFeedback :saving="savingPreferences" :saved="!preferenceIsError && preferenceMessage" :save-error="preferenceIsError ? preferenceMessage : null" />
         </article>
       </div>
     </template>
@@ -184,7 +186,6 @@ dt { color: var(--text-muted); font-size: 12px; }
 dd { margin: 0; }
 textarea { width: 100%; min-height: 220px; resize: vertical; font-family: ui-monospace, monospace; }
 .actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
-.success { color: var(--success); margin: 0; }
 .form-error { color: var(--danger); margin: 0; }
 @media(max-width:900px) { .settings-grid { grid-template-columns: 1fr; } .settings-card:nth-child(3) { grid-column: auto; } }
 @media(max-width:560px) { .settings-workspace { padding: var(--space-3); } .profile-row { flex-direction: column; } }

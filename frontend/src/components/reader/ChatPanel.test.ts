@@ -191,6 +191,51 @@ describe('ChatPanel research composer', () => {
 
 function largeBody() { return new Array(5 * 1024 * 1024 + 1).fill('x').join('') }
 
+
+describe('ChatPanel feedback and export', () => {
+  it('shows draft save failure instead of success', async () => {
+    vi.mocked(workbenchApi.saveDraft).mockRejectedValueOnce(new Error('保存失败'))
+    const wrapper = await mountPanel()
+    await wrapper.find('textarea').setValue('未保存草稿')
+    await vi.advanceTimersByTimeAsync(400)
+    await flushPromises()
+    expect(wrapper.find('.draft-state').text()).toContain('保存失败：保存失败')
+    expect(wrapper.find('.draft-state').text()).not.toContain('已保存')
+    wrapper.unmount()
+  })
+
+  it('exports a paginated conversation as Markdown without calling the model', async () => {
+    const context = { paper_id: 1, page: 12, file_version: 'a'.repeat(64), quote: '', rects: [] }
+    vi.spyOn(sessionsApi, 'runs')
+      .mockResolvedValueOnce({ runs: [run({ id: 'r2', contexts: [context] })], has_more: true, next_before: 90 })
+      .mockResolvedValueOnce({ runs: [run({ id: 'r1', contexts: [context] })], has_more: false, next_before: null })
+    vi.mocked(sessionsApi.get).mockResolvedValue({
+      session,
+      papers: [{ id: 1, title: 'Attention Paper' }],
+      usage: emptyUsage,
+    })
+    const createRun = vi.spyOn(agentApi, 'createRun').mockResolvedValue(run())
+    const wrapper = await mountPanel()
+    const vm = wrapper.vm as unknown as { allRunsForExport: () => Promise<Run[]>; buildMarkdown: (runs: Run[]) => string }
+    const allRuns = await vm.allRunsForExport()
+    const markdown = vm.buildMarkdown(allRuns)
+    expect(sessionsApi.runs).toHaveBeenNthCalledWith(1, 5, undefined, 100)
+    expect(sessionsApi.runs).toHaveBeenNthCalledWith(2, 5, 90, 50)
+    expect(createRun).not.toHaveBeenCalled()
+    expect(markdown).toContain('会话名：阅读')
+    expect(markdown).toContain('平台会话 ID：5')
+    expect(markdown).toContain('原生会话 ID：native-5')
+    expect(markdown).toContain('[P1] Attention Paper（paper_id=1）')
+    expect(markdown).toContain('物理页：12')
+    expect(markdown).toContain(`文件版本锚点：\`${'a'.repeat(64)}\``)
+    expect(markdown).toContain('导出动作不会写入长期记忆')
+    expect(markdown).toContain('### 用户提问')
+    expect(markdown).toContain('r1')
+    expect(markdown).toContain('r2')
+    wrapper.unmount()
+  })
+})
+
 describe('ChatPanel long conversation', () => {
   it('pages older history without duplicating runs and keeps the scroll anchor', async () => {
     vi.spyOn(sessionsApi, 'runs')

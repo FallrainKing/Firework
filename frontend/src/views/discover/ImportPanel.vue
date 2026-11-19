@@ -4,6 +4,7 @@ import { importsApi } from '@/api/imports'
 import { papersApi } from '@/api/papers'
 import { uid32 } from '@/api/client'
 import type { Collection, ImportRequest } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = withDefaults(defineProps<{ targetPaperId?: number | null }>(), { targetPaperId: null })
 const emit = defineEmits<{ 'open-paper': [paperId: number]; 'library-updated': [] }>()
@@ -13,6 +14,8 @@ const collectionId = ref('')
 const sourceValue = ref('')
 const target = ref<number | null>(props.targetPaperId)
 const imports = ref<ImportRequest[]>([])
+const loading = ref(true)
+const loadError = ref<string | null>(null)
 const status = ref('')
 const error = ref('')
 const submitting = ref(false)
@@ -51,11 +54,22 @@ async function track(item: ImportRequest) {
   }
 }
 
-onMounted(async () => {
-  const [cols, list] = await Promise.all([papersApi.collections(), importsApi.list()])
-  collections.value = cols.collections
-  for (const item of list.imports.slice().reverse()) void track(item)
-})
+async function refreshRecords() {
+  loading.value = true
+  loadError.value = null
+  try {
+    const [cols, list] = await Promise.all([papersApi.collections(), importsApi.list()])
+    collections.value = cols.collections
+    imports.value = list.imports.slice().reverse()
+    for (const item of imports.value) void track(item)
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '导入记录载入失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => { void refreshRecords() })
 
 async function submitSource() {
   if (!sourceValue.value.trim()) return
@@ -136,10 +150,10 @@ defineExpose({ uploadFiles })
       </label>
       <button type="submit" :disabled="uploading">上传并入库</button>
     </form>
-    <p v-if="status" role="status">{{ status }}</p>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <StateFeedback :saving="submitting || uploading" :saved="status || false" :save-error="error || null" />
 
     <h3>导入记录</h3>
+    <StateFeedback :loading="loading && !imports.length" :error="loadError" :empty="!loading && !loadError && !imports.length" empty-text="暂无导入记录。" @retry="refreshRecords" />
     <article v-for="item in imports" :key="item.id" class="import-row">
       <strong>{{ item.original_filename || item.source_value }}</strong>
       <p class="muted">{{ STATUS_TEXT[item.status] || item.status }} · {{ item.created_at }}</p>
@@ -149,7 +163,6 @@ defineExpose({ uploadFiles })
         <button v-if="item.status === 'failed'" class="retry-import" @click="retry(item.id)">手动重试</button>
       </div>
     </article>
-    <p v-if="!imports.length" class="muted">暂无导入记录</p>
   </div>
 </template>
 
@@ -164,5 +177,4 @@ form { display: flex; flex-direction: column; gap: var(--space-2); }
 .import-row p { margin: 0; font-size: 12px; }
 .result-actions { display: flex; gap: var(--space-1); }
 .result-actions button { padding: var(--space-1) var(--space-2); font-size: 12px; }
-.form-error { color: var(--danger); }
 </style>

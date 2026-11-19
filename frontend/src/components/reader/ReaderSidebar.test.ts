@@ -73,6 +73,29 @@ describe('ReaderSidebar', () => {
     expect(readerApi.patchAnnotation).toHaveBeenCalledWith('a1', { deleted: true })
   })
 
+  it('shows a retryable load error instead of an empty record list', async () => {
+    vi.spyOn(readerApi, 'annotations').mockRejectedValueOnce(new Error('阅读记录服务不可用'))
+    const { wrapper } = await mountSidebar()
+    expect(wrapper.text()).toContain('阅读记录服务不可用')
+    expect(wrapper.text()).toContain('重试')
+    expect(wrapper.text()).not.toContain('这里会保存你的阅读记录。')
+    await wrapper.find('[data-tab="notes"]').trigger('click')
+    await wrapper.find('.state-feedback .error button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('这里会保存你的阅读记录。')
+  })
+
+  it('shows note save failure without success', async () => {
+    vi.spyOn(readerApi, 'createAnnotation').mockRejectedValueOnce(new Error('批注服务不可用'))
+    const { wrapper } = await mountSidebar()
+    await wrapper.find('[data-tab="notes"]').trigger('click')
+    await wrapper.find('textarea.note-text').setValue('我的批注')
+    await wrapper.find('button.save-note').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('保存失败：批注服务不可用')
+    expect(wrapper.text()).not.toContain('已保存')
+  })
+
   it('saveNote requires content and posts note annotation', async () => {
     const { wrapper } = await mountSidebar()
     await wrapper.find('[data-tab="notes"]').trigger('click')

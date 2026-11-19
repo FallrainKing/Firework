@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { sessionsApi } from '@/api/sessions'
 import { useSchedulesStore } from '@/stores/schedules'
 import type { Session } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const store = useSchedulesStore()
@@ -12,13 +13,25 @@ const conversationId = ref<number | null>(null)
 const prompt = ref('')
 const intervalHours = ref(24)
 const sessions = ref<Session[]>([])
+const loading = ref(true)
+const listError = ref<string | null>(null)
 const saving = ref(false)
-const error = ref('')
+const error = ref<string | null>(null)
 
-onMounted(async () => {
-  const { sessions: list } = await sessionsApi.list({ archived: false, limit: 100 })
-  sessions.value = list.filter(s => s.skill !== 'paper_import')
-})
+async function loadSessions() {
+  loading.value = true
+  listError.value = null
+  try {
+    const { sessions: list } = await sessionsApi.list({ archived: false, limit: 100 })
+    sessions.value = list.filter(s => s.skill !== 'paper_import')
+  } catch (e) {
+    listError.value = e instanceof Error ? e.message : '会话列表载入失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => { void loadSessions() })
 
 async function save() {
   if (!title.value.trim() || !prompt.value.trim() || conversationId.value === null) return
@@ -58,7 +71,7 @@ async function save() {
     <label>间隔（小时）
       <input v-model.number="intervalHours" data-field="interval" type="number" min="1" max="8760" />
     </label>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <StateFeedback :loading="loading && !sessions.length" :error="listError" :empty="!loading && !listError && !sessions.length" empty-text="暂无可关联会话。" :saving="saving" :save-error="error" @retry="loadSessions" />
     <div class="dialog-footer">
       <button type="button" @click="emit('close')">取消</button>
       <button type="button" class="primary" data-action="create" :disabled="saving || !title.trim() || !prompt.trim() || conversationId === null" @click="save">
@@ -75,5 +88,4 @@ async function save() {
 .dialog-heading button { border: none; background: none; font-size: 18px; }
 label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 13px; color: var(--text-muted); }
 .dialog-footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.form-error { color: var(--danger); margin: 0; }
 </style>

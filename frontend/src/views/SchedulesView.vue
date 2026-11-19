@@ -2,21 +2,40 @@
 import { onMounted, ref } from 'vue'
 import ScheduleDialog from '@/components/ScheduleDialog.vue'
 import { useSchedulesStore } from '@/stores/schedules'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const store = useSchedulesStore()
 const dialogOpen = ref(false)
 const busyId = ref<number | null>(null)
+const actionError = ref<string | null>(null)
+const actionSaved = ref(false)
 
 onMounted(() => store.refresh())
 
 async function toggle(id: number, enabled: boolean) {
   busyId.value = id
-  try { await store.toggle(id, enabled) } finally { busyId.value = null }
+  actionError.value = null
+  actionSaved.value = false
+  try {
+    await store.toggle(id, enabled)
+    actionSaved.value = true
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : '定时任务保存失败'
+  } finally {
+    busyId.value = null
+  }
 }
 
 async function run(id: number) {
   busyId.value = id
-  try { await store.run(id) } finally { busyId.value = null }
+  actionError.value = null
+  try {
+    await store.run(id)
+  } catch (e) {
+    actionError.value = e instanceof Error ? e.message : '定时任务执行失败'
+  } finally {
+    busyId.value = null
+  }
 }
 </script>
 
@@ -30,8 +49,17 @@ async function run(id: number) {
       </div>
       <button class="primary" data-action="new" @click="dialogOpen = true">＋ 新建定时任务</button>
     </div>
-    <p v-if="store.error" class="form-error" role="alert">{{ store.error }}</p>
     <div class="schedule-list">
+      <StateFeedback
+        :loading="store.loading && !store.schedules.length"
+        :error="store.error"
+        :empty="!store.loading && !store.error && !store.schedules.length"
+        empty-text="暂无定时任务。"
+        :saving="busyId !== null"
+        :saved="actionSaved"
+        :save-error="actionError"
+        @retry="store.refresh"
+      />
       <article v-for="s in store.schedules" :key="s.id" class="schedule-card">
         <div class="schedule-info">
           <strong>{{ s.title }}</strong>
@@ -44,7 +72,6 @@ async function run(id: number) {
           <button data-action="run" :disabled="busyId === s.id" @click="run(s.id)">执行一次</button>
         </div>
       </article>
-      <p v-if="!store.schedules.length && !store.loading" class="muted">暂无定时任务。</p>
     </div>
     <div v-if="dialogOpen" class="dialog-overlay" @click.self="dialogOpen = false">
       <ScheduleDialog @close="dialogOpen = false" />
@@ -63,6 +90,5 @@ h1 { margin: 0 0 var(--space-1); font-size: 22px; }
 .schedule-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .state { font-size: 12px; color: var(--text-muted); }
 .state.on { color: var(--success); }
-.form-error { color: var(--danger); }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }
 </style>

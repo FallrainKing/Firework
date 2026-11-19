@@ -4,6 +4,7 @@ import PaperPicker from './PaperPicker.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { sessionsApi } from '@/api/sessions'
 import type { Session } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = withDefaults(defineProps<{
   mode: 'read' | 'compare' | 'chat' | 'review'
@@ -177,7 +178,7 @@ function openExisting() {
         <textarea v-model="prompt" data-field="prompt" rows="3" maxlength="3000" placeholder="选择模板后可修改；发送前不会调用智能体" />
       </label>
 
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <StateFeedback :saving="creating" :save-error="error || null" />
       <div class="dialog-footer">
         <button type="button" @click="emit('close')">取消</button>
         <button type="button" class="primary" data-action="create" :disabled="!canCreate" @click="create">
@@ -201,5 +202,4 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 1
 .inline-row select { flex: 1; }
 .inline-create { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); background: var(--surface); border-radius: var(--radius); }
 .dialog-footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.form-error { color: var(--danger); margin: 0; }
 </style>

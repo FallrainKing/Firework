@@ -3,12 +3,18 @@ import { onMounted, ref } from 'vue'
 import { papersApi } from '@/api/papers'
 import type { Collection, Paper } from '@/api/types'
 import PaperEditDialog from '@/components/manage/PaperEditDialog.vue'
+import StateFeedback from '@/components/StateFeedback.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 import type { Session } from '@/api/types'
 
 const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number] }>()
 
 const papers = ref<Paper[]>([])
+const loading = ref(false)
+const loadingMore = ref(false)
+const loadError = ref<string | null>(null)
+const saveError = ref<string | null>(null)
+const savedMessage = ref(false)
 const collections = ref<Collection[]>([])
 const total = ref(0)
 const offset = ref(0)
@@ -23,31 +29,50 @@ const openMenuId = ref<number | null>(null)
 const batchCollectionOpen = ref(false)
 const batchCollectionId = ref('')
 const batchSaving = ref(false)
+const savingCollection = ref(false)
 const editId = ref<number | null>(null)
 const task = ref<{ mode: 'compare' | 'review'; paperIds: number[] } | null>(null)
 const newCollectionOpen = ref(false)
 const newCollectionName = ref('')
-const error = ref('')
 
 async function load(reset: boolean) {
-  if (reset) { offset.value = 0; papers.value = [] }
-  const params: { q?: string; collection_id?: number; reading_status?: 'unread' | 'reading' | 'read'; limit: number; offset: number } = { limit: 30, offset: offset.value }
+  const busy = reset ? loading : loadingMore
+  if (busy.value) return
+  busy.value = true
+  const requestOffset = reset ? 0 : offset.value
+  const params: { q?: string; collection_id?: number; reading_status?: 'unread' | 'reading' | 'read'; limit: number; offset: number } = { limit: 30, offset: requestOffset }
   if (query.value) params.q = query.value
   if (collectionId.value !== '') params.collection_id = Number(collectionId.value)
   if (readingStatus.value) params.reading_status = readingStatus.value
-  const d = await papersApi.list(params)
-  papers.value = reset ? d.papers : [...papers.value, ...d.papers]
-  offset.value += d.papers.length
-  total.value = d.total
-  hasMore.value = d.has_more
+  try {
+    const d = await papersApi.list(params)
+    papers.value = reset ? d.papers : [...papers.value, ...d.papers]
+    offset.value = requestOffset + d.papers.length
+    total.value = d.total
+    hasMore.value = d.has_more
+    if (reset) loadError.value = null
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '论文列表载入失败'
+  } finally {
+    busy.value = false
+  }
+}
+
+function reload() {
+  void load(true)
+  void refreshCollections()
 }
 
 async function refreshCollections() {
-  collections.value = (await papersApi.collections()).collections
+  try {
+    collections.value = (await papersApi.collections()).collections
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '论文分类载入失败'
+  }
 }
 
-onMounted(async () => {
-  await Promise.all([load(true), refreshCollections()])
+onMounted(() => {
+  reload()
 })
 
 function toggleSelect(id: number, on: boolean) {
@@ -72,7 +97,8 @@ function closeMenus() {
 async function applyBatchCollection() {
   if (!selected.value.size || !batchCollectionId.value || batchSaving.value) return
   batchSaving.value = true
-  error.value = ''
+  saveError.value = null
+  savedMessage.value = false
   const collectionIds = batchCollectionId.value === '0' ? [] : [Number(batchCollectionId.value)]
   try {
     for (const id of selected.value) {
@@ -83,8 +109,9 @@ async function applyBatchCollection() {
     batchCollectionOpen.value = false
     batchCollectionId.value = ''
     await Promise.all([load(true), refreshCollections()])
+    savedMessage.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '批量分类失败'
+    saveError.value = e instanceof Error ? e.message : '批量分类失败'
   } finally {
     batchSaving.value = false
   }
@@ -93,13 +120,19 @@ async function applyBatchCollection() {
 async function createCollection() {
   const name = newCollectionName.value.trim()
   if (!name) return
+  savingCollection.value = true
+  saveError.value = null
+  savedMessage.value = false
   try {
     await papersApi.createCollection(name)
     newCollectionOpen.value = false
     newCollectionName.value = ''
     await refreshCollections()
+    savedMessage.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '新增分类失败'
+    saveError.value = e instanceof Error ? e.message : '新增分类失败'
+  } finally {
+    savingCollection.value = false
   }
 }
 
@@ -118,16 +151,16 @@ function onSaved() {
 <template>
   <div class="library-grid-view">
     <div class="library-toolbar">
-      <form @submit.prevent="load(true)">
+      <form @submit.prevent="reload()">
         <input v-model="query" type="search" placeholder="搜索标题 / 摘要 / 作者…" aria-label="搜索论文" />
         <button type="submit">搜索</button>
       </form>
-      <select v-model="collectionId" class="collection-filter" aria-label="按分类筛选" @change="load(true)">
+      <select v-model="collectionId" class="collection-filter" aria-label="按分类筛选" @change="reload()">
         <option value="">全部论文</option>
         <option value="0">未分类</option>
         <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
       </select>
-      <select v-model="readingStatus" class="reading-filter" aria-label="按阅读状态筛选" @change="load(true)">
+      <select v-model="readingStatus" class="reading-filter" aria-label="按阅读状态筛选" @change="reload()">
         <option value="">全部阅读状态</option>
         <option value="unread">未开始阅读</option>
         <option value="reading">阅读中</option>
@@ -148,7 +181,16 @@ function onSaved() {
       <button @click="batchCollectionOpen = true">分类所选</button>
       <button @click="selected = new Set()">清空选择</button>
     </div>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <StateFeedback
+      :loading="loading && !papers.length"
+      :error="loadError"
+      :empty="!loading && !loadError && !papers.length"
+      empty-text="没有匹配论文。可调整筛选或添加论文。"
+      :saving="batchSaving || savingCollection"
+      :saved="savedMessage"
+      :save-error="saveError"
+      @retry="reload"
+    />
 
     <div class="paper-grid" :class="{ compact: density === 'compact' }">
       <article v-for="p in papers" :key="p.id" class="paper-card">
@@ -186,9 +228,8 @@ function onSaved() {
           </div>
         </div>
       </article>
-      <p v-if="!papers.length" class="muted empty">没有匹配论文。可调整筛选或添加论文。</p>
     </div>
-    <button v-if="hasMore" class="more-papers" @click="load(false)">加载更多</button>
+    <button v-if="hasMore" class="more-papers" :disabled="loadingMore" @click="load(false)">{{ loadingMore ? '正在载入…' : '加载更多' }}</button>
 
     <div v-if="editId !== null" class="dialog-overlay" @click.self="editId = null">
       <PaperEditDialog :paper-id="editId" @close="editId = null" @saved="onSaved" />
@@ -217,7 +258,7 @@ function onSaved() {
         <input v-model="newCollectionName" maxlength="80" placeholder="分类名称" @keydown.enter="createCollection" />
         <div class="dialog-footer">
           <button @click="newCollectionOpen = false">取消</button>
-          <button class="primary" :disabled="!newCollectionName.trim()" @click="createCollection">保存</button>
+          <button class="primary" :disabled="savingCollection || !newCollectionName.trim()" @click="createCollection">{{ savingCollection ? '保存中…' : '保存' }}</button>
         </div>
       </div>
     </div>
@@ -250,12 +291,12 @@ function onSaved() {
 .paper-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-2); }
 .paper-actions button { padding: var(--space-1) var(--space-2); font-size: 12px; }
 .more-papers { margin-top: var(--space-3); width: 100%; }
+.more-state { margin-top: var(--space-2); }
 .empty { grid-column: 1 / -1; }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }
 .name-dialog { display: flex; flex-direction: column; gap: var(--space-3); padding: var(--space-4); background: var(--bg); border-radius: var(--radius); width: min(400px, 92vw); }
 .name-dialog h2 { margin: 0; font-size: 16px; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.form-error { color: var(--danger); }
 .library-grid-view { min-width:0; }
 .library-toolbar form { flex:1 1 250px; min-width:0; }
 .library-toolbar form input { flex:1; width:100%; min-width:0; }

@@ -5,6 +5,7 @@ import { sessionsApi } from '@/api/sessions'
 import { importsApi } from '@/api/imports'
 import { uid32 } from '@/api/client'
 import type { Run } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const emit = defineEmits<{ 'open-session': [sessionId: number]; 'library-updated': [] }>()
 
@@ -17,6 +18,9 @@ const status = ref('')
 const results = ref<SearchPaper[]>([])
 const sessionId = ref<number | null>(null)
 const error = ref('')
+const savingResult = ref(false)
+const savedMessage = ref('')
+const saveError = ref<string | null>(null)
 let stopped = false
 onUnmounted(() => { stopped = true })
 
@@ -87,12 +91,18 @@ async function search() {
 async function addToLibrary(p: SearchPaper) {
   const value = p.arxiv_id || p.doi
   if (!value) return
+  savingResult.value = true
+  savedMessage.value = ''
+  saveError.value = null
   try {
     await importsApi.source({ value, channel: 'auto', request_key: uid32() })
     emit('library-updated')
-    status.value = '已提交入库：' + value
+    status.value = ''
+    savedMessage.value = '已提交入库：' + value
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '入库失败'
+    saveError.value = e instanceof Error ? e.message : '入库失败'
+  } finally {
+    savingResult.value = false
   }
 }
 
@@ -119,9 +129,17 @@ function safeUrl(url?: string): string | null {
       </select>
       <button class="primary" type="submit" :disabled="busy">搜索</button>
     </form>
-    <p v-if="status" role="status">{{ status }}</p>
     <button v-if="sessionId !== null" class="link" @click="emit('open-session', sessionId)">打开搜索会话 →</button>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <StateFeedback
+      :loading="busy"
+      :error="error || null"
+      :empty="!busy && !error && !results.length"
+      :empty-text="status || '输入关键词开始搜索。'"
+      :saving="savingResult"
+      :saved="savedMessage"
+      :save-error="saveError"
+      @retry="search()"
+    />
     <article v-for="(p, i) in results" :key="i" class="result-card">
       <h3>{{ p.title || '未命名论文' }}</h3>
       <p class="muted">{{ (p.authors ?? []).join(' · ') }}</p>
@@ -132,7 +150,6 @@ function safeUrl(url?: string): string | null {
         <a v-if="safeUrl(p.url)" :href="safeUrl(p.url)!" target="_blank" rel="noopener noreferrer">查看来源 ↗</a>
       </div>
     </article>
-    <p v-if="!results.length && !busy && status" class="muted">没有取得结果，可在搜索会话查看详情。</p>
   </div>
 </template>
 

@@ -9,6 +9,7 @@ import PaperTabs from '@/components/PaperTabs.vue'
 import ImportOverlay from '@/components/ImportOverlay.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 import OpenPaperDialog from '@/components/OpenPaperDialog.vue'
+import StateFeedback from '@/components/StateFeedback.vue'
 import { papersApi } from '@/api/papers'
 import WelcomeView from './WelcomeView.vue'
 import ReadingView from './ReadingView.vue'
@@ -76,6 +77,8 @@ const taskRequest = ref<null | { mode: 'read' | 'compare' | 'chat' | 'review'; q
 const domainOpen = ref(false)
 const domainName = ref('')
 const domainError = ref('')
+const domainSaving = ref(false)
+const domainSaved = ref(false)
 const toast = ref('')
 const importTarget = ref<number | null>(null)
 const librarySession = ref<number | null>(null)
@@ -140,16 +143,26 @@ function onCreated(session: Session, _startingPrompt: string) {
   void lib.refresh()
 }
 
+function openDomainDialog() {
+  domainOpen.value = true
+  domainSaved.value = false
+  domainError.value = ''
+}
+
 async function createDomain() {
   const name = domainName.value.trim()
-  if (!name) return
+  if (!name || domainSaving.value) return
+  domainSaving.value = true
+  domainSaved.value = false
+  domainError.value = ''
   try {
     await lib.createCollection(name)
-    domainOpen.value = false
     domainName.value = ''
-    domainError.value = ''
+    domainSaved.value = true
   } catch (e) {
     domainError.value = e instanceof Error ? e.message : '新增领域失败'
+  } finally {
+    domainSaving.value = false
   }
 }
 </script>
@@ -162,7 +175,7 @@ async function createDomain() {
         v-show="!sideHidden"
         @new-task="taskRequest = { mode: 'read' }"
         @open-import="openImport()"
-        @new-domain="domainOpen = true"
+        @new-domain="openDomainDialog"
         @open-paper="openPaper"
       />
       <ActivityPanel v-if="sideHidden" class="floating-activity" />
@@ -172,8 +185,13 @@ async function createDomain() {
           <ReadingView :paper-id="readablePaperId" :session-id="activeSessionId()" @open-import="openImport" @open-paper="openPaper" @session-bound="(pid, sid) => wb.setTabSession(pid, sid)" @save-failed="showToast" />
           <section v-if="wb.activePaperId !== null && readablePaperId === null" class="fulltext-gate" role="status">
             <template v-if="missingPaper"><span class="gate-icon" aria-hidden="true">▤</span><p class="gate-kicker">已保存书目信息 · 待补充全文</p><h1>{{ missingPaper.title }}</h1><p class="muted">补充 PDF 后即可打开原文，开始批注和智能体会话。</p><div><button class="primary" @click="openImport(missingPaper.id)">＋ 为这篇论文补充 PDF</button><button @click="pickerOpen = true">选择其他论文</button></div></template>
-            <template v-else-if="openingError"><h1>暂时无法打开论文</h1><p class="muted">{{ openingError }}</p><button @click="checkFullText(wb.activePaperId)">重新载入</button></template>
-            <p v-else-if="openingPaper" class="muted">正在检查论文全文…</p>
+            <StateFeedback
+              v-else
+              :loading="openingPaper"
+              :error="openingError || null"
+              retry-text="重新载入"
+              @retry="checkFullText(wb.activePaperId)"
+            />
           </section>
           <WelcomeView
             v-if="wb.activePaperId === null"
@@ -205,14 +223,18 @@ async function createDomain() {
         @open-import="openImport()"
       />
     </div>
-    <div v-if="domainOpen" class="dialog-overlay" @click.self="domainOpen = false">
+    <div v-if="domainOpen" class="dialog-overlay" @click.self="domainOpen = !domainSaving">
       <div class="domain-dialog" role="dialog" aria-label="新增论文领域">
         <h2>新增论文领域</h2>
         <input v-model="domainName" maxlength="80" placeholder="领域名称，如：基础模型" @keydown.enter="createDomain" />
-        <p v-if="domainError" class="form-error" role="alert">{{ domainError }}</p>
+        <StateFeedback
+          :saving="domainSaving"
+          :saved="domainSaved"
+          :save-error="domainError || null"
+        />
         <div class="dialog-footer">
-          <button type="button" @click="domainOpen = false">取消</button>
-          <button type="button" class="primary" :disabled="!domainName.trim()" @click="createDomain">保存</button>
+          <button type="button" :disabled="domainSaving" @click="domainOpen = false">取消</button>
+          <button type="button" class="primary" :disabled="domainSaving || !domainName.trim()" @click="createDomain">{{ domainSaving ? '保存中…' : '保存' }}</button>
         </div>
       </div>
     </div>

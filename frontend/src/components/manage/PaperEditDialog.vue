@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { papersApi } from '@/api/papers'
 import type { Collection, Paper } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = defineProps<{ paperId: number }>()
 const emit = defineEmits<{ close: []; saved: [] }>()
@@ -15,7 +16,10 @@ const confirmAffiliations = ref(false)
 const summary = ref('')
 const selectedCollections = ref<number[]>([])
 const provenance = ref('')
-const error = ref('')
+const loading = ref(true)
+const loadError = ref<string | null>(null)
+const saved = ref(false)
+const saveError = ref<string | null>(null)
 const saving = ref(false)
 
 function fill(p: Paper) {
@@ -30,18 +34,29 @@ function fill(p: Paper) {
   provenance.value = source === 'user' ? '单位：用户已确认' : source === 'missing' ? '单位：尚未补全' : '单位：PDF 首页候选，尚未确认'
 }
 
-onMounted(async () => {
-  const [p, c] = await Promise.all([papersApi.get(props.paperId), papersApi.collections()])
-  collections.value = c.collections
-  fill(p)
-})
+async function load() {
+  loading.value = true
+  loadError.value = null
+  try {
+    const [p, c] = await Promise.all([papersApi.get(props.paperId), papersApi.collections()])
+    collections.value = c.collections
+    fill(p)
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '论文信息载入失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => { void load() })
 
 const split = (v: string) => v.split('\n').map(s => s.trim()).filter(Boolean)
 
 async function save() {
   if (!paper.value) return
   saving.value = true
-  error.value = ''
+  saveError.value = null
+  saved.value = false
   try {
     await papersApi.patch(props.paperId, {
       metadata_version: paper.value.metadata_version,
@@ -52,10 +67,10 @@ async function save() {
       brief_summary: summary.value,
       collection_ids: selectedCollections.value,
     })
+    saved.value = true
     emit('saved')
-    emit('close')
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '保存失败'
+    saveError.value = e instanceof Error ? e.message : '保存失败'
   } finally {
     saving.value = false
   }
@@ -65,7 +80,7 @@ async function refreshCard() {
   try {
     fill(await papersApi.refreshCard(props.paperId))
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '刷新失败'
+    saveError.value = e instanceof Error ? e.message : '刷新失败'
   }
 }
 </script>
@@ -76,6 +91,7 @@ async function refreshCard() {
       <h2>管理论文信息</h2>
       <button type="button" aria-label="关闭" @click="emit('close')">×</button>
     </div>
+    <StateFeedback :loading="loading && !paper" :error="loadError" :empty="!loading && !loadError && !paper" empty-text="未提供论文。" @retry="load" />
     <template v-if="paper">
       <label>标题<input v-model="title" maxlength="500" /></label>
       <label>作者（每行一个）<textarea v-model="authors" rows="3"></textarea></label>
@@ -88,7 +104,7 @@ async function refreshCard() {
           <option v-for="c in collections" :key="c.id" :value="c.id">{{ c.name }}</option>
         </select>
       </label>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <StateFeedback :saving="saving" :saved="saved" :save-error="saveError" />
       <div class="dialog-footer">
         <button type="button" @click="refreshCard">刷新首页卡片</button>
         <button type="button" @click="emit('close')">取消</button>
@@ -107,5 +123,4 @@ label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 1
 label.checkbox { flex-direction: row; align-items: center; gap: var(--space-2); }
 .provenance { font-size: 12px; margin: 0; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: var(--space-2); }
-.form-error { color: var(--danger); margin: 0; }
 </style>

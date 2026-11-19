@@ -96,3 +96,42 @@ describe('LibraryGrid', () => {
     expect(wrapper.text()).toContain('已更新')
   })
 })
+
+describe('LibraryGrid feedback', () => {
+  it('shows loading instead of an empty list', async () => {
+    vi.mocked(papersApi.list).mockImplementationOnce(() => new Promise(() => {}))
+    const wrapper = mount(LibraryGrid)
+    await flushPromises()
+    expect(wrapper.text()).toContain('正在载入…')
+    expect(wrapper.text()).not.toContain('没有匹配论文')
+    wrapper.unmount()
+  })
+
+  it('shows a network error with retry and recovers without treating it as empty', async () => {
+    vi.mocked(papersApi.list).mockReset()
+      .mockRejectedValueOnce(new Error('网络中断'))
+      .mockResolvedValueOnce({ papers: [paper], total: 1, offset: 0, has_more: false } as never)
+    const wrapper = mount(LibraryGrid)
+    await flushPromises()
+    expect(wrapper.text()).toContain('网络中断')
+    expect(wrapper.text()).toContain('重试')
+    expect(wrapper.text()).not.toContain('没有匹配论文')
+    await wrapper.find('.state.error button').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Attention')
+    expect(wrapper.text()).not.toContain('网络中断')
+    wrapper.unmount()
+  })
+
+  it('keeps existing papers visible when loading more fails', async () => {
+    vi.mocked(papersApi.list).mockReset()
+      .mockResolvedValueOnce({ papers: [paper], total: 2, offset: 1, has_more: true } as never)
+      .mockRejectedValueOnce(new Error('更多论文载入失败'))
+    const wrapper = await mountGrid()
+    await wrapper.find('button.more-papers').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Attention')
+    expect(wrapper.text()).toContain('更多论文载入失败')
+    wrapper.unmount()
+  })
+})

@@ -3,11 +3,13 @@ import { onMounted, ref } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useThemeStore } from '@/shared/theme/store'
 import { meApi, type Profile } from '@/api/me'
+import StateFeedback from './StateFeedback.vue'
 
 const wb = useWorkbenchStore()
 const theme = useThemeStore()
 const userMenuOpen = ref(false)
 const profile = ref<Profile | null>(null)
+const profileLoading = ref(false)
 const profileError = ref('')
 const emit = defineEmits<{ 'toggle-side': [] }>()
 
@@ -18,13 +20,19 @@ const views = [
   { id: 'library', label: '论文库管理' },
 ] as const
 
-onMounted(async () => {
+async function loadProfile() {
+  profileLoading.value = true
+  profileError.value = ''
   try {
     profile.value = await meApi.profile()
   } catch (e) {
     profileError.value = e instanceof Error ? e.message : '用户信息载入失败'
+  } finally {
+    profileLoading.value = false
   }
-})
+}
+
+onMounted(() => { void loadProfile() })
 </script>
 
 <template>
@@ -51,7 +59,13 @@ onMounted(async () => {
       <div v-if="userMenuOpen" class="user-popover" role="menu" aria-label="用户与设置">
         <div class="user-identity">
           <strong>{{ profile?.display_name ?? '本地研究用户' }}</strong>
-          <span>{{ profileError || '本机模式，无需登录' }}</span>
+          <StateFeedback
+            :loading="profileLoading"
+            :error="profileError || null"
+            :empty="profile === null"
+            empty-text="本机模式，无需登录。"
+            @retry="loadProfile"
+          />
         </div>
         <button type="button" role="menuitem" @click="wb.setView('skills'); userMenuOpen = false">技能库</button>
         <button type="button" role="menuitem" @click="wb.setView('settings'); userMenuOpen = false">设置</button>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import ActivityPanel from './ActivityPanel.vue'
+import StateFeedback from './StateFeedback.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
 import { sessionsApi } from '@/api/sessions'
@@ -18,6 +19,11 @@ const sessions = ref<Session[]>([])
 const sessionsLoading = ref(false)
 const sessionsError = ref('')
 const busySessionId = ref<number | null>(null)
+const paperNavError = ref<string | null>(null)
+const collectionLoadingId = ref<number | null>(null)
+const collectionError = ref<string | null>(null)
+const sessionSaved = ref(false)
+const sessionSaveError = ref<string | null>(null)
 
 const recentPapers = computed(() => lib.recent
   .filter((r, i, all) => all.findIndex(x => x.paper_id === r.paper_id) === i)
@@ -58,9 +64,25 @@ function paperTitle(id: number): string {
   return lib.papersById[id]?.title ?? `论文 ${id}`
 }
 
+async function loadCollection(id: number) {
+  collectionLoadingId.value = id
+  collectionError.value = null
+  try {
+    await lib.loadCollection(id)
+  } catch (e) {
+    collectionError.value = e instanceof Error ? e.message : '领域论文载入失败'
+  } finally {
+    collectionLoadingId.value = null
+  }
+}
+
 async function toggleCollection(id: number) {
-  expanded.value = expanded.value === id ? null : id
-  if (expanded.value === id && !lib.papersByCollection[id]) await lib.loadCollection(id)
+  if (expanded.value === id) {
+    expanded.value = null
+    return
+  }
+  expanded.value = id
+  if (!lib.papersByCollection[id]) await loadCollection(id)
 }
 
 function openRecent(paperId: number, sessionId: number) {
@@ -72,8 +94,13 @@ function openPaper(paperId: number, sessionId?: number) {
 }
 
 async function refreshNavigation() {
+  paperNavError.value = null
   sessionsError.value = ''
-  await Promise.all([lib.refresh(), refreshSessions()])
+  try {
+    await Promise.all([lib.refresh(), refreshSessions()])
+  } catch (e) {
+    paperNavError.value = e instanceof Error ? e.message : '论文导航载入失败'
+  }
 }
 
 async function refreshSessions() {
@@ -124,11 +151,14 @@ async function toggleArchived(session: Session) {
 async function updateSession(session: Session, patch: { title?: string; pinned?: boolean; archived?: boolean }) {
   busySessionId.value = session.id
   sessionsError.value = ''
+  sessionSaveError.value = null
+  sessionSaved.value = false
   try {
     const updated = await sessionsApi.update(session.id, patch)
     sessions.value = sessions.value.map(item => item.id === session.id ? updated : item)
+    sessionSaved.value = true
   } catch (e) {
-    sessionsError.value = e instanceof Error ? e.message : '任务更新失败'
+    sessionSaveError.value = e instanceof Error ? e.message : '任务更新失败'
   } finally {
     busySessionId.value = null
   }
@@ -159,7 +189,13 @@ onMounted(() => {
         <button v-for="r in recentPapers" :key="r.paper_id + '-' + r.conversation_id" class="side-item" :class="{ selected: wb.activePaperId === r.paper_id && wb.view === 'read' }" @click="openRecent(r.paper_id, r.conversation_id)">
           <span class="paper-icon" aria-hidden="true">▤</span><span class="item-title">{{ paperTitle(r.paper_id) }}</span>
         </button>
-        <p v-if="!recentPapers.length" class="muted">暂无匹配论文</p>
+        <StateFeedback
+          :loading="lib.loading && !recentPapers.length"
+          :error="paperNavError"
+          :empty="!lib.loading && !paperNavError && !recentPapers.length"
+          empty-text="暂无匹配论文。"
+          @retry="refreshNavigation()"
+        />
       </div>
 
       <div class="side-title">
@@ -177,9 +213,22 @@ onMounted(() => {
               <span class="item-title">{{ p.title }}</span>
               <span v-if="!p.has_pdf" class="muted no-pdf">缺全文</span>
             </button>
+            <StateFeedback
+              :loading="collectionLoadingId === c.id && !(lib.papersByCollection[c.id] ?? []).length"
+              :error="collectionError"
+              :empty="collectionLoadingId !== c.id && !collectionError && !(lib.papersByCollection[c.id] ?? []).length"
+              empty-text="该领域暂无论文。"
+              @retry="loadCollection(c.id)"
+            />
           </div>
         </div>
-        <p v-if="!filteredCollections.length" class="muted">暂无匹配领域</p>
+        <StateFeedback
+          :loading="lib.loading && !filteredCollections.length"
+          :error="paperNavError"
+          :empty="!lib.loading && !paperNavError && !filteredCollections.length"
+          empty-text="暂无匹配领域。"
+          @retry="refreshNavigation()"
+        />
       </div>
     </template>
 
@@ -194,8 +243,16 @@ onMounted(() => {
           {{ filter === 'recent' ? '最近' : filter === 'pinned' ? '固定' : filter === 'running' ? '运行中' : '归档' }}
         </button>
       </div>
-      <p v-if="sessionsError" class="form-error" role="alert">{{ sessionsError }}</p>
-      <p v-if="sessionsLoading" class="muted" role="status">正在载入任务…</p>
+      <StateFeedback
+        :loading="sessionsLoading && !sessions.length"
+        :error="sessionsError || null"
+        :empty="!sessionsLoading && !sessionsError && !sessionSaveError && !filteredSessions.length"
+        empty-text="暂无匹配任务。"
+        :saving="busySessionId !== null"
+        :saved="sessionSaved"
+        :save-error="sessionSaveError"
+        @retry="refreshSessions()"
+      />
       <div class="session-nav">
         <section v-for="group in sessionGroups" :key="group.paperId ?? 'none'" class="session-paper">
           <button class="side-item paper-head" type="button" :disabled="group.paperId === null" @click="group.paperId !== null && openPaper(group.paperId)">
@@ -217,7 +274,6 @@ onMounted(() => {
             </article>
           </div>
         </section>
-        <p v-if="!sessionsLoading && !filteredSessions.length" class="muted">暂无匹配任务。</p>
       </div>
     </template>
 

@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue'
 import { sessionsApi } from '@/api/sessions'
 import type { Template } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const emit = defineEmits<{ close: [] }>()
 const templates = ref<Template[]>([])
@@ -10,25 +11,40 @@ const name = ref('')
 const description = ref('')
 const skill = ref('chat')
 const prompt = ref('')
-const error = ref('')
+const loading = ref(true)
+const listError = ref<string | null>(null)
+const saved = ref(false)
+const saveError = ref<string | null>(null)
 const saving = ref(false)
 
-onMounted(async () => {
-  const data = await sessionsApi.templates()
-  templates.value = data.templates
-  skills.value = data.skills
-})
+async function load() {
+  loading.value = true
+  listError.value = null
+  try {
+    const data = await sessionsApi.templates()
+    templates.value = data.templates
+    skills.value = data.skills
+  } catch (e) {
+    listError.value = e instanceof Error ? e.message : '模板载入失败'
+  } finally {
+    loading.value = false
+  }
+}
+
+onMounted(() => { void load() })
 
 async function save() {
-  if (!name.value.trim()) { error.value = '请填写模板名称'; return }
+  if (!name.value.trim()) { saveError.value = '请填写模板名称'; return }
   saving.value = true
-  error.value = ''
+  saveError.value = null
+  saved.value = false
   try {
     await sessionsApi.createTemplate({ name: name.value.trim(), description: description.value, skill: skill.value, prompt: prompt.value })
     templates.value = (await sessionsApi.templates()).templates
     name.value = ''; description.value = ''; prompt.value = ''
+    saved.value = true
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '保存失败'
+    saveError.value = e instanceof Error ? e.message : '保存失败'
   } finally {
     saving.value = false
   }
@@ -41,6 +57,7 @@ async function save() {
       <h2>任务模板</h2>
       <button type="button" aria-label="关闭" @click="emit('close')">×</button>
     </div>
+    <StateFeedback :loading="loading && !templates.length" :error="listError" :empty="!loading && !listError && !templates.length" empty-text="暂无模板。" @retry="load" />
     <ul class="template-list">
       <li v-for="t in templates" :key="t.id">
         <strong>{{ t.name }}</strong>
@@ -56,7 +73,7 @@ async function save() {
       </select>
     </label>
     <label>起步提示词<textarea v-model="prompt" rows="3" maxlength="3000"></textarea></label>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <StateFeedback :saving="saving" :saved="saved" :save-error="saveError" />
     <div class="dialog-footer">
       <button type="button" class="primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存模板' }}</button>
     </div>
@@ -73,5 +90,4 @@ async function save() {
 h3 { font-size: 13px; margin: 0; color: var(--text-muted); }
 label { display: flex; flex-direction: column; gap: var(--space-1); font-size: 13px; color: var(--text-muted); }
 .dialog-footer { display: flex; justify-content: flex-end; }
-.form-error { color: var(--danger); margin: 0; }
 </style>

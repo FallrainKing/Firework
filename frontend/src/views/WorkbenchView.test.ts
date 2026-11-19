@@ -64,6 +64,25 @@ describe('reading full-text boundary', () => {
     wrapper.unmount()
   })
 
+  it('shows domain saving failure and success states', async () => {
+    const createCollection = vi.spyOn(useLibraryStore(), 'createCollection')
+      .mockRejectedValueOnce(new Error('领域服务不可用'))
+      .mockResolvedValue({ id: 1, name: '基础模型', count: 0 } as never)
+    const wrapper = shell()
+    wrapper.findComponent({ name: 'SideNav' }).vm.$emit('new-domain')
+    await flushPromises()
+    await wrapper.find('[aria-label="新增论文领域"] input').setValue('基础模型')
+    await wrapper.find('[aria-label="新增论文领域"] .primary').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('保存失败：领域服务不可用')
+    expect(wrapper.text()).not.toContain('已保存')
+    await wrapper.find('[aria-label="新增论文领域"] .primary').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('已保存')
+    expect(createCollection).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
   it('plus opens a paper picker instead of creating a conversation', async () => {
     const wrapper = shell()
     wrapper.findComponent({ name: 'PaperTabs' }).vm.$emit('add')

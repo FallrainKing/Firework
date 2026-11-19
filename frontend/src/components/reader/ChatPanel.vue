@@ -7,6 +7,7 @@ import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { Attachment, Run, SelectionContext, Session, SessionUsage, Template } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
 const wb = useWorkbenchStore()
@@ -28,6 +29,7 @@ const detailsOpen = ref(false)
 const busy = ref(false)
 const uploading = ref(false)
 const loading = ref(true)
+const loadError = ref<string | null>(null)
 const loadingOlder = ref(false)
 const hasMoreRuns = ref(false)
 const nextBefore = ref<number | null>(null)
@@ -35,6 +37,11 @@ const atBottom = ref(true)
 const newContent = ref(false)
 const cancellingRun = ref(false)
 const toast = ref('')
+const exportError = ref<string | null>(null)
+const exporting = ref(false)
+const draftSaving = ref(false)
+const draftSaved = ref(false)
+const draftSaveError = ref<string | null>(null)
 const uploadError = ref('')
 const failedFiles = ref<File[]>([])
 const slashMenuOpen = ref(false)
@@ -135,9 +142,10 @@ async function loadTemplates() {
 }
 
 async function load(session: Session) {
-  const e = ++epoch
+  const requestEpoch = ++epoch
   currentSession.value = session
   loading.value = true
+  loadError.value = null
   busy.value = false
   contexts.value = []
   attachments.value = []
@@ -147,24 +155,33 @@ async function load(session: Session) {
   atBottom.value = true
   newContent.value = false
   closeMenus()
-  const [data, draft, detail] = await Promise.all([
-    sessionsApi.runs(session.id, undefined, 100),
-    workbenchApi.getDraft(session.id, props.paperId),
-    sessionsApi.get(session.id),
-  ])
-  if (e !== epoch) return
-  question.value = draft.prompt || (!data.runs.length ? session.draft_prompt : '') || ''
-  contexts.value = draft.contexts?.length ? draft.contexts : draft.context ? [draft.context] : []
-  attachments.value = draft.attachments ?? []
-  associatedPapers.value = detail.papers.map(p => ({ id: p.id, title: p.title }))
-  sessionUsage.value = detail.usage ?? null
-  runs.value = data.runs
-  hasMoreRuns.value = data.has_more
-  nextBefore.value = data.next_before
-  for (const r of data.runs) if (['queued', 'running'].includes(r.status)) { busy.value = true; void watchRun(r.id, session.id) }
-  loading.value = false
-  await loadTemplates()
-  scroll()
+  try {
+    const [data, draft, detail] = await Promise.all([
+      sessionsApi.runs(session.id, undefined, 100),
+      workbenchApi.getDraft(session.id, props.paperId),
+      sessionsApi.get(session.id),
+    ])
+    if (requestEpoch !== epoch) return
+    question.value = draft.prompt || (!data.runs.length ? session.draft_prompt : '') || ''
+    contexts.value = draft.contexts?.length ? draft.contexts : draft.context ? [draft.context] : []
+    attachments.value = draft.attachments ?? []
+    associatedPapers.value = detail.papers.map(p => ({ id: p.id, title: p.title }))
+    sessionUsage.value = detail.usage ?? null
+    runs.value = data.runs
+    hasMoreRuns.value = data.has_more
+    nextBefore.value = data.next_before
+    for (const r of data.runs) if (['queued', 'running'].includes(r.status)) { busy.value = true; void watchRun(r.id, session.id) }
+    await loadTemplates()
+    scroll()
+  } catch (err) {
+    if (requestEpoch === epoch) loadError.value = err instanceof Error ? err.message : '会话载入失败'
+  } finally {
+    if (requestEpoch === epoch) loading.value = false
+  }
+}
+
+function retryLoad() {
+  if (currentSession.value) void load(currentSession.value)
 }
 
 async function restoreDraft() {
@@ -179,6 +196,7 @@ async function restoreDraft() {
 
 function scheduleDraft() {
   if (loading.value || !currentSession.value) return
+  draftSaved.value = false
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(() => { void flushDraft().catch(e => showToast('草稿尚未保存：' + (e instanceof Error ? e.message : ''))) }, 400)
 }
@@ -188,7 +206,21 @@ function flushDraft(): Promise<unknown> {
   if (loading.value || !currentSession.value) return saveQueue
   const snapshot = { prompt: question.value, contexts: contexts.value, attachment_ids: attachments.value.map(a => a.id) }
   const sid = currentSession.value.id
+  draftSaving.value = true
+  draftSaved.value = false
+  draftSaveError.value = null
   saveQueue = saveQueue.catch(() => {}).then(() => workbenchApi.saveDraft(sid, props.paperId, snapshot))
+    .then(() => {
+      if (currentSession.value?.id === sid) draftSaved.value = true
+      return null
+    })
+    .catch(e => {
+      if (currentSession.value?.id === sid) draftSaveError.value = e instanceof Error ? e.message : '草稿保存失败'
+      throw e
+    })
+    .finally(() => {
+      if (currentSession.value?.id === sid) draftSaving.value = false
+    })
   return saveQueue
 }
 
@@ -265,6 +297,7 @@ async function loadOlder() {
   const sid = currentSession.value.id
   const before = nextBefore.value
   loadingOlder.value = true
+  loadError.value = null
   try {
     const el = chatBox.value
     const previousHeight = el?.scrollHeight ?? 0
@@ -278,7 +311,7 @@ async function loadOlder() {
     await nextTick()
     if (el) el.scrollTop = el.scrollHeight - previousHeight + previousTop
   } catch (e) {
-    showToast(e instanceof Error ? e.message : '历史载入失败')
+    loadError.value = e instanceof Error ? e.message : '历史载入失败'
   } finally {
     loadingOlder.value = false
   }
@@ -491,8 +524,99 @@ function renderMd(text: string): string {
   return text.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!))
 }
 
+async function allRunsForExport(): Promise<Run[]> {
+  const sid = currentSession.value?.id
+  if (sid === undefined) return []
+  let all = [...runs.value]
+  let before = nextBefore.value
+  let more = hasMoreRuns.value
+  const seen = new Set(all.map(run => run.id))
+  while (more && before !== null) {
+    const data = await sessionsApi.runs(sid, before, 50)
+    const older = data.runs.filter(run => !seen.has(run.id))
+    older.forEach(run => seen.add(run.id))
+    all = [...older, ...all]
+    before = data.next_before
+    more = data.has_more
+  }
+  return all
+}
+
+function buildMarkdown(exportRuns: Run[]): string {
+  const sessionValue = currentSession.value
+  const papers = associatedPapers.value.length ? associatedPapers.value : (sessionValue?.paper_ids.length ? sessionValue.paper_ids.map(id => ({ id, title: paperTitle(id) })) : [{ id: props.paperId, title: props.paperTitle || `论文 ${props.paperId}` }])
+  const lines: string[] = [
+    '# 研究会话导出',
+    '',
+    `- 会话名：${sessionValue?.title ?? '未提供'}`,
+    `- 平台会话 ID：${sessionValue?.id ?? '未提供'}`,
+    `- 原生会话 ID：${sessionValue?.native_session_id || '未提供'}`,
+    `- 任务类型 / 技能：${sessionValue?.kind ?? '未提供'} / ${sessionValue?.skill ?? '未提供'}`,
+    `- 导出时间：${new Date().toISOString()}`,
+    '',
+    '> 本文件是聊天成果快照，导出动作不会写入长期记忆。',
+    '',
+    '## 论文',
+  ]
+  for (const paper of papers) lines.push(`- [P${paper.id}] ${paper.title}（paper_id=${paper.id}）`)
+  lines.push('', '## 运行记录')
+  if (!exportRuns.length) lines.push('未提供。')
+  for (const run of exportRuns) {
+    lines.push(
+      '',
+      '### 用户提问',
+      run.prompt,
+      '',
+      `- 运行编号：${run.id}`,
+      `- 状态：${STATES[run.status] ?? run.status}`,
+      `- 创建时间：${run.created_at || '未提供'}`,
+      `- 模型：${run.model || '未提供'}`,
+      `- 附件 ID：${run.attachment_ids.length ? run.attachment_ids.join('、') : '未提供'}`,
+    )
+    lines.push('', '#### 上下文')
+    if (!run.contexts.length) lines.push('- 未提供')
+    for (const context of run.contexts) {
+      lines.push(
+        `- 论文：[P${context.paper_id}] ${paperTitle(context.paper_id)}（paper_id=${context.paper_id}）`,
+        `  - 物理页：${context.page}`,
+        `  - 文件版本锚点：\`${context.file_version || '未提供'}\``,
+      )
+    }
+    lines.push('', '#### 回答')
+    if (run.answer) lines.push(run.answer)
+    if (run.error) lines.push(`错误：${run.error}`)
+    if (!run.answer && !run.error) lines.push('未提供。')
+  }
+  return lines.join('\n') + '\n'
+}
+
+function downloadMarkdown(markdown: string) {
+  const blob = new Blob([markdown], { type: 'text/markdown;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  const name = (currentSession.value?.title || `session-${currentSession.value?.id ?? 'export'}`).replace(/[\\/:*?"<>|]/g, '_').slice(0, 80)
+  link.href = url
+  link.download = `${name || 'session'}.md`
+  link.rel = 'noopener'
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportMarkdown() {
+  if (!currentSession.value || exporting.value) return
+  exporting.value = true
+  exportError.value = null
+  try {
+    downloadMarkdown(buildMarkdown(await allRunsForExport()))
+  } catch (e) {
+    exportError.value = e instanceof Error ? e.message : '导出失败'
+  } finally {
+    exporting.value = false
+  }
+}
+
 const bridge = { ask, watch: watchRun, flushDraft, restoreDraft, setContext, load }
-defineExpose({ bridge, attachments, uploadFiles })
+defineExpose({ bridge, attachments, uploadFiles, exportMarkdown, buildMarkdown, allRunsForExport })
 watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 </script>
 
@@ -508,6 +632,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           </div>
         </div>
         <slot name="session-controls" />
+        <button class="export-chat" type="button" :disabled="loading || exporting" title="导出 Markdown 快照；不会写入长期记忆" @click="exportMarkdown">{{ exporting ? '导出中…' : '导出 MD' }}</button>
         <button class="detail-toggle" type="button" :aria-expanded="detailsOpen" @click="detailsOpen = !detailsOpen">详情</button>
       </div>
       <div class="usage-summary" aria-label="会话用量">
@@ -524,7 +649,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <div><dt>运行状态</dt><dd>{{ runStatus }}</dd></div>
       </dl>
       <h4>运行记录</h4>
-      <p v-if="!runs.length" class="muted">未提供</p>
+      <StateFeedback v-if="!runs.length" empty empty-text="未提供。" />
       <div v-for="run in [...runs].reverse()" :key="'record-' + run.id" class="run-record">
         <strong>{{ run.id }}</strong>
         <span>{{ STATES[run.status] }} · {{ run.created_at || '未提供' }}</span>
@@ -532,7 +657,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <span>{{ costText(run.cli_estimated_cost_usd) }}</span>
       </div>
       <h4>附件详情</h4>
-      <p v-if="!attachments.length && !runs.some(run => run.attachment_ids.length)" class="muted">未提供</p>
+      <StateFeedback v-if="!attachments.length && !runs.some(run => run.attachment_ids.length)" empty empty-text="未提供。" />
       <div v-for="a in attachments" :key="'attachment-' + a.id" class="run-record">
         <strong>{{ a.filename || '未命名附件' }}</strong>
         <span>{{ a.mime || '未提供' }} · {{ a.size || 0 }} bytes</span>
@@ -552,7 +677,14 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     </div>
     <div ref="chatBox" class="reader-chat" @scroll.passive="handleScroll">
       <button v-if="hasMoreRuns" class="load-older" type="button" :disabled="loadingOlder" @click="loadOlder">{{ loadingOlder ? '正在载入历史…' : '载入更早消息' }}</button>
-      <div v-if="!runs.length && !loading" class="chat-empty"><span aria-hidden="true">✧</span><strong>和原文一起思考</strong><p>输入 / 使用模板，输入 @ 引用论文，选中原文或添加图片。</p></div>
+      <StateFeedback
+        class="chat-state"
+        :loading="loading"
+        :error="loadError"
+        :empty="!loading && !loadError && !runs.length"
+        empty-text="输入 / 使用模板，输入 @ 引用论文，选中原文或添加图片。"
+        @retry="retryLoad"
+      />
       <article v-for="run in runs" :key="run.id" class="chat-turn">
         <div class="turn-time muted">{{ STATES[run.status] }} · {{ run.created_at }}<template v-if="run.status === 'running' || run.status === 'queued'"> · 已用时 {{ elapsedText(run) }}</template></div>
         <div class="question">{{ run.prompt }}</div>
@@ -603,18 +735,25 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <button aria-label="移除图片" type="button" @click="removeAttachment(a.id)">×</button>
       </div>
     </div>
+    <StateFeedback
+      v-if="draftSaving || draftSaved || draftSaveError || exportError"
+      class="draft-state"
+      :saving="draftSaving"
+      :saved="draftSaved"
+      :save-error="draftSaveError || exportError"
+    />
     <form class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
       <div v-if="slashMenuOpen" class="command-menu" role="listbox" aria-label="提问模板">
         <button v-for="t in visibleTemplates" :key="t.id" type="button" role="option" @mousedown.prevent="chooseTemplate(t)">
           <strong>{{ t.name }}</strong><span>{{ t.description || t.prompt }}</span>
         </button>
-        <p v-if="!visibleTemplates.length" class="muted">暂无匹配模板</p>
+        <StateFeedback v-if="!visibleTemplates.length" empty empty-text="暂无匹配模板。" />
       </div>
       <div v-if="mentionMenuOpen" class="command-menu" role="listbox" aria-label="论文引用">
         <button v-for="p in visiblePapers" :key="p.id" type="button" role="option" @mousedown.prevent="choosePaper(p)">
           <strong>{{ p.title }}</strong><span>已授权当前会话</span>
         </button>
-        <p v-if="!visiblePapers.length" class="muted">当前会话没有匹配论文</p>
+        <StateFeedback v-if="!visiblePapers.length" empty empty-text="当前会话没有匹配论文。" />
       </div>
       <div class="composer-tools">
         <button type="button" class="menu-toggle" @click="slashMenuOpen = !slashMenuOpen; mentionMenuOpen = false">/ 模板</button>
@@ -622,7 +761,13 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
       </div>
       <textarea v-model="question" rows="3" maxlength="3000" placeholder="输入 / 选模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown.esc="closeMenus" @paste="onPaste"></textarea>
-      <p v-if="uploadError" class="form-error upload-error" role="alert">{{ uploadError }}<button v-if="failedFiles.length" type="button" @click="retryUpload">重试</button></p>
+      <StateFeedback
+        v-if="uploadError"
+        class="upload-error"
+        :error="uploadError"
+        retry-text="重试上传"
+        @retry="retryUpload"
+      />
       <div class="composer-footer"><span class="muted">上下文最多 3 条 · 图片最多 3 张 · 图片需 PNG/JPEG</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">发送 ↑</button></div>
     </form>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>
@@ -653,6 +798,9 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .agent-dot.running { background:var(--accent); animation:tab-pulse 1.2s infinite; }
 .agent-dot.failed { background:var(--danger); }
 .agent-dot { width:7px; height:7px; background:var(--accent); border-radius:50%; }
+.chat-state { margin:auto 0; }
+.draft-state { margin:0 var(--space-3); }
+.export-chat { white-space:nowrap; }
 .chat-empty { margin:auto 0; padding:32px 8px; text-align:center; color:var(--text-muted); font-size:12px; }
 .chat-empty > span { display:block; color:var(--accent); font-size:32px; margin-bottom:12px; }
 .chat-empty strong { font-size:14px; font-weight:500; color:var(--text); }

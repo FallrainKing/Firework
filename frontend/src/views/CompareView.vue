@@ -4,17 +4,22 @@ import TaskDialog from '@/components/TaskDialog.vue'
 import { sessionsApi } from '@/api/sessions'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { Session } from '@/api/types'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const wb = useWorkbenchStore()
 const comparisons = ref<Session[]>([])
 const dialogOpen = ref(false)
 const loading = ref(false)
+const error = ref<string | null>(null)
 
 async function refresh() {
   loading.value = true
   try {
     const { sessions } = await sessionsApi.list({ kind: 'comparison', archived: false, limit: 100 })
     comparisons.value = sessions
+    error.value = null
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '比较会话载入失败'
   } finally {
     loading.value = false
   }
@@ -53,7 +58,7 @@ function onCreated(session: Session, _prompt: string) {
         </div>
         <button data-action="open" @click="open(s)">打开论文标签</button>
       </article>
-      <p v-if="!comparisons.length && !loading" class="muted">暂无比较会话。</p>
+      <StateFeedback :loading="loading && !comparisons.length" :error="error" :empty="!loading && !error && !comparisons.length" empty-text="暂无比较会话。" @retry="refresh" />
     </div>
     <div v-if="dialogOpen" class="dialog-overlay" @click.self="dialogOpen = false">
       <TaskDialog mode="compare" @created="onCreated" @close="dialogOpen = false" />

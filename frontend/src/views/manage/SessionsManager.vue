@@ -6,11 +6,20 @@ import { uid32 } from '@/api/client'
 import type { Category, Run, Session } from '@/api/types'
 import TemplateManager from '@/components/manage/TemplateManager.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = withDefaults(defineProps<{ initialSessionId?: number | null }>(), { initialSessionId: null })
 const emit = defineEmits<{ 'open-paper': [paperId: number, sessionId: number]; 'open-import': [] }>()
 
 const sessions = ref<Session[]>([])
+const sessionsLoading = ref(false)
+const sessionsError = ref<string | null>(null)
+const runsLoading = ref(false)
+const runsError = ref<string | null>(null)
+const loadingOlder = ref(false)
+const actionSaving = ref(false)
+const saved = ref(false)
+const saveError = ref<string | null>(null)
 const categories = ref<Category[]>([])
 const kinds = ref<Record<string, string>>({})
 const q = ref('')
@@ -48,16 +57,29 @@ onUnmounted(() => { stopped = true })
 watch(() => props.initialSessionId, sid => { if (sid) void openSession(sid) })
 
 async function loadSessions() {
+  if (sessionsLoading.value) return
+  sessionsLoading.value = true
+  sessionsError.value = null
   const params: Record<string, unknown> = { q: q.value, archived: showArchived.value }
   if (kindFilter.value) params.kind = kindFilter.value
   if (categoryFilter.value !== '') params.category_id = Number(categoryFilter.value)
-  sessions.value = (await sessionsApi.list(params as never)).sessions
+  try {
+    sessions.value = (await sessionsApi.list(params as never)).sessions
+  } catch (e) {
+    sessionsError.value = e instanceof Error ? e.message : '会话列表载入失败'
+  } finally {
+    sessionsLoading.value = false
+  }
 }
 
 onMounted(async () => {
-  const [t, c] = await Promise.all([sessionsApi.templates(), sessionsApi.categories()])
-  kinds.value = t.kinds
-  categories.value = c.categories
+  try {
+    const [t, c] = await Promise.all([sessionsApi.templates(), sessionsApi.categories()])
+    kinds.value = t.kinds
+    categories.value = c.categories
+  } catch (e) {
+    sessionsError.value = e instanceof Error ? e.message : '会话筛选信息载入失败'
+  }
   await loadSessions()
   if (props.initialSessionId) await openSession(props.initialSessionId)
 })
@@ -65,26 +87,42 @@ onMounted(async () => {
 async function openSession(id: number) {
   const epoch = ++openEpoch
   error.value = ''
-  const data = await sessionsApi.get(id)
-  if (epoch !== openEpoch) return
-  current.value = data.session
-  papers.value = data.papers
-  const pending = (() => { try { return JSON.parse(localStorage.getItem('research-pending-session-' + id) || 'null') } catch { return null } })()
-  prompt.value = pending?.prompt || data.session.draft_prompt || ''
-  const result = await sessionsApi.runs(id)
-  if (epoch !== openEpoch) return
-  runs.value = result.runs
-  older.value = result.next_before
-  hasMore.value = result.has_more
-  for (const r of result.runs) if (['queued', 'running'].includes(r.status)) void poll(r.id, id)
+  runsLoading.value = true
+  runsError.value = null
+  try {
+    const data = await sessionsApi.get(id)
+    if (epoch !== openEpoch) return
+    current.value = data.session
+    papers.value = data.papers
+    const pending = (() => { try { return JSON.parse(localStorage.getItem('research-pending-session-' + id) || 'null') } catch { return null } })()
+    prompt.value = pending?.prompt || data.session.draft_prompt || ''
+    const result = await sessionsApi.runs(id)
+    if (epoch !== openEpoch) return
+    runs.value = result.runs
+    older.value = result.next_before
+    hasMore.value = result.has_more
+    for (const r of result.runs) if (['queued', 'running'].includes(r.status)) void poll(r.id, id)
+  } catch (e) {
+    if (epoch === openEpoch) runsError.value = e instanceof Error ? e.message : '会话详情载入失败'
+  } finally {
+    if (epoch === openEpoch) runsLoading.value = false
+  }
 }
 
 async function loadOlder() {
-  if (!current.value || older.value === null) return
-  const d = await sessionsApi.runs(current.value.id, older.value)
-  runs.value = [...d.runs.slice().reverse(), ...runs.value]
-  older.value = d.next_before
-  hasMore.value = d.has_more
+  if (!current.value || older.value === null || loadingOlder.value) return
+  loadingOlder.value = true
+  runsError.value = null
+  try {
+    const d = await sessionsApi.runs(current.value.id, older.value)
+    runs.value = [...d.runs.slice().reverse(), ...runs.value]
+    older.value = d.next_before
+    hasMore.value = d.has_more
+  } catch (e) {
+    runsError.value = e instanceof Error ? e.message : '历史载入失败'
+  } finally {
+    loadingOlder.value = false
+  }
 }
 
 function upsertRun(r: Run) {
@@ -148,21 +186,34 @@ async function submit() {
 
 async function patch(field: 'pinned' | 'archived') {
   if (!current.value) return
-  current.value = await sessionsApi.update(current.value.id, { [field]: !current.value[field] })
-  await loadSessions()
+  await updateCurrent({ [field]: !current.value[field] })
 }
 
 async function rename() {
   if (!current.value || !renameValue.value.trim()) return
-  current.value = await sessionsApi.update(current.value.id, { title: renameValue.value.trim() })
+  await updateCurrent({ title: renameValue.value.trim() })
   renaming.value = false
-  await loadSessions()
 }
 
 async function setCategory(value: string) {
   if (!current.value) return
-  current.value = await sessionsApi.update(current.value.id, { category_id: value ? Number(value) : null })
-  await loadSessions()
+  await updateCurrent({ category_id: value ? Number(value) : null })
+}
+
+async function updateCurrent(patch: Record<string, unknown>) {
+  if (!current.value || actionSaving.value) return
+  actionSaving.value = true
+  saveError.value = null
+  saved.value = false
+  try {
+    current.value = await sessionsApi.update(current.value.id, patch as never)
+    saved.value = true
+    await loadSessions()
+  } catch (e) {
+    saveError.value = e instanceof Error ? e.message : '会话保存失败'
+  } finally {
+    actionSaving.value = false
+  }
 }
 
 function onCreated(session: Session, startingPrompt: string) {
@@ -201,7 +252,16 @@ function renderMd(text: string): string {
         <span>{{ s.pinned ? '置顶 · ' : '' }}{{ s.title }}</span>
         <small class="muted">{{ kinds[s.kind] || s.kind }} · {{ STATES[s.last_status] || s.last_status }}</small>
       </button>
-      <p v-if="!sessions.length" class="muted">暂无匹配会话</p>
+      <StateFeedback
+        :loading="sessionsLoading && !sessions.length"
+        :error="sessionsError"
+        :empty="!sessionsLoading && !sessionsError && !sessions.length"
+        empty-text="暂无匹配会话"
+        :saving="actionSaving"
+        :saved="saved"
+        :save-error="saveError"
+        @retry="loadSessions"
+      />
     </div>
 
     <div class="conversation-pane">
@@ -227,12 +287,18 @@ function renderMd(text: string): string {
           </div>
           <div class="associated-papers">
             <button v-for="p in papers" :key="p.id" class="paper-chip" @click="emit('open-paper', p.id, current!.id)">{{ p.title }} ↗</button>
-            <span v-if="!papers.length" class="muted">未关联论文</span>
+            <StateFeedback v-if="!papers.length" empty empty-text="未关联论文。" />
           </div>
         </div>
         <p v-if="current.archived" class="muted archive-notice">已归档；取消归档后可继续。</p>
         <div class="messages">
-          <button v-if="hasMore" class="load-older" @click="loadOlder">加载更早</button>
+          <StateFeedback
+            :loading="runsLoading && !runs.length"
+            :error="runsError"
+            :empty="!runsLoading && !runsError && !runs.length"
+            empty-text="会话已保存。发送起步要求后开始，之后可以随时返回继续。"
+          />
+          <button v-if="hasMore" class="load-older" :disabled="loadingOlder" @click="loadOlder">{{ loadingOlder ? '正在载入历史…' : '加载更早' }}</button>
           <article v-for="r in runs" :key="r.id" class="message">
             <div class="message-head muted">{{ STATES[r.status] || r.status }} · {{ r.created_at }}</div>
             <div class="user-prompt">{{ r.prompt }}</div>
@@ -244,7 +310,6 @@ function renderMd(text: string): string {
             </details>
             <p v-if="r.usage && 'input_tokens' in r.usage" class="usage muted">本轮输入 {{ r.usage.input_tokens }} / 输出 {{ r.usage.output_tokens }} tokens</p>
           </article>
-          <p v-if="!runs.length" class="muted">会话已保存。发送起步要求后开始，之后可以随时返回继续。</p>
         </div>
         <form class="composer" @submit.prevent="submit">
           <textarea v-model="prompt" rows="2" maxlength="3000" placeholder="继续当前任务…" :disabled="busy || current.archived"></textarea>
@@ -252,10 +317,11 @@ function renderMd(text: string): string {
         </form>
       </template>
       <div v-else class="welcome muted">
+        <StateFeedback :loading="runsLoading" :error="runsError" empty-text="创建或选择一个任务会话。" />
         <h2>研究任务会话</h2>
         <p>创建或选择一个任务会话；会话与结果保存在这里，可随时返回继续。</p>
       </div>
-      <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+      <StateFeedback v-if="error" :error="error" @retry="submit" />
     </div>
 
     <div v-if="templatesOpen" class="dialog-overlay" @click.self="templatesOpen = false">
@@ -285,6 +351,7 @@ function renderMd(text: string): string {
 .rename-row { display: flex; gap: var(--space-1); }
 .associated-papers { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .paper-chip { font-size: 12px; padding: var(--space-1) var(--space-2); }
+.messages > :first-child { margin: 0; }
 .messages { flex: 1; min-height:0; overflow-wrap:anywhere; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
 .message { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
 .message-head { font-size: 11px; }

@@ -11,6 +11,7 @@ import {
   type SkillResourceContent,
   type SkillVersionHistoryItem,
 } from '@/api/skills'
+import StateFeedback from '@/components/StateFeedback.vue'
 
 const skills = ref<Skill[]>([])
 const categories = ref<SkillCategory[]>([])
@@ -308,8 +309,15 @@ watch(categoryFilter, () => undefined)
       </select>
     </div>
 
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
-    <p v-if="installError" class="form-error" role="alert">{{ installError }}</p>
+    <StateFeedback
+      :loading="loading && !skills.length"
+      :error="error || null"
+      :empty="!loading && !error && !filteredSkills.length"
+      empty-text="没有匹配的技能。"
+      :saving="uploading || installing || busyId !== null || versionBusyKey !== null"
+      :save-error="installError || null"
+      @retry="refresh"
+    />
 
     <div v-if="importResult" class="import-panel" data-testid="skill-import-panel">
       <div class="panel-copy">
@@ -427,7 +435,7 @@ watch(categoryFilter, () => undefined)
                 @click="openResource(skill, version, resource)"
               >{{ resource.is_entry ? '入口 · ' : '' }}{{ resource.path }}</button>
             </div>
-            <p v-if="!(resources[`${skill.id}:${version.id}`] || []).length" class="muted">暂无可预览的文本资源。</p>
+            <StateFeedback v-if="!(resources[`${skill.id}:${version.id}`] || []).length" empty empty-text="暂无可预览的文本资源。" />
             <div v-if="resourceContent && resourceContentKey === `${skill.id}:${version.id}`" class="resource-preview">
               <div class="resource-preview-header">
                 <strong>{{ resourceContent.path }}</strong>
@@ -437,7 +445,7 @@ watch(categoryFilter, () => undefined)
             </div>
           </div>
           </div>
-          <p v-if="!(versionHistories[skill.id] || []).length" class="muted">暂无版本记录。</p>
+          <StateFeedback v-if="!(versionHistories[skill.id] || []).length" empty empty-text="暂无版本记录。" />
         </div>
         <div v-if="auditSkillId === skill.id" class="audit-panel" data-testid="skill-audit-panel">
           <strong>操作记录</strong>
@@ -446,11 +454,9 @@ watch(categoryFilter, () => undefined)
             <span>{{ formatVersionTime(event.created_at) }}</span>
             <span v-if="event.version_id">版本 #{{ event.version_id }}</span>
           </div>
-          <p v-if="!(auditEvents[skill.id] || []).length" class="muted">暂无操作记录。</p>
+          <StateFeedback v-if="!(auditEvents[skill.id] || []).length" empty empty-text="暂无操作记录。" />
         </div>
       </article>
-      <p v-if="!loading && !filteredSkills.length" class="muted empty-state">没有匹配的技能。</p>
-      <p v-if="loading" class="muted">正在载入技能…</p>
     </div>
   </section>
 </template>
@@ -493,7 +499,6 @@ h1 { margin:0 0 var(--space-1); font-size:22px; }
 .panel-form { display:grid; grid-template-columns:repeat(2,minmax(160px,1fr)); gap:var(--space-2); align-items:end; }
 .panel-form label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }
 .empty-state { padding:var(--space-5); text-align:center; }
-.form-error { color:var(--danger); }
 @media(max-width:900px) { .module-heading,.skill-card { flex-direction:column; } .skills-toolbar { grid-template-columns:1fr 1fr; } .heading-actions { width:100%; } }
 @media(max-width:600px) { .skills-workspace { padding:var(--space-3); } .skills-toolbar,.panel-form { grid-template-columns:1fr; } }
 </style>

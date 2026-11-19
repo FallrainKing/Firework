@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import StateFeedback from '@/components/StateFeedback.vue'
 import { readerApi } from '@/api/reader'
 import type { Annotation, Position, ReaderDoc, SelectionContext, Session, TranslationRecord } from '@/api/types'
 
@@ -33,6 +34,11 @@ const annotations = ref<Annotation[]>([])
 const translations = ref<TranslationRecord[]>([])
 const noteText = ref('')
 const toast = ref<{ message: string; undo?: () => Promise<void> } | null>(null)
+const loading = ref(false)
+const loadError = ref<string | null>(null)
+const savingNote = ref(false)
+const noteSaved = ref(false)
+const noteSaveError = ref<string | null>(null)
 const noteArea = ref<HTMLTextAreaElement | null>(null)
 
 function showToast(message: string, undo?: () => Promise<void>) {
@@ -53,9 +59,17 @@ function focusNote() {
 
 async function refresh() {
   if (!props.doc) return
-  const [a, t] = await Promise.all([readerApi.annotations(props.doc.paper_id), readerApi.translations(props.doc.paper_id)])
-  annotations.value = a.annotations
-  translations.value = t.translations
+  loading.value = true
+  loadError.value = null
+  try {
+    const [a, t] = await Promise.all([readerApi.annotations(props.doc.paper_id), readerApi.translations(props.doc.paper_id)])
+    annotations.value = a.annotations
+    translations.value = t.translations
+  } catch (e) {
+    loadError.value = e instanceof Error ? e.message : '阅读记录载入失败'
+  } finally {
+    loading.value = false
+  }
 }
 
 watch(() => orch?.annotationsVersion.value, () => { void refresh() })
@@ -66,20 +80,27 @@ watch(() => orch?.noteContext.value, ctx => { if (ctx) focusNote() })
 
 async function saveNote() {
   const content = noteText.value.trim()
-  if (!content) { showToast('请填写批注'); return }
-  if (!props.doc) { showToast('请先添加 PDF 全文'); return }
+  noteSaved.value = false
+  noteSaveError.value = null
+  if (!content) { noteSaveError.value = '请填写批注'; return }
+  if (!props.doc) { noteSaveError.value = '请先添加 PDF 全文'; return }
   const c = orch?.noteContext.value ?? { paper_id: props.doc.paper_id, page: orch?.positionSnapshot()?.page ?? 1, file_version: props.doc.file_version, quote: '', rects: [] }
+  savingNote.value = true
   try {
     await readerApi.createAnnotation({ ...c, kind: 'note', content, conversation_id: props.session?.id })
     noteText.value = ''
     if (orch) orch.noteContext.value = null
-    showToast('批注已保存')
+    noteSaved.value = true
     await refresh()
     await orch?.refreshAnnotations()
   } catch (e) {
-    showToast(e instanceof Error ? e.message : '批注保存失败')
+    noteSaveError.value = e instanceof Error ? e.message : '批注保存失败'
+  } finally {
+    savingNote.value = false
   }
 }
+
+watch(noteText, () => { noteSaved.value = false; noteSaveError.value = null })
 
 async function removeAnnotation(id: string) {
   try {
@@ -147,14 +168,25 @@ defineExpose({ focusNote, refresh, setTab })
       <button v-for="(item, i) in doc?.outline ?? []" :key="i" class="outline-button" :style="{ paddingLeft: Math.min(item.level - 1, 3) * 10 + 'px' }" @click="locate({ page: item.page, file_version: doc!.file_version })">
         <span>{{ item.title }}</span><small class="muted">第 {{ item.page }} 页</small>
       </button>
-      <p v-if="!doc?.outline?.length" class="muted">未识别到可靠目录，可通过工具栏按页阅读。</p>
+      <StateFeedback
+        :loading="loading && !doc?.outline?.length"
+        :error="loadError"
+        :empty="!loading && !loadError && !doc?.outline?.length"
+        empty-text="未识别到可靠目录，可通过工具栏按页阅读。"
+        @retry="refresh()"
+      />
     </div>
 
     <div v-show="tab === 'notes'" class="tab-pane">
       <div class="note-composer">
         <p v-if="orch?.noteContext.value" class="note-context muted">第 {{ orch.noteContext.value.page }} 页<br />{{ orch.noteContext.value.quote }}</p>
         <textarea ref="noteArea" v-model="noteText" class="note-text" rows="3" placeholder="写下批注…"></textarea>
-        <button class="primary save-note" @click="saveNote">保存批注</button>
+        <button class="primary save-note" :disabled="savingNote" @click="saveNote">{{ savingNote ? '保存中…' : '保存批注' }}</button>
+        <StateFeedback
+          :saving="savingNote"
+          :saved="noteSaved"
+          :save-error="noteSaveError"
+        />
       </div>
       <article v-for="a in annotations.filter(x => x.kind === 'note')" :key="a.id" class="aux-entry">
         <strong><span class="entry-color" :style="{ background: a.color }"></span>批注 · 第 {{ a.page }} 页</strong>
@@ -167,7 +199,13 @@ defineExpose({ focusNote, refresh, setTab })
         </div>
         <p v-if="versionMismatch(a.file_version)" class="muted">来自旧 PDF 版本，暂不自动定位。</p>
       </article>
-      <p v-if="!annotations.some(x => x.kind === 'note')" class="muted">这里会保存你的阅读记录。</p>
+      <StateFeedback
+        :loading="loading && !annotations.some(x => x.kind === 'note')"
+        :error="loadError"
+        :empty="!loading && !loadError && !annotations.some(x => x.kind === 'note')"
+        empty-text="这里会保存你的阅读记录。"
+        @retry="refresh()"
+      />
     </div>
 
     <div v-show="tab === 'highlights'" class="tab-pane">
@@ -181,7 +219,13 @@ defineExpose({ focusNote, refresh, setTab })
         </div>
         <p v-if="versionMismatch(a.file_version)" class="muted">来自旧 PDF 版本，暂不自动定位。</p>
       </article>
-      <p v-if="!annotations.some(x => x.kind !== 'note')" class="muted">这里会保存你的阅读记录。</p>
+      <StateFeedback
+        :loading="loading && !annotations.some(x => x.kind !== 'note')"
+        :error="loadError"
+        :empty="!loading && !loadError && !annotations.some(x => x.kind !== 'note')"
+        empty-text="这里会保存你的阅读记录。"
+        @retry="refresh()"
+      />
     </div>
 
     <div v-show="tab === 'translations'" class="tab-pane">
@@ -195,7 +239,13 @@ defineExpose({ focusNote, refresh, setTab })
           <button v-if="t.status === 'failed' || t.status === 'cancelled'" class="retry-translation" @click="retryTranslation(t)">重试</button>
         </div>
       </article>
-      <p v-if="!translations.length" class="muted">暂无翻译记录，选中原文即可开始。</p>
+      <StateFeedback
+        :loading="loading && !translations.length"
+        :error="loadError"
+        :empty="!loading && !loadError && !translations.length"
+        empty-text="暂无翻译记录，选中原文即可开始。"
+        @retry="refresh()"
+      />
     </div>
 
     <div v-show="tab === 'info'" class="tab-pane paper-info">

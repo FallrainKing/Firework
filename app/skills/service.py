@@ -329,6 +329,57 @@ def skill_detail(db, skill_id: str) -> dict:
     return view_skill(db, skill_id)
 
 
+def versions_view(db, skill_id: str) -> dict:
+    ensure_builtin_skills(db)
+    row = repo.find_skill(db, skill_id)
+    if row is None:
+        raise ValueError('Skill not found')
+    return {
+        'skill_id': skill_id,
+        'default_version_id': row['default_version_id'],
+        'registry_revision': repo.latest_revision(db),
+        'versions': [
+            {
+                **view_version(version),
+                'is_default': version['id'] == row['default_version_id'],
+                'references': repo.version_usage_counts(db, version['id']),
+            }
+            for version in repo.versions_for_skill(db, skill_id)
+        ],
+    }
+
+
+def set_default_version(db, skill_id: str, body) -> dict:
+    ensure_builtin_skills(db)
+    skill = repo.find_skill(db, skill_id)
+    if skill is None:
+        raise ValueError('Skill not found')
+    if body.expected_revision is not None and skill['revision'] != body.expected_revision:
+        raise ValueError('Skill revision mismatch; please refresh and retry')
+
+    version = repo.find_version(db, body.version_id)
+    if version is None or version['skill_id'] != skill_id:
+        raise ValueError('Version does not belong to this skill')
+    if version['validation_status'] != 'validated':
+        raise ValueError('Only validated versions can become default')
+
+    previous_version_id = skill['default_version_id']
+    if previous_version_id != version['id']:
+        repo.set_default_version(db, skill_id, version['id'])
+        repo.audit(
+            db,
+            skill_id=skill_id,
+            version_id=version['id'],
+            action='default-version',
+            detail_json=json.dumps(
+                {'previous_version_id': previous_version_id, 'new_version_id': version['id']},
+                ensure_ascii=False,
+            ),
+        )
+        db.commit()
+    return view_skill(db, skill_id)
+
+
 def enable_skill(db, skill_id: str) -> dict:
     row = repo.find_skill(db, skill_id)
     if row is None:

@@ -24,7 +24,8 @@ def list_templates(db: sqlite3.Connection):
     return db.execute(
         "SELECT t.* FROM task_templates t "
         "LEFT JOIN skills s ON s.id=t.skill "
-        "WHERE t.builtin=1 OR s.id IS NULL OR s.status='enabled' "
+        "WHERE t.builtin=1 OR s.id IS NULL "
+        "OR (s.status='enabled' AND (t.skill_version_id IS NULL OR t.skill_version_id=s.default_version_id)) "
         "ORDER BY t.builtin DESC,t.rowid"
     ).fetchall()
 

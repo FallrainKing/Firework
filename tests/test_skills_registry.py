@@ -88,6 +88,77 @@ def test_skill_import_install_and_enable(tmp_path):
     assert session.json()['session']['skill_version_id'] == installed['version']['id']
 
 
+def test_skill_version_history_and_default_rollback(tmp_path):
+    client = _client(tmp_path)
+    upload = client.post('/api/skills/imports', files={'archive': ('demo.zip', _zip_bytes(), 'application/zip')})
+    assert upload.status_code == 200, upload.text
+    install = client.post(
+        f"/api/skills/imports/{upload.json()['import_id']}/install",
+        json={'name': 'Demo skill', 'description': 'Demo skill', 'category_names': ['阅读理解'], 'budget_profile': 'short'},
+    )
+    assert install.status_code == 200, install.text
+    installed = install.json()
+    skill_id = installed['skill']['id']
+    old_version_id = installed['version']['id']
+
+    from app.skills import repository as skills_repo
+
+    db = client.app.state.db
+    new_version_id = skills_repo.insert_version(
+        db,
+        skill_id=skill_id,
+        version='1.1.0',
+        content_hash='sha256:new-version',
+        storage_key='packages/sha256:new-version',
+        entry='SKILL.md',
+        manifest_json='{"version":"1.1.0"}',
+    )
+    skills_repo.set_default_version(db, skill_id, new_version_id)
+    db.commit()
+
+    enabled = client.post(f'/api/skills/{skill_id}/enable')
+    assert enabled.status_code == 200, enabled.text
+    hidden_templates = client.get('/api/sessions/templates').json()['templates']
+    assert all(template['skill'] != skill_id for template in hidden_templates)
+
+    history = client.get(f'/api/skills/{skill_id}/versions')
+    assert history.status_code == 200, history.text
+    history_data = history.json()
+    assert history_data['default_version_id'] == new_version_id
+    assert [(v['version'], v['is_default']) for v in history_data['versions']] == [
+        ('1.1.0', True),
+        ('1.0.0', False),
+    ]
+    old_history = next(v for v in history_data['versions'] if v['id'] == old_version_id)
+    assert old_history['references'] == {'sessions': 0, 'runs': 0, 'templates': 1}
+
+    detail = client.get(f'/api/skills/{skill_id}')
+    assert detail.status_code == 200
+    stale = client.post(
+        f'/api/skills/{skill_id}/default-version',
+        json={'version_id': old_version_id, 'expected_revision': detail.json()['revision'] + 1},
+    )
+    assert stale.status_code == 409
+    assert 'revision' in stale.json()['detail'].lower()
+
+    rollback = client.post(
+        f'/api/skills/{skill_id}/default-version',
+        json={'version_id': old_version_id, 'expected_revision': detail.json()['revision']},
+    )
+    assert rollback.status_code == 200, rollback.text
+    assert rollback.json()['default_version_id'] == old_version_id
+
+    audit = db.execute(
+        "SELECT * FROM skill_audit WHERE skill_id=? AND action='default-version' ORDER BY id DESC",
+        (skill_id,),
+    ).fetchone()
+    assert audit['version_id'] == old_version_id
+    assert json.loads(audit['detail_json'])['previous_version_id'] == new_version_id
+
+    visible_templates = client.get('/api/sessions/templates').json()['templates']
+    assert any(template['skill'] == skill_id for template in visible_templates)
+
+
 def test_rejects_path_traversal(tmp_path):
     client = _client(tmp_path)
     bad = io.BytesIO()

@@ -91,6 +91,19 @@ def versions_for_skill(db, skill_id: str):
     return db.execute('SELECT * FROM skill_versions WHERE skill_id=? ORDER BY id DESC', (skill_id,)).fetchall()
 
 
+def version_usage_counts(db, version_id: int) -> dict[str, int]:
+    row = db.execute(
+        '''
+        SELECT
+            (SELECT count(*) FROM conversations WHERE skill_version_id=?) AS sessions,
+            (SELECT count(*) FROM agent_runs WHERE skill_version_id=?) AS runs,
+            (SELECT count(*) FROM task_templates WHERE skill_version_id=?) AS templates
+        ''',
+        (version_id, version_id, version_id),
+    ).fetchone()
+    return {'sessions': row['sessions'], 'runs': row['runs'], 'templates': row['templates']}
+
+
 def find_version_by_hash(db, content_hash: str):
     return db.execute('SELECT * FROM skill_versions WHERE content_hash=?', (content_hash,)).fetchone()
 

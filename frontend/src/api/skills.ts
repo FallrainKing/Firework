@@ -17,6 +17,15 @@ export interface SkillVersion {
   created_at: string
 }
 
+export interface SkillVersionHistoryItem extends SkillVersion {
+  is_default: boolean
+  references: {
+    sessions: number
+    runs: number
+    templates: number
+  }
+}
+
 export interface SkillCategory {
   id: number
   name: string
@@ -85,5 +94,13 @@ export const skillsApi = {
   },
   disable(skillId: string): Promise<Skill> {
     return api(`/api/skills/${encodeURIComponent(skillId)}/disable`, { method: 'POST' })
+  },
+  versionHistory(skillId: string): Promise<{ skill_id: string; default_version_id: number | null; registry_revision: number; versions: SkillVersionHistoryItem[] }> {
+    return api(`/api/skills/${encodeURIComponent(skillId)}/versions`)
+  },
+  setDefaultVersion(skillId: string, versionId: number, expectedRevision: number): Promise<Skill> {
+    return api(`/api/skills/${encodeURIComponent(skillId)}/default-version`, {
+      body: { version_id: versionId, expected_revision: expectedRevision },
+    })
   },
 }

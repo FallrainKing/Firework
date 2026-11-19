@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { skillsApi, type Skill, type SkillCategory, type SkillImport } from '@/api/skills'
+import { skillsApi, type Skill, type SkillCategory, type SkillImport, type SkillVersionHistoryItem } from '@/api/skills'
 
 const skills = ref<Skill[]>([])
 const categories = ref<SkillCategory[]>([])
@@ -19,6 +19,10 @@ const installDescription = ref('')
 const installCategory = ref('')
 const installBudget = ref('short')
 const installError = ref('')
+const expandedSkillId = ref<string | null>(null)
+const historyLoadingId = ref<string | null>(null)
+const versionHistories = ref<Record<string, SkillVersionHistoryItem[]>>({})
+const versionBusyKey = ref<string | null>(null)
 
 const filteredSkills = computed(() => skills.value.filter(skill => {
   if (sourceFilter.value && skill.source !== sourceFilter.value) return false
@@ -101,6 +105,49 @@ async function setStatus(skill: Skill, enabled: boolean) {
   }
 }
 
+async function toggleVersions(skill: Skill) {
+  if (expandedSkillId.value === skill.id) {
+    expandedSkillId.value = null
+    return
+  }
+  expandedSkillId.value = skill.id
+  if (versionHistories.value[skill.id]?.length) return
+
+  historyLoadingId.value = skill.id
+  error.value = ''
+  try {
+    const data = await skillsApi.versionHistory(skill.id)
+    versionHistories.value = { ...versionHistories.value, [skill.id]: data.versions }
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '技能版本历史载入失败'
+    expandedSkillId.value = null
+  } finally {
+    historyLoadingId.value = null
+  }
+}
+
+async function rollbackVersion(skill: Skill, version: SkillVersionHistoryItem) {
+  versionBusyKey.value = `${skill.id}:${version.id}`
+  error.value = ''
+  try {
+    await skillsApi.setDefaultVersion(skill.id, version.id, skill.revision)
+    versionHistories.value = { ...versionHistories.value, [skill.id]: versionHistories.value[skill.id]?.map(item => ({
+      ...item,
+      is_default: item.id === version.id,
+    })) ?? [] }
+    await refresh()
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : '默认版本更新失败'
+  } finally {
+    versionBusyKey.value = null
+  }
+}
+
+function formatVersionTime(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleString()
+}
+
 watch(categoryFilter, () => undefined)
 </script>
 
@@ -179,8 +226,42 @@ watch(categoryFilter, () => undefined)
           </div>
         </div>
         <div class="skill-actions">
+          <button
+            type="button"
+            data-testid="skill-version-toggle"
+            :aria-expanded="expandedSkillId === skill.id"
+            :disabled="historyLoadingId === skill.id"
+            @click="toggleVersions(skill)"
+          >{{ historyLoadingId === skill.id ? '版本载入中…' : '版本' }}</button>
           <button v-if="skill.status !== 'enabled'" type="button" :disabled="busyId === skill.id" @click="setStatus(skill, true)">启用</button>
           <button v-else type="button" :disabled="busyId === skill.id" @click="setStatus(skill, false)">停用</button>
+        </div>
+        <div v-if="expandedSkillId === skill.id" class="version-panel" data-testid="skill-version-panel">
+          <div class="version-header">
+            <strong>版本历史</strong>
+            <span>回退只影响后续新会话，不会修改历史会话和运行记录。</span>
+          </div>
+          <div v-for="version in versionHistories[skill.id] || []" :key="version.id" class="version-row" :class="{ default: version.is_default }">
+            <div class="version-main">
+              <div class="version-title">
+                <strong>{{ version.version }}</strong>
+                <span v-if="version.is_default" class="badge enabled">默认</span>
+                <span class="muted">{{ formatVersionTime(version.created_at) }}</span>
+              </div>
+              <div class="version-meta">
+                <span>摘要 {{ version.content_hash }}</span>
+                <span>引用：会话 {{ version.references.sessions }} · 运行 {{ version.references.runs }} · 模板 {{ version.references.templates }}</span>
+              </div>
+            </div>
+            <button
+              v-if="!version.is_default"
+              type="button"
+              data-testid="rollback-version"
+              :disabled="versionBusyKey === `${skill.id}:${version.id}`"
+              @click="rollbackVersion(skill, version)"
+            >{{ versionBusyKey === `${skill.id}:${version.id}` ? '回退中…' : '设为默认' }}</button>
+          </div>
+          <p v-if="!(versionHistories[skill.id] || []).length" class="muted">暂无版本记录。</p>
         </div>
       </article>
       <p v-if="!loading && !filteredSkills.length" class="muted empty-state">没有匹配的技能。</p>
@@ -206,6 +287,14 @@ h1 { margin:0 0 var(--space-1); font-size:22px; }
 .badge.zip { color:var(--accent); }
 .skill-meta { display:flex; gap:var(--space-3); flex-wrap:wrap; color:var(--text-muted); font-size:12px; }
 .skill-actions { display:flex; align-items:center; flex-shrink:0; }
+.version-panel { width:100%; display:flex; flex-direction:column; gap:var(--space-2); padding-top:var(--space-3); border-top:1px solid var(--border); }
+.version-header { display:flex; flex-direction:column; gap:2px; }
+.version-header span { color:var(--text-muted); font-size:12px; }
+.version-row { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-3); border:1px solid var(--border); border-radius:var(--radius); }
+.version-row.default { border-color:var(--success); }
+.version-main { min-width:0; display:flex; flex-direction:column; gap:2px; }
+.version-title { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
+.version-meta { display:flex; gap:var(--space-3); flex-wrap:wrap; color:var(--text-muted); font-size:11px; word-break:break-all; }
 .import-panel { display:flex; flex-direction:column; gap:var(--space-3); margin-bottom:var(--space-4); padding:var(--space-4); border:1px solid var(--accent); border-radius:var(--radius); background:var(--surface); }
 .panel-copy { display:flex; flex-direction:column; gap:4px; }
 .panel-form { display:grid; grid-template-columns:repeat(2,minmax(160px,1fr)); gap:var(--space-2); align-items:end; }

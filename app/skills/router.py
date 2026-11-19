@@ -5,7 +5,7 @@ from fastapi import APIRouter, File, Query, Request, UploadFile
 
 from ..core.errors import ServiceError
 from . import service
-from .schemas import CategoryCreate, CategoryUpdate, SkillInstall, SkillUpdate
+from .schemas import CategoryCreate, CategoryUpdate, SkillDefaultVersion, SkillInstall, SkillUpdate
 
 router = APIRouter(prefix='/api/skills', tags=['skills'])
 
@@ -102,6 +102,22 @@ async def get_skill(skill_id: str, request: Request):
         return service.skill_detail(request.app.state.db, skill_id)
     except ValueError as exc:
         raise ServiceError(404, str(exc)) from exc
+
+
+@router.get('/{skill_id}/versions')
+async def get_skill_versions(skill_id: str, request: Request):
+    try:
+        return service.versions_view(request.app.state.db, skill_id)
+    except ValueError as exc:
+        raise ServiceError(404, str(exc)) from exc
+
+
+@router.post('/{skill_id}/default-version')
+async def update_default_version(skill_id: str, body: SkillDefaultVersion, request: Request):
+    try:
+        return service.set_default_version(request.app.state.db, skill_id, body)
+    except ValueError as exc:
+        raise ServiceError(409, str(exc)) from exc
 
 
 @router.patch('/{skill_id}')

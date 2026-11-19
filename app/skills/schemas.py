@@ -20,6 +20,11 @@ class SkillUpdate(BaseModel):
     status: str | None = Field(default=None, pattern='^(enabled|disabled|archived)$')
 
 
+class SkillDefaultVersion(BaseModel):
+    version_id: int = Field(ge=1)
+    expected_revision: int | None = Field(default=None, ge=1)
+
+
 class CategoryCreate(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     sort_order: int = Field(default=0, ge=0, le=100000)

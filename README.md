@@ -1,46 +1,101 @@
 # Firework
 
-Firework 是以现有智能体和 Skills 为执行核心的论文发现、阅读与研究管理工作台。前端包名为 `firework`；保留既有 `research-assistant` 部署目录、服务与内部标识，以兼容现有资料和运维。
+**An agent-powered workspace for discovering, reading, and organizing research.**
 
-面向个人研究的论文发现、管理与阅读工作台。平台管理论文、文件、会话、技能和任务；总结、翻译、审查、比较及前沿报告由服务器已有 Claude Code 智能体通过 Skills 执行。
+[中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/FallrainKing/Firework/issues)
 
-当前文档核对日期：2026-11-19，认证版本基于 `e25954e` 开发，业务数据库迁移至 `0013`，身份库 schema 1，Runner 协议 **5**。发布状态见 [项目状态](docs/STATUS.md)，所有文档入口见 [文档目录](docs/README.md)。
+Firework brings your paper library, PDF reader, and research conversations into one workspace. It connects to an existing Claude Code agent and extends its capabilities through Skills, while the application manages documents, sessions, tasks, evidence, and account isolation.
 
-## 已有功能
+## Features
 
-- 阅读起始工作台：最近阅读、领域分类、任务模板、论文搜索与导入。
-- 多论文标签与可调三栏：左侧导读/目录/批注/高亮/译文/信息，中间 PDF，右侧智能体会话；保存阅读位置、布局与草稿。
-- 会话管理：每个任务保留原生会话映射，可召回和延续；异步执行、进度、取消及用量记录。
-- 明确触发的导读批注：输入框选择“自动批注”或“阅读论文”，修改要求并确认后才执行。打开、刷新、切换论文不会自动调用导读 Skill。
-- 论文库：分类、状态、图文卡片、作者单位、摘要及全文补充；支持 PDF、arXiv、DOI、公开 URL 添加。
-- 前沿追踪：设定领域、关键词、作者/团队等，调用现有智能体发现论文和 GitHub 项目，去重后形成时间线报告，批准后入库。
-- 动态技能库：上传 ZIP、预检、安装、分类、版本、启停、模板与最小验证；本地用户资料、头像和偏好。
+- **Reading workspace:** Start from recent papers, research categories, and reusable task templates.
+- **Tabbed PDF reader:** Open multiple papers in a resizable three-panel layout, with reading aids on the left, the original PDF in the center, and an agent conversation on the right. Restore reading positions, layout preferences, and drafts.
+- **Paper discovery and import:** Search for papers and add them through PDF uploads, arXiv identifiers, DOIs, and supported public URLs. Organize papers by category and reading status, with visual cards, author affiliations, and abstracts.
+- **Persistent research conversations:** Keep tasks linked to agent sessions so you can revisit and continue previous work. Track execution progress, cancel runs, and inspect reported usage.
+- **On-demand reading guides:** Explicitly trigger a Skill to produce structured explanations and annotations linked to paper evidence. Opening or switching papers does not automatically run a reading guide.
+- **Research frontier tracking:** Define topics, keywords, authors, or teams. Use the agent to discover papers and open-source projects, generate deduplicated timeline reports, and approve discoveries before adding them to your library.
+- **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, and enable or disable capabilities. Templates and structured outputs connect Skills to the interface.
+- **Richer agent input:** Combine editable templates, selected paper passages, and image attachments. Image interpretation requires a vision-capable agent or model.
+- **Account isolation:** Separate each account's research database, files, private Skills, vector collection, and agent workspace. Public registration is currently closed, and the default release permits only the primary administrator to log in.
 
-已实现独立账号与数据空间，当前仅原管理员可登录，公开注册关闭；见 [认证与账号隔离](docs/AUTHENTICATION.md)。论文库、会话与批注已持久化；统一知识条目、跨任务长期记忆、OCR/图像导读和完整 kelip 六站材料链尚未实现。详见 [后续计划](docs/ROADMAP.md)。
+Firework is under active development. Unified knowledge entries, cross-task long-term memory, OCR-based reading guides, and a complete six-stage deep-reading workflow are planned rather than complete. See the [implementation status](docs/STATUS.md) and [roadmap](docs/ROADMAP.md).
 
-## 开始使用
+## How it works
 
-已部署实例访问现有站点；操作步骤见 [使用指南](docs/USER-GUIDE.md)。只有书目信息时先补充 PDF，不进入空白阅读任务。模板选择、图片预览和批注配置本身不会执行模型；发送、确认生成或启用定时执行才会产生任务。
-
-## 部署与开发
-
-本项目需要两部分同时就绪：Docker Compose 中的 app/Qdrant，以及宿主机的私有 Runner。仅启动容器不代表智能体可用。
-
-1. 准备 Docker/Compose、Python 3.12+、现有 Claude CLI 配置及宿主虚拟环境。
-2. 按 [环境与部署](docs/enviroment.md) 配置路径、监听地址、模型缓存、Runner 和权限。
-3. 构建应用并执行零模型冒烟检查。
-
-```sh
-# 已配置宿主 Runner、模型缓存与 .env 的现有环境
-# 升级前先确认无执行中任务并备份，完整步骤见部署文档
-docker compose up -d --build app
-# 认证版本需短期维护会话，按环境文档执行冒烟
+```text
+Browser · Vue reading workspace
+            |
+FastAPI · authentication, library, sessions, tasks, evidence
+       |                   |                    |
+SQLite + files          Qdrant           Private host Runner
+                                                |
+                                      Existing Claude Code agent
+                                                |
+                                        Registered Skills
 ```
 
-仓库 Compose 中的 `100.64.0.7` 是当前服务器地址；新机器需修改端口绑定。Compose 默认 `HF_HUB_OFFLINE=1`，新机器没有 bge-m3 缓存时须按部署说明完成首次下载。
+The application handles management and persistence. Research operations run through the existing agent and its Skills. The private Runner connects agent execution to application tasks and preserves native session mappings.
+
+Templates, previews, and paper navigation do not themselves invoke the research model. Sending an agent request, confirming a guide, or running a configured schedule can incur model usage.
+
+## Technology stack
+
+| Layer | Technologies |
+| --- | --- |
+| Frontend | Vue 3, TypeScript, Vite, Pinia |
+| Document viewing | PDF.js; Marked with DOMPurify for Markdown |
+| Backend | Python 3.12+, FastAPI, SQLite |
+| Semantic search | Qdrant and bge-m3 embeddings |
+| Agent execution | Claude Code CLI through a private host Runner |
+| Deployment | Docker Compose, a host-side Runner service, and an HTTPS reverse proxy |
+
+## Getting started
+
+Firework currently targets self-hosted deployments. The repository includes configuration from an existing deployment; adapt its paths, network bindings, and HTTPS origin before starting a new instance.
+
+### Prerequisites
+
+- Docker Engine and Docker Compose.
+- Python 3.12+ and a host-side virtual environment for the Runner and maintenance tools.
+- A configured Claude Code CLI that can use your selected model or provider.
+- Storage for papers, databases, backups, and the approximately 2.3 GB bge-m3 model cache.
+- Node.js 24 for local frontend development. Production frontend assets are built inside Docker.
+
+### Installation outline
 
 ```sh
-# 前端独立开发；后端仍需在 127.0.0.1:8600 提供 API
+git clone https://github.com/FallrainKing/Firework.git
+cd Firework
+cp .env.example .env
+```
+
+Before starting services:
+
+1. Set `RESEARCH_PUBLIC_ORIGIN` in `.env` to your HTTPS origin. Keep secure session cookies enabled for production.
+2. Adapt the port bindings in `docker-compose.yml`. The additional `100.64.0.7:8600` binding belongs to the original deployment and must be removed or replaced on another host.
+3. Prepare the bge-m3 model cache. Compose defaults to `HF_HUB_OFFLINE=1`; a fresh installation needs an intentional initial download with offline mode disabled.
+4. Install and configure the host Runner using the [deployment guide](docs/enviroment.md). Update the working directory, executable paths, and model selection in the service template for your installation. Model credentials are read from the host's agent configuration.
+5. Initialize the administrator locally. On a new installation, use the interactive command below; no public registration or default password is provided.
+
+```sh
+# Run after preparing the host virtual environment and dependencies.
+.venv/bin/python -m app.auth.bootstrap init-admin
+
+# Build and start the application, vector database, and backup service.
+docker compose up -d --build
+```
+
+Starting Compose alone does not start the host Runner. Both components must be ready for agent tasks to work. The current application requires Runner protocol **5**.
+
+Open your configured HTTPS address and sign in with your administrator account. See the [user guide](docs/USER-GUIDE.md) for importing papers, reading, conversations, and Skills.
+
+For upgrades, back up the identity database and research resources together, check for running tasks, and follow the [deployment](docs/enviroment.md) and [backup and recovery](docs/BACKUP-RESTORE.md) instructions.
+
+## Development
+
+### Frontend
+
+```sh
 cd frontend
 npm ci
 npm run dev
@@ -48,18 +103,42 @@ npm test
 npm run build
 ```
 
-Python 安装、隔离测试与发布步骤见 [开发指南](docs/DEVELOPMENT.md)。生产前端由 Docker 多阶段构建，无需在服务器额外安装 Node；构建镜像使用 Node 24。
+The development proxy expects an API at `127.0.0.1:8600`. Adapt the proxy and authentication origin for your development setup; production secure-cookie settings are intended for HTTPS.
 
-## 文档
+### Backend and Runner
 
-| 内容 | 入口 |
+```sh
+python3.12 -m venv .venv
+.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/pip install -r requirements.txt
+.venv/bin/pip install pytest
+```
+
+Backend execution also requires reachable Qdrant and the embedding model cache. Use isolated data directories for development and tests. See the [development guide](docs/DEVELOPMENT.md) for selecting regression tests and running authenticated, model-free smoke checks.
+
+## Documentation
+
+Most detailed implementation and operations documents are currently in Chinese.
+
+| Document | Contents |
 | --- | --- |
-| 登录、账号与隔离 | [认证说明](docs/AUTHENTICATION.md) |
-| 功能操作与常见问题 | [使用指南](docs/USER-GUIDE.md) |
-| 架构、代码目录、数据模型、任务流 | [系统架构](docs/架构.md) |
-| 当前服务器、部署、排障和回退 | [环境与部署](docs/enviroment.md)、[备份恢复](docs/BACKUP-RESTORE.md) |
-| API 分组与调用规则 | [接口说明](docs/API.md)、[完整路由清单](docs/API-ROUTES.md) |
-| ZIP 技能扩展与导读契约 | [Skills 开发](docs/SKILLS.md) |
-| 已实现范围、验证和遗留项 | [项目状态](docs/STATUS.md)、[后续计划](docs/ROADMAP.md)、[变更记录](docs/CHANGELOG.md) |
+| [Documentation index](docs/README.md) | Current guides and historical records |
+| [User guide](docs/USER-GUIDE.md) | Paper import, reading, conversations, and tracking |
+| [Architecture](docs/架构.md) | Components, data models, and execution flow |
+| [Authentication](docs/AUTHENTICATION.md) | Account isolation, login restrictions, and recovery |
+| [Deployment](docs/enviroment.md) | Environment setup, operations, and troubleshooting |
+| [Development](docs/DEVELOPMENT.md) | Local development, testing, and releases |
+| [API](docs/API.md) · [Route inventory](docs/API-ROUTES.md) | API contracts and endpoints |
+| [Skill development](docs/SKILLS.md) | ZIP packages, versions, tools, and output contracts |
+| [Backup and recovery](docs/BACKUP-RESTORE.md) | Backups and restoration |
+| [Status](docs/STATUS.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](docs/CHANGELOG.md) | Implemented scope and upcoming work |
 
-文档不保存认证内容。`.env`、`data/`、`backups/`、私钥、运行日志和公网认证文件不提交 Git。旧方案与历史验收可从 [文档目录](docs/README.md) 查找，不应直接作为当前部署步骤。
+## Contributing
+
+Bug reports and improvement proposals are welcome through [GitHub Issues](https://github.com/FallrainKing/Firework/issues). For code changes, describe the problem, keep the scope focused, include relevant verification, and update affected documentation. Discuss substantial architectural changes before submitting a pull request.
+
+Never commit credentials, `.env`, private keys, personal papers, runtime data, or backups. Legacy `research-assistant` directory, service, and package identifiers remain in some deployment files for compatibility.
+
+## License
+
+A project-level license has not yet been added. Do not assume an open-source license from the repository's public visibility; third-party components retain their respective licenses.

@@ -21,7 +21,12 @@ def paper_ids(db: sqlite3.Connection, sid: int) -> list[int]:
 
 
 def list_templates(db: sqlite3.Connection):
-    return db.execute('SELECT * FROM task_templates ORDER BY builtin DESC,rowid').fetchall()
+    return db.execute(
+        "SELECT t.* FROM task_templates t "
+        "LEFT JOIN skills s ON s.id=t.skill "
+        "WHERE t.builtin=1 OR s.id IS NULL OR s.status='enabled' "
+        "ORDER BY t.builtin DESC,t.rowid"
+    ).fetchall()
 
 
 def find_template(db: sqlite3.Connection, template_id: str):
@@ -74,10 +79,11 @@ def search_sessions(db, *, q, kind, paper_id, category_id, archived, limit, run_
     ).fetchall()
 
 
-def insert_session(db, *, title, kind, skill, template_id, category_id, native_session_id, draft_prompt):
+def insert_session(db, *, title, kind, skill, template_id, category_id, native_session_id, draft_prompt,
+                     skill_version_id=None):
     return db.execute(
-        "INSERT INTO conversations(module,title,messages,kind,skill,template_id,category_id,native_session_id,draft_prompt) VALUES ('agent',?,'[]',?,?,?,?,?,?)",
-        (title, kind, skill, template_id, category_id, native_session_id, draft_prompt),
+        "INSERT INTO conversations(module,title,messages,kind,skill,template_id,category_id,native_session_id,draft_prompt,skill_version_id) VALUES ('agent',?,'[]',?,?,?,?,?,?,?)",
+        (title, kind, skill, template_id, category_id, native_session_id, draft_prompt, skill_version_id),
     )
 
 

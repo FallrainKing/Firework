@@ -38,6 +38,8 @@ app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, opena
 class RunRequest(BaseModel):
     run_id: str = Field(pattern=r'^[a-f0-9]{32}$')
     skill: str
+    skill_version_id: int | None = None
+    skill_hash: str | None = Field(default=None, max_length=128)
     prompt: str = Field(min_length=1, max_length=3000)
     history: list[dict] = Field(default_factory=list, max_length=40)
     session_id: str | None = Field(None, pattern=r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
@@ -67,10 +69,29 @@ async def health():
 
 @app.post('/runs', status_code=202)
 async def submit_run(body: RunRequest):
-    if body.skill not in SKILLS:
+    payload = body.model_dump()
+    if body.skill in SKILLS:
+        policy = dict(SKILLS[body.skill])
+        policy.update({'id': body.skill, 'name': policy['name'], 'version_id': None, 'version': '0.4.0', 'skill_hash': None, 'storage_key': '', 'entry': 'SKILL.md'})
+    elif body.skill.startswith('custom:'):
+        from app.core.config import Settings
+        from app.core.db import get_conn
+        from app.skills import service as skills_service
+        settings = Settings.from_env()
+        db = get_conn(settings)
+        try:
+            policy = skills_service.execution_policy(db, body.skill, body.skill_version_id)
+        except ValueError:
+            raise HTTPException(400, 'Unknown skill') from None
+        finally:
+            db.close()
+        if body.skill_hash and body.skill_hash != policy['skill_hash']:
+            raise HTTPException(409, 'Skill version changed; retry with the current version')
+    else:
         raise HTTPException(400, 'Unknown skill')
+    payload['skill_policy'] = policy
     try:
-        return await engine.submit(body.run_id, body.skill, body.model_dump())
+        return await engine.submit(body.run_id, body.skill, payload)
     except jobs.QueueFull:
         raise HTTPException(429, 'Queue full; please wait')
 

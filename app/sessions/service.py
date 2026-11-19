@@ -7,6 +7,7 @@ import uuid
 from ..agent.catalog import KINDS, SKILLS
 from ..core.errors import ServiceError
 from ..papers.service import paper_exists
+from ..skills import repository as skills_repo, service as skills_service
 from . import repository as repo
 from .schemas import Name, SessionCreate, SessionPatch, TemplateCreate
 
@@ -21,7 +22,7 @@ def require_session(db: sqlite3.Connection, session_id: int):
 def session_view(db: sqlite3.Connection, row) -> dict:
     from ..agent import service as agent_service  # late import: agent.service imports this module
 
-    out = {k: row[k] for k in ('id', 'title', 'kind', 'skill', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
+    out = {k: row[k] for k in ('id', 'title', 'kind', 'skill', 'skill_version_id', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
     out['paper_ids'] = repo.paper_ids(db, row['id'])
     out['run_count'] = agent_service.run_count(db, row['id'])
     last = agent_service.last_run_summary(db, row['id'])
@@ -31,15 +32,23 @@ def session_view(db: sqlite3.Connection, row) -> dict:
 
 
 def templates_view(db: sqlite3.Connection) -> dict:
+    skills_service.ensure_builtin_skills(db)
     return {
         'templates': [dict(r) for r in repo.list_templates(db)],
         'kinds': KINDS,
-        'skills': [{'id': k, 'name': v['name']} for k, v in SKILLS.items()],
+        'skills': [
+            {'id': r['id'], 'name': r['name']}
+            for r in skills_repo.list_skills(db, status='enabled')
+        ],
     }
 
 
 def create_template(db: sqlite3.Connection, body: TemplateCreate) -> dict:
-    if body.skill not in SKILLS:
+    dynamic_skill = skills_repo.find_skill(db, body.skill)
+    if dynamic_skill is not None:
+        if dynamic_skill['status'] != 'enabled':
+            raise ServiceError(400, 'Skill 已停用，不能创建模板')
+    elif body.skill not in SKILLS:
         raise ServiceError(400, '未知 Skill')
     if not body.name.strip():
         raise ServiceError(400, '模板名称不能为空')
@@ -98,6 +107,7 @@ def create_session(db: sqlite3.Connection, body: SessionCreate) -> dict:
             category_id=body.category_id,
             native_session_id=str(uuid.uuid4()),
             draft_prompt=starting_prompt,
+            skill_version_id=template['skill_version_id'],
         )
         ident = cur.lastrowid
         repo.link_papers(db, ident, ids)

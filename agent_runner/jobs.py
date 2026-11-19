@@ -93,7 +93,7 @@ class JobEngine:
     async def submit(self, run_id, skill_id, body: dict) -> dict:
         from app.agent.catalog import SKILLS
 
-        if skill_id not in SKILLS:
+        if skill_id not in SKILLS and 'skill_policy' not in body:
             raise ValueError('Unknown skill')
         if run_id in self._jobs:
             return {'run_id': run_id, 'status': self._jobs[run_id]['status']}
@@ -202,7 +202,7 @@ class JobEngine:
     async def _run_job(self, job):
         from app.agent.catalog import SKILLS
 
-        skill = SKILLS[job['skill']]
+        skill = job['body'].get('skill_policy') or SKILLS[job['skill']]
         body = job['body']
         folder = self._folder(job['run_id'])
         proc = None
@@ -233,7 +233,12 @@ class JobEngine:
                 env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(skill['max_output_tokens'])
                 mcp = {'mcpServers': {}}
                 if allowed:
-                    mcp['mcpServers']['research'] = {'command': sys.executable, 'args': [str(self.root / 'agent_runner/tools.py')], 'env': {'RESEARCH_DB_PATH': str(self.runtime.parent / 'app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS': json.dumps(body.get('paper_ids') or []), 'RESEARCH_MAX_TOOL_CALLS': str(skill['max_calls']), 'RESEARCH_IMPORT_ID': body.get('import_request_id') or '', 'RESEARCH_RUN_ID': job['run_id'], 'RESEARCH_TOKEN_FILE': str(self.runtime / 'internal-token')}}
+                    tool_env = {'RESEARCH_DB_PATH': str(self.runtime.parent / 'app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS': json.dumps(body.get('paper_ids') or []), 'RESEARCH_MAX_TOOL_CALLS': str(skill['max_calls']), 'RESEARCH_IMPORT_ID': body.get('import_request_id') or '', 'RESEARCH_RUN_ID': job['run_id'], 'RESEARCH_TOKEN_FILE': str(self.runtime / 'internal-token')}
+                    if 'skill_resource' in allowed and skill.get('storage_key'):
+                        tool_env['RESEARCH_SKILL_ROOT'] = str(self.root / 'data' / 'skills' / skill['storage_key'])
+                        tool_env['RESEARCH_SKILL_HASH'] = str(skill.get('skill_hash') or '')
+                        tool_env['RESEARCH_SKILL_VERSION_ID'] = str(skill.get('version_id') or '')
+                    mcp['mcpServers']['research'] = {'command': sys.executable, 'args': [str(self.root / 'agent_runner/tools.py')], 'env': tool_env}
                 if job['skill'] == 'paper_import':
                     token = self.runtime / 'internal-token'
                     if not token.exists():
@@ -241,7 +246,7 @@ class JobEngine:
                         with os.fdopen(fd, 'w') as f:
                             f.write(secrets.token_urlsafe(32))
                 model = cli.current_model(env, vision=bool(body.get('attachment_ids')))
-                skill_md = (self.root / 'skills' / job['skill'] / 'SKILL.md').read_text()
+                skill_md = ((self.root / 'data' / 'skills' / skill['storage_key'] / skill['entry']).read_text() if skill.get('storage_key') else (self.root / 'skills' / job['skill'] / 'SKILL.md').read_text())
                 req = _Body(body)
                 blocks = cli.image_blocks(req, self.runtime) if body.get('attachment_ids') else []
                 args = cli.build_args(skill, model, session_id, resume, mcp, skill_md, bool(blocks))

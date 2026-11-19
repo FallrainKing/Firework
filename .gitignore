@@ -26,3 +26,8 @@ app/web/v2/
 app/web/index.html
 app/web/assets/
 app/web/md.js
+
+# local tunnel runtime and credentials
+ops/public-access-credentials.txt
+ops/tunnel.log
+ops/tunnel.sh

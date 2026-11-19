@@ -14,6 +14,7 @@ from ..core.db import get_conn
 from ..core.errors import ServiceError
 from ..reader.service import validate_context
 from ..sessions.service import require_session
+from ..skills import service as skills_service
 from . import repository as repo, runner_client
 from .catalog import SKILLS as CATALOG, TEMPLATES
 from .schemas import RunCreate
@@ -89,7 +90,20 @@ async def status_view(db) -> dict:
             runner = response.json()
     except (httpx.HTTPError, ValueError):
         runner = {'status': 'offline', 'skills': []}
-    return {'runner': runner, 'runs': counts, 'database': 'ok', 'limits': {'concurrency': runner.get('concurrency', 2), 'max_queued': 8, 'skills': {k: {'max_turns': v['max_turns'], 'max_output_tokens': v['max_output_tokens'], 'timeout_s': v['timeout_s'], 'max_budget_usd': v['max_budget_usd']} for k, v in CATALOG.items()}, 'cost_verified': False}}
+    registry = skills_service.registry_view(db)
+    return {
+        'runner': runner,
+        'runs': counts,
+        'database': 'ok',
+        'registry_revision': registry['registry_revision'],
+        'skills': registry['skills'],
+        'limits': {
+            'concurrency': runner.get('concurrency', 2),
+            'max_queued': 8,
+            'skills': {k: {'max_turns': v['max_turns'], 'max_output_tokens': v['max_output_tokens'], 'timeout_s': v['timeout_s'], 'max_budget_usd': v['max_budget_usd']} for k, v in CATALOG.items()},
+        },
+        'cost_verified': False,
+    }
 
 
 def list_runs(db, conversation_id: int | None = None, q: str = '') -> dict:
@@ -141,16 +155,24 @@ async def create_run(body: RunCreate, state) -> dict:
     prompt = body.prompt.strip()
     if not prompt:
         raise ServiceError(400, 'Message must not be empty')
-    if body.skill is not None and body.skill not in SKILLS:
-        raise ServiceError(400, 'Unknown skill')
     db = state.db
+    skills_service.ensure_builtin_skills(db)
+    registry = skills_service.registry_view(db)
+    available = {s['id'] for s in registry['skills'] if s['status'] == 'enabled'}
+    if body.skill is not None and body.skill not in available:
+        raise ServiceError(400, 'Unknown skill')
     prior = repo.find_run_by_key(db, body.request_key)
     if prior:
         try:
             prior_contexts = [validate_context(state.settings, db, c.model_dump(), prior['conversation_id']) for c in body.contexts]
         except ValueError as e:
-            raise ServiceError(409, str(e))
-        if json.loads(prior['attachment_ids_json']) != body.attachment_ids or json.loads(prior['context_json']) != prior_contexts or prior['purpose'] != body.purpose or prior['prompt'] != prompt or (body.skill is not None and prior['skill'] != body.skill) or (body.conversation_id is not None and prior['conversation_id'] != body.conversation_id):
+            raise ServiceError(409, str(e)) from e
+        if (json.loads(prior['attachment_ids_json']) != body.attachment_ids
+                or json.loads(prior['context_json']) != prior_contexts
+                or prior['purpose'] != body.purpose
+                or prior['prompt'] != prompt
+                or (body.skill is not None and prior['skill'] != body.skill)
+                or (body.conversation_id is not None and prior['conversation_id'] != body.conversation_id)):
             raise ServiceError(409, 'Request key already used for different input')
         return view(prior)
     if repo.count_active_runs(db) >= 8:
@@ -183,14 +205,48 @@ async def create_run(body: RunCreate, state) -> dict:
         try:
             contexts = [validate_context(state.settings, db, c.model_dump(), conv_id) for c in body.contexts]
         except ValueError as e:
-            raise ServiceError(409, str(e))
+            raise ServiceError(409, str(e)) from e
+
+    session_version_id = None
+    if conv_id is not None:
+        session = require_session(db, conv_id)
+        session_version_id = session['skill_version_id']
+    try:
+        policy = skills_service.execution_policy(db, skill, session_version_id)
+    except ValueError as exc:
+        raise ServiceError(409, str(exc)) from exc
+    if conv_id is not None and session_version_id is None:
+        repo.set_conversation_skill_version(db, conv_id, policy['version_id'])
+        db.commit()
+
     # All writes happen without awaits; one transaction owns conversation+run.
     try:
         if conv_id is None:
-            cursor = repo.insert_conversation(db, prompt[:80], skill, 'discovery' if skill.startswith('search_') else 'chat', str(uuid.uuid4()))
+            cursor = repo.insert_conversation(
+                db,
+                prompt[:80],
+                skill,
+                'discovery' if skill.startswith('search_') else 'chat',
+                str(uuid.uuid4()),
+                policy['version_id'],
+            )
             conv_id = cursor.lastrowid
         run_id = uuid.uuid4().hex
-        repo.insert_run(db, run_id, body.request_key, conv_id, skill, prompt, json.dumps(contexts, ensure_ascii=False), body.purpose, json.dumps(body.attachment_ids))
+        repo.insert_run(
+            db,
+            run_id,
+            body.request_key,
+            conv_id,
+            skill,
+            prompt,
+            json.dumps(contexts, ensure_ascii=False),
+            body.purpose,
+            json.dumps(body.attachment_ids),
+            policy['version_id'],
+            policy['skill_hash'],
+            json.dumps(policy, ensure_ascii=False),
+            policy['version'],
+        )
         repo.clear_draft(db, conv_id)
         db.commit()
     except Exception:
@@ -217,7 +273,7 @@ async def cancel_run(db, run_id: str, state) -> dict:
     try:
         async with runner_client.client() as c:
             response = await c.post(f'/runs/{run_id}/cancel', timeout=10)
-            if response.status_code != 404:  # 404 = runner restarted; cancel locally
+            if response.status_code != 404:
                 response.raise_for_status()
     except httpx.HTTPError:
         raise ServiceError(503, 'Runner 离线，无法取消')
@@ -225,7 +281,6 @@ async def cancel_run(db, run_id: str, state) -> dict:
     repo.fail_imports_for_run(db, run_id, '已取消')
     db.commit()
     return view(repo.find_run(db, run_id))
-
 
 def run_snapshot(db, run_id: str):
     row = repo.find_run(db, run_id)
@@ -262,7 +317,7 @@ async def execute_run(run_id: str, state):
             return
         try:
             async with runner_client.client() as c:
-                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None})
+                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash']})
                 sub.raise_for_status()
                 if repo.find_run(db, run_id)['status'] not in ('queued', 'running'):
                     with contextlib.suppress(httpx.HTTPError):

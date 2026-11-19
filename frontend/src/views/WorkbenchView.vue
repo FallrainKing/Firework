@@ -14,6 +14,7 @@ import ReadingView from './ReadingView.vue'
 import LibraryView from './LibraryView.vue'
 import CompareView from './CompareView.vue'
 import SchedulesView from './SchedulesView.vue'
+import SkillsView from './SkillsView.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
 import { useActivityStore } from '@/stores/activity'
@@ -183,6 +184,7 @@ async function createDomain() {
         </section>
         <CompareView v-if="wb.view === 'compare'" />
         <SchedulesView v-if="wb.view === 'schedules'" />
+      <SkillsView v-if="wb.view === 'skills'" />
         <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" @open-paper="openPaper" @open-import="openImport" @open-session="openSessionInLibrary" />
       </main>
     </div>

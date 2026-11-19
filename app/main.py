@@ -19,6 +19,7 @@ from .schedules import service as schedules_service
 from .workbench.router import router as workbench_router
 from .agent.router import router as agent_router
 from .agent import service as agent_service
+from .skills.router import router as skills_router
 from .reader.router import router as reader_router
 from .sessions.router import router as sessions_router
 from .core.config import Settings
@@ -121,6 +122,7 @@ def create_app() -> FastAPI:
     register_error_handlers(app)
 
     app.include_router(agent_router)
+    app.include_router(skills_router)
     app.include_router(sessions_router)
     app.include_router(papers_router)
     app.include_router(reader_router)

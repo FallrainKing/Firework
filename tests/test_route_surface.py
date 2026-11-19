@@ -16,7 +16,7 @@ def test_create_app_registers_schedule_routes():
 
 def test_create_app_registers_every_domain():
     paths = create_app().openapi()['paths']
-    for p in ('/health', '/api/agent/status', '/api/sessions', '/api/library/papers',
+    for p in ('/health', '/api/agent/status', '/api/skills', '/api/sessions', '/api/library/papers',
               '/api/reader/papers/{paper_id}', '/api/imports/source',
               '/api/internal/imports/{ident}/execute', '/api/workbench/states/{ident}',
               '/api/workbench/drafts/{sid}/{pid}', '/api/workbench/images'):

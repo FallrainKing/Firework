@@ -3,6 +3,7 @@ export interface Session {
   title: string
   kind: string
   skill: string
+  skill_version_id?: number | null
   category_id: number | null
   template_id: string | null
   native_session_id: string | null
@@ -41,6 +42,8 @@ export interface Template {
   skill: string
   prompt: string
   builtin: number
+  skill_version_id?: number | null
+  source_template_key?: string | null
 }
 
 export interface Category {
@@ -141,7 +144,7 @@ export interface WorkspaceState {
   layout: Layout
   tabs: Tab[]
   active_paper_id: number | null
-  view: 'read' | 'compare' | 'schedules' | 'library'
+  view: 'read' | 'compare' | 'schedules' | 'library' | 'skills'
 }
 
 export interface Attachment {

@@ -200,7 +200,7 @@ def test_settings_from_env(tmp_path, monkeypatch):
 
 
 def test_0008_preserves_rows_and_foreign_keys(tmp_path):
-    """Rebuilding agent_runs (CHECK + progress_json) must keep rows and FKs intact."""
+    """Rebuild agent_runs in production order and keep rows/FKs intact."""
     from app.core import db as core_db
 
     settings = Settings(data_dir=tmp_path, qdrant_url="unused")
@@ -209,7 +209,9 @@ def test_0008_preserves_rows_and_foreign_keys(tmp_path):
         "CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, applied_at TEXT DEFAULT CURRENT_TIMESTAMP)"
     )
     for path in sorted(core_db.MIGRATIONS_DIR.glob("*.sql")):
-        if path.name == "0008_agent_async.sql":
+        # Seed only the pre-0008 schema. get_conn() below then applies
+        # 0008 and all later migrations in their intended production order.
+        if path.name >= "0008_agent_async.sql":
             continue
         core_db._apply_migration(raw, path)
     raw.execute("INSERT INTO papers(id,title) VALUES (1,'P')")
@@ -229,7 +231,7 @@ def test_0008_preserves_rows_and_foreign_keys(tmp_path):
     raw.commit()
     raw.close()
 
-    db = core_db.get_conn(settings)  # applies only 0008
+    db = core_db.get_conn(settings)  # applies 0008, 0009, and 0010 in order
     try:
         row = db.execute("SELECT * FROM agent_runs WHERE id='r1'").fetchone()
         assert row["prompt"] == "p" and row["status"] == "succeeded"

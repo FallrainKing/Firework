@@ -46,17 +46,21 @@ def search_papers(db: sqlite3.Connection, q: str):
     ).fetchall()
 
 
-def insert_conversation(db: sqlite3.Connection, title: str, skill: str, kind: str, native_session_id: str):
+def insert_conversation(db: sqlite3.Connection, title: str, skill: str, kind: str, native_session_id: str, skill_version_id: int | None = None):
     return db.execute(
-        "INSERT INTO conversations(module,title,messages,skill,kind,native_session_id) VALUES ('agent',?,'[]',?,?,?)",
-        (title, skill, kind, native_session_id),
+        "INSERT INTO conversations(module,title,messages,skill,kind,native_session_id,skill_version_id) VALUES ('agent',?,'[]',?,?,?,?)",
+        (title, skill, kind, native_session_id, skill_version_id),
     )
 
 
-def insert_run(db, run_id, request_key, conv_id, skill, prompt, context_json, purpose, attachment_ids_json) -> None:
+def set_conversation_skill_version(db: sqlite3.Connection, conv_id: int, skill_version_id: int | None) -> None:
+    db.execute("UPDATE conversations SET skill_version_id=? WHERE id=?", (skill_version_id, conv_id))
+
+
+def insert_run(db, run_id, request_key, conv_id, skill, prompt, context_json, purpose, attachment_ids_json, skill_version_id: int | None = None, skill_hash: str | None = None, execution_policy_json: str = '{}', skill_version: str = '0.4.0') -> None:
     db.execute(
-        "INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status,skill_version,context_json,purpose,attachment_ids_json) VALUES (?,?,?,?,?,'queued','0.4.0',?,?,?)",
-        (run_id, request_key, conv_id, skill, prompt, context_json, purpose, attachment_ids_json),
+        "INSERT INTO agent_runs(id,request_key,conversation_id,skill,prompt,status,skill_version,context_json,purpose,attachment_ids_json,skill_version_id,skill_hash,execution_policy_json) VALUES (?,?,?,?,?,'queued',?,?,?,?,?,?,?)",
+        (run_id, request_key, conv_id, skill, prompt, skill_version, context_json, purpose, attachment_ids_json, skill_version_id, skill_hash, execution_policy_json),
     )
 
 

@@ -25,7 +25,13 @@ TOOLS = [
     {"name":"paper_page","description":"Read a physical PDF page with accurate page number and file version for a paper linked to this session.","inputSchema":{"type":"object","properties":{"paper_id":{"type":"integer","minimum":1},"page":{"type":"integer","minimum":1}},"required":["paper_id","page"],"additionalProperties":False}},
     {"name":"paper_search","description":"Search public academic metadata on arxiv or crossref. Returns real source records for a user to import.","inputSchema":{"type":"object","properties":{"query":{"type":"string","maxLength":200},"source":{"type":"string","enum":["arxiv","crossref"]}},"required":["query","source"],"additionalProperties":False}},
     {"name":"paper_import","description":"Execute only the import request ID bound to this Agent task. No arbitrary file path or network access.","inputSchema":{"type":"object","properties":{"request_id":{"type":"string","pattern":"^[a-f0-9]{32}$"}},"required":["request_id"],"additionalProperties":False}},
+    {"name":"skill_resource","description":"Read a text resource from the exact skill version bound to this run. Relative paths only; other versions and host files are inaccessible.","inputSchema":{"type":"object","properties":{"path":{"type":"string","minLength":1,"maxLength":260,"pattern":"^(?!/)(?!\\\\)[^\\\\]+$"}},"required":["path"],"additionalProperties":False}},
 ]
+
+_SKILL_RESOURCE_SUFFIXES = {'.md', '.txt', '.json', '.yaml', '.yml'}
+_SKILL_RESOURCE_PER_CALL_CHARS = 20_000
+_SKILL_RESOURCE_TOTAL_CHARS = 200_000
+
 
 def paper_page(paper_id,page,db_path):
     from app.reader.pages import read_page
@@ -118,6 +124,37 @@ def arxiv_search(query: str) -> dict:
         papers.append({'title': ' '.join((item.findtext(atom + 'title') or '').split()), 'url': url, 'arxiv_id': url.split('/abs/', 1)[1], 'abstract': ' '.join((item.findtext(atom + 'summary') or '').split())[:1200], 'published': item.findtext(atom + 'published'), 'authors':[(a.findtext(atom+'name') or '').strip() for a in item.findall(atom+'author')]})
     return {'source': 'arxiv', 'query': query, 'papers': papers, 'result_limit': 2}
 
+def skill_resource(path: str) -> dict:
+    root = Path(os.environ['RESEARCH_SKILL_ROOT']).resolve()
+    rel = Path(path)
+    if rel.is_absolute() or '..' in rel.parts:
+        raise ValueError('Only relative paths inside the skill package are allowed')
+    target = (root / rel).resolve()
+    try:
+        target.relative_to(root)
+    except ValueError:
+        raise ValueError('Path escapes the skill package') from None
+    if target.is_symlink() or target.suffix.lower() not in _SKILL_RESOURCE_SUFFIXES:
+        raise ValueError('Resource type is not allowed')
+    if not target.is_file():
+        raise ValueError('Resource not found')
+    if target.stat().st_size > 1024 * 1024:
+        raise ValueError('Resource exceeds the 1MB limit')
+    used = int(os.environ.get('RESEARCH_SKILL_CHARS_USED', '0'))
+    remaining = _SKILL_RESOURCE_TOTAL_CHARS - used
+    if remaining <= 0:
+        raise ValueError('Skill resource read budget exhausted')
+    text = target.read_text(encoding='utf-8')[:min(_SKILL_RESOURCE_PER_CALL_CHARS, remaining)]
+    os.environ['RESEARCH_SKILL_CHARS_USED'] = str(used + len(text))
+    return {
+        'path': rel.as_posix(),
+        'skill_hash': os.environ.get('RESEARCH_SKILL_HASH', ''),
+        'content': text,
+        'truncated': len(text) == _SKILL_RESOURCE_PER_CALL_CHARS,
+        'remaining_chars': _SKILL_RESOURCE_TOTAL_CHARS - used - len(text),
+    }
+
+
 def serve() -> None:
     calls = 0
     for line in sys.stdin:
@@ -136,9 +173,12 @@ def serve() -> None:
             elif method == 'tools/call':
                 params = req.get('params', {})
                 name = params.get('name')
-                query = params.get('arguments', {}).get('query', '')
-                if not isinstance(query, str) or len(query) > 200:
+                arguments = params.get('arguments', {})
+                query = arguments.get('query', '')
+                if name in ('library_search', 'arxiv_search') and (not isinstance(query, str) or len(query) > 200):
                     raise ValueError('query must be at most 200 characters')
+                if name == 'paper_search' and not isinstance(arguments.get('query'), str):
+                    raise ValueError('query is required')
                 if name not in json.loads(os.environ.get('RESEARCH_ALLOWED_TOOLS', '[]')):
                     raise ValueError('tool not allowed by this skill')
                 calls += 1
@@ -146,13 +186,13 @@ def serve() -> None:
                     raise ValueError('tool call limit reached; finish with existing results')
                 started = time.monotonic()
                 try:
-                    arguments=params.get('arguments',{})
                     if name=='library_search':payload=library_search(query,os.environ['RESEARCH_DB_PATH'])
                     elif name=='arxiv_search':payload=arxiv_search(query)
                     elif name=='paper_read':payload=paper_read(arguments.get('paper_id'),arguments.get('start_chunk',0),os.environ['RESEARCH_DB_PATH'])
                     elif name=='paper_page':payload=paper_page(arguments.get('paper_id'),arguments.get('page'),os.environ['RESEARCH_DB_PATH'])
                     elif name=='paper_search':payload=paper_search(query,arguments.get('source'))
                     elif name=='paper_import':payload=paper_import(arguments.get('request_id'))
+                    elif name=='skill_resource':payload=skill_resource(arguments.get('path',''))
                     else:payload=None
                     if payload is None:
                         raise ValueError('unknown tool')

@@ -178,3 +178,7 @@ Zotero 初版功能提交为 `b97000e`；当前 0.1.3 对应业务迁移 0016，
 当前流程修复功能提交 `58dcc70`，服务端与公开插件 0.1.3 已发布。2026-11-20 发布验证保留 18 篇论文、9 个分类、12 条批注和 15 个文件版本；本机仍运行 0.1.1，需通过插件管理更新，配对无需重建。
 
 子分类与目录树修复功能提交为 `ade154a`，无需新迁移；发布前备份 `backups/before-subcollections-20261120/`，回退镜像 `research-assistant-app:before-subcollections-20261120`。线上五步检查和 Chrome 目录操作核对通过。
+
+## Hash 路由发布（2026-11-20）
+
+功能版本 `194636b` 已构建并重启 app 容器；页面入口 `https://paper.matchesai.vip/#/`，登录入口 `/#/login`，配对入口 `/#/integrations/zotero`。旧路径兜底仍保留；API、PDF 和 XPI 地址不变。回退镜像 `research-assistant-app:before-hash-routing-20261120`，无新增数据库迁移。线上检查与 Chrome 刷新验证通过，Runner 协议仍为 5，未调用研究模型。

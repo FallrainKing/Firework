@@ -144,6 +144,7 @@ docker compose logs --tail=80 app
 | Zotero 发布前成套备份 | `backups/before-zotero-20261120/` |
 | Zotero 发布后成套备份 | `backups/after-zotero-20261120/` |
 | Zotero 流程修复前备份 | `backups/before-zotero-flow-fix-20261120/` |
+| Zotero 流程修复后备份 | `backups/after-zotero-flow-fix-20261120/` |
 | Zotero 流程修复前应用镜像 | `research-assistant-app:before-zotero-flow-fix-20261120` |
 | Zotero 发布前应用镜像 | `research-assistant-app:before-zotero-20261120` |
 | 文件管理前应用镜像 | `research-assistant-app:before-documents-20261120` |
@@ -173,3 +174,5 @@ docker compose logs --tail=80 app
 设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0016）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。
 
 Zotero 初版功能提交为 `b97000e`；当前 0.1.3 对应业务迁移 0016，身份 schema 保持 2。插件 SHA-256 为 `ca881b9b747d876a2f62eac51014d1565d720d6e12c19e5899ce84ad9e3e764c`。发布验证情况见 STATUS 与 CHANGELOG。
+
+当前流程修复功能提交 `58dcc70`，服务端与公开插件 0.1.3 已发布。2026-11-20 发布验证保留 18 篇论文、9 个分类、12 条批注和 15 个文件版本；本机仍运行 0.1.1，需通过插件管理更新，配对无需重建。

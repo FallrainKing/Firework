@@ -1,3 +1,4 @@
+var {classes:Cc,interfaces:Ci}=Components;
 var Firework;
 async function startup({id,rootURI}) {
   await Zotero.initializationPromise;

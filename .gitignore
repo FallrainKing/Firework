@@ -34,3 +34,5 @@ ops/tunnel.sh
 
 # Reproducible Zotero package (built into deployment image)
 /app/web/downloads/*.xpi
+
+/app/web/downloads/firework-zotero-updates.json

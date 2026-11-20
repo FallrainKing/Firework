@@ -23,3 +23,5 @@ test('receives PDF and resumes after lost receipt without duplicate items or att
  await assert.rejects(()=>p.receive(),/lost network receipt/);assert.equal(count,2);assert.equal(attachmentCount,1);
  claimed=false;loseReceipt=false;await p.receive();assert.equal(count,2);assert.equal(attachmentCount,1);assert.equal(ackCount,3);
 });
+
+test('declares privileged hash interfaces in the Zotero bootstrap sandbox',()=>{const context={Components:{classes:{hash:'class'},interfaces:{hash:'interface'}}};vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../bootstrap.js'),'utf8'),context);assert.equal(context.Cc.hash,'class');assert.equal(context.Ci.hash,'interface')});

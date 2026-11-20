@@ -1,9 +1,16 @@
 {
   "manifest_version": 2,
   "name": "Firework for Zotero",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Manual paper and PDF exchange with your Firework workspace. No model calls.",
   "author": "fallrain",
   "homepage_url": "https://github.com/FallrainKing/Firework",
-  "applications": {"zotero": {"id": "firework@fallrainking.github.io", "strict_min_version": "10.0.6", "strict_max_version": "10.*"}}
+  "applications": {
+    "zotero": {
+      "id": "firework@fallrainking.github.io",
+      "strict_min_version": "10.0.6",
+      "strict_max_version": "10.*",
+      "update_url": "https://paper.matchesai.vip/downloads/firework-zotero-updates.json"
+    }
+  }
 }

@@ -166,8 +166,8 @@ docker compose logs --tail=80 app
 
 ## Zotero 插件构建
 
-本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.0.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.0.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
+本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.1.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.1.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
 
 设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0015）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。
 
-本次 Zotero 功能发布为 `b97000e`，业务迁移 0015 与身份 schema 2 已在生产应用。公网插件 SHA-256 为 `80d70b3b5c29f3d547941577c4462f92ebf2c8be64dc740583519a4fef45e5e4`；线上五步冒烟、匿名隔离、设备令牌拒绝和 PDF Range 验证通过，未新增真实设备或研究运行。
+本次 Zotero 功能发布为 `b97000e`，业务迁移 0015 与身份 schema 2 已在生产应用。公网插件 SHA-256 为 `f101f9230f4883246c34d4b75527e8959cba5491c7065704d79fab9fcf5ad52e`；线上五步冒烟、匿名隔离、设备令牌拒绝和 PDF Range 验证通过，未新增真实设备或研究运行。

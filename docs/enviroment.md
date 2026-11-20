@@ -182,3 +182,5 @@ Zotero 初版功能提交为 `b97000e`；当前 0.1.3 对应业务迁移 0016，
 ## Hash 路由发布（2026-11-20）
 
 功能版本 `194636b` 已构建并重启 app 容器；页面入口 `https://paper.matchesai.vip/#/`，登录入口 `/#/login`，配对入口 `/#/integrations/zotero`。旧路径兜底仍保留；API、PDF 和 XPI 地址不变。回退镜像 `research-assistant-app:before-hash-routing-20261120`，无新增数据库迁移。线上检查与 Chrome 刷新验证通过，Runner 协议仍为 5，未调用研究模型。
+
+Zotero 插件修复发布：0.1.4（`8a1d1d7`），更新清单及旧版本下载别名均已更新；XPI SHA-256 为 `c6446da41e2b8ad18bd54752bb40a7b95ba2305bd3f40c3ab180bd4505115786`。回退镜像 `research-assistant-app:before-zotero-014-20261120`。升级不改变设备授权范围，沿用当前配对；失败任务从网页重试后再次手动接收。

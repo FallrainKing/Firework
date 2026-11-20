@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Firework for Zotero",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Manual paper and PDF exchange with your Firework workspace. No model calls.",
   "author": "fallrain",
   "homepage_url": "https://github.com/FallrainKing/Firework",

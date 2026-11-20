@@ -64,7 +64,7 @@ var FireworkPlugin = {
     await this.save();await this.drain(queued);
   },
   async sendSelected(){await this.enqueueItems(Zotero.getActiveZoteroPane().getSelectedItems())},
-  async sendCollection(){const c=Zotero.getActiveZoteroPane().getSelectedCollection();if(!c)throw new Error('请先选中一个分类。');const ids=new Set();const visit=async col=>{for(const i of await col.getChildItems())if(i.isRegularItem())ids.add(i.id);for(const child of col.getChildCollections())await visit(child)};await visit(c);await this.enqueueItems([...ids].map(id=>Zotero.Items.get(id)))},
+  async sendCollection(){const collections=Zotero.getActiveZoteroPane().getSelectedCollections();if(!collections.length)throw new Error('请先选中至少一个分类。');const ids=new Set(),visited=new Set();const visit=async col=>{if(visited.has(col.id))return;visited.add(col.id);for(const i of await col.getChildItems())if(i.isRegularItem()&&!i.deleted)ids.add(i.id);for(const child of col.getChildCollections())await visit(child)};for(const c of collections)await visit(c);await this.enqueueItems([...ids].map(id=>Zotero.Items.get(id)))},
   async drain(ids=null){
     let ok=0,failed=0;
     for(const job of this.queue.filter(j=>j.status!=='completed'&&(!ids||ids.includes(j.id)))){
@@ -81,8 +81,8 @@ var FireworkPlugin = {
   async findCollection(libraryID,parentID,name){let existing=Zotero.Collections.getByLibrary(libraryID,true).find(c=>c.parentID===parentID&&c.name===name);if(existing)return existing;const c=new Zotero.Collection();c.libraryID=libraryID;c.name=name;if(parentID)c.parentID=parentID;await c.saveTx();return c},
   normalizedDOI(value){return (value||'').trim().replace(/^(?:https?:\/\/(?:dx\.)?doi\.org\/|doi:\s*)/i,'').toLowerCase()},
   async receive(){
-    const pane=Zotero.getActiveZoteroPane(),libraryID=pane.getSelectedLibraryID();if(!Zotero.Libraries.get(libraryID)?.editable)throw new Error('当前文献库不可写，请选择个人库或有编辑权限的库。');
-    const target=pane.getSelectedCollection();if(!Services.prompt.confirm(this.win(),'接收 Firework 论文','将接收网页中为此设备选定的论文，保存至当前文献库'+(target?'的“'+target.name+'”分类':'的 Firework 分类')+'。已有匹配书目的字段和分类保留；只有新建条目加入当前分类，原始附件保留。继续？'))return;
+    const pane=Zotero.getActiveZoteroPane(),libraries=[...new Set(pane.getSelectedLibraryIDs())],targets=pane.getSelectedCollections();if(libraries.length!==1||targets.length>1)throw new Error('接收前请选择一个文献库，以及至多一个目标分类，避免归属不明确。');const libraryID=libraries[0];if(!Zotero.Libraries.get(libraryID)?.editable)throw new Error('当前文献库不可写，请选择个人库或有编辑权限的库。');
+    const target=targets[0]||null;if(!Services.prompt.confirm(this.win(),'接收 Firework 论文','将接收网页中为此设备选定的论文，保存至当前文献库'+(target?'的“'+target.name+'”分类':'的 Firework 分类')+'。已有匹配书目的字段和分类保留；只有新建条目加入当前分类，原始附件保留。继续？'))return;
     let done=0;
     while(done<30){const response=await this.request('/api/zotero/device/exports/claim',{});if(!response.job)break;const job=response.job;
       const journalKey=this.pref('device')+':'+job.id;

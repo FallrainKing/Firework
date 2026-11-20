@@ -25,6 +25,6 @@ describe('Zotero approval',()=>{
   const w=mount(ZoteroView,{global:{stubs:{RouterLink:true,PaperPicker:true}}});await flushPromises()
   await w.find('input').setValue('abcdef12');await w.find('form').trigger('submit');await flushPromises()
   await w.find('input').setValue('11223344');expect(w.find('.confirmation').exists()).toBe(false)
-  expect(w.find('a[download]').attributes('href')).toBe('/downloads/firework-zotero-0.1.2.xpi')
+  expect(w.find('a[download]').attributes('href')).toBe('/downloads/firework-zotero-0.1.3.xpi')
  })
 })

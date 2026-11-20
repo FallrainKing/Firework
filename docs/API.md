@@ -108,3 +108,6 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 插件只使用 `Authorization: Bearer <device-token>` 调用 `/api/zotero/device/*`：`items` 提交书目，`papers/{pid}/attachments/check` 以来源键和 SHA-256 查询文件，`papers/{pid}/attachments` 用 multipart 上传 PDF（50 MiB/300 页）；`exports/claim` 返回任务、文件清单和 15 分钟租约；下载 `exports/{ident}/files/{vid}` 必须携带 `X-Sync-Lease`；`exports/{ident}/ack` 提交租约、成功/失败、目标库/条目与完整附件映射。同租约的相同终态回执可重复提交，不得据此继续下载文件。账号由服务端路由，插件不能选工作区。
 
 409 表示元数据冲突、失效租约或来源映射冲突，不触发模型和自动覆盖；附件缺失、只读库或配对失效应先排除原因，再人工重试。详细字段以 `app/integrations/zotero/schemas.py` 为准。
+
+
+0.1.2 契约补充：入站 `items.pdf_hash` 可选，采用正文 SHA-256 精确查重；不进入书目变更指纹。相同内容的不同附件键可关联同一文档版本。首次正文上传直接返回可阅读状态和 `fulltext_indexed`，不等待嵌入；文件列表也返回该标志。当前默认版本尚无索引时，使用既有 `POST .../document-versions/{vid}/default`、`expected_version_id=vid`、`confirmed=true` 明确补建，原文版本不改变。出站任务列表增加论文题名与租约到期信息；不同请求键可复用同一未完成任务，各自仍有持久幂等结果。领取任务时读取最新来源映射，材料内容仍保持排队时的快照。

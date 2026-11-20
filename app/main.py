@@ -110,6 +110,8 @@ async def lifespan(app: FastAPI):
     app.state.db = db
     from .documents.service import backfill
     backfill(db, settings)
+    from .integrations.zotero.service import recover_first_pdfs
+    recover_first_pdfs(db, settings)
 
 
     embedder, store = await _init_rag_stack(settings)

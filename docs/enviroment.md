@@ -16,7 +16,7 @@
 | Runner | 用户级 `research-agent-runner`，协议 5，并发 2 |
 | 实际模型快照 | 本次发布冒烟报告 `glm-5.3[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
-| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0015_zotero_manual_sync.sql` |
+| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0016_zotero_export_request_keys.sql` |
 
 远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
 
@@ -143,6 +143,8 @@ docker compose logs --tail=80 app
 | 文件管理发布后成套备份 | `backups/after-documents-20261120/` |
 | Zotero 发布前成套备份 | `backups/before-zotero-20261120/` |
 | Zotero 发布后成套备份 | `backups/after-zotero-20261120/` |
+| Zotero 流程修复前备份 | `backups/before-zotero-flow-fix-20261120/` |
+| Zotero 流程修复前应用镜像 | `research-assistant-app:before-zotero-flow-fix-20261120` |
 | Zotero 发布前应用镜像 | `research-assistant-app:before-zotero-20261120` |
 | 文件管理前应用镜像 | `research-assistant-app:before-documents-20261120` |
 | 改名前应用镜像 | `research-assistant-app:before-firework-20261119` |
@@ -166,8 +168,8 @@ docker compose logs --tail=80 app
 
 ## Zotero 插件构建
 
-本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.1.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.1.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
+本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.2.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.2.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
 
-设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0015）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。
+设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0016）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。
 
-本次 Zotero 功能发布为 `b97000e`，业务迁移 0015 与身份 schema 2 已在生产应用。公网插件 SHA-256 为 `f101f9230f4883246c34d4b75527e8959cba5491c7065704d79fab9fcf5ad52e`；线上五步冒烟、匿名隔离、设备令牌拒绝和 PDF Range 验证通过，未新增真实设备或研究运行。
+Zotero 初版功能提交为 `b97000e`；当前 0.1.2 对应业务迁移 0016，身份 schema 保持 2。插件 SHA-256 为 `d07adadcd4583fc7482b70df0b5c7b5564d0f295e2f004efdce6c8cb59bb7f35`。发布验证情况见 STATUS 与 CHANGELOG。

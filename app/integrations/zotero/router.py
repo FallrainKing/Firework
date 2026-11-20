@@ -62,7 +62,7 @@ async def exports(body:ExportRequest,request:Request):
 
 @router.get('/exports')
 async def export_list(request:Request):
-    return {'jobs':[dict(r) for r in request.app.state.db.execute('SELECT id,device_id,paper_id,status,error,created_at FROM zotero_exports ORDER BY created_at DESC LIMIT 100')]}
+    return {'jobs':[dict(r) for r in request.app.state.db.execute('SELECT e.id,e.device_id,e.paper_id,e.status,e.error,e.created_at,e.lease_until,p.title AS paper_title FROM zotero_exports e JOIN papers p ON p.id=e.paper_id ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100')]}
 
 @router.post('/exports/{ident}/retry')
 async def retry(ident:str,request:Request):

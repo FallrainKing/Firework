@@ -77,6 +77,11 @@ def test_pdf_hash_retry_export_scope_and_idempotent_ack(secured):
     url=f'/api/zotero/device/papers/{pid}/attachments'
     r=c.post(url,headers=h,data=fields,files={'file':('x.pdf',raw,'application/pdf')});assert r.status_code==200,r.text
     vid=r.json()['version_id'];assert r.json()['has_default_pdf']
+    assert r.json()['fulltext_indexed'] is False
+    assert a.state.db.execute('SELECT count(*) FROM chunks_meta WHERE paper_id=?',(pid,)).fetchone()[0]==0
+    assert c.get('/api/reader/papers/'+str(pid)+'/file',headers=admin).content==raw
+    assert c.post(f'/api/library/papers/{pid}/document-versions/{vid}/default',headers=admin,json={'confirmed':True,'expected_version_id':vid}).status_code==200
+    assert c.get(f'/api/library/papers/{pid}/documents',headers=admin).json()['fulltext_indexed'] is True
     r=c.post(url,headers=h,data=fields,files={'file':('x.pdf',raw,'application/pdf')});assert r.json()['version_id']==vid
     check={k:fields[k] for k in ('library_key','item_key','attachment_key')};check['file_hash']=hashlib.sha256(raw).hexdigest()
     assert c.post(url+'/check',headers=h,json=check).json()['present']
@@ -120,3 +125,77 @@ def test_identifier_normalization_and_invalid_ack_leave_no_partial_state(secured
     ack={'lease_token':job['lease_token'],'success':True,'library_key':'1','item_key':'ABC12345','attachments':{'not-in-job':'OTHER123'}}
     assert c.post('/api/zotero/device/exports/'+job['id']+'/ack',headers=h,json=ack).status_code==422
     assert a.state.db.execute('SELECT status FROM zotero_exports').fetchone()[0]=='leased'
+
+
+def test_identical_pdf_reuses_paper_and_document_across_local_item_keys(secured):
+    c,a=secured;admin=login(c);h,d=paired(c,admin)
+    pid=imported(c,h,doi='')
+    a.state.embedder=SimpleNamespace(dimension=4,embed=lambda texts:[[1.,0.,0.,0.] for _ in texts])
+    raw=pdf('Identical PDF content');fields={'library_key':'1','item_key':'ABC12345','attachment_key':'PDF12345','label':'Main','role':'main'}
+    url=f'/api/zotero/device/papers/{pid}/attachments'
+    first=c.post(url,headers=h,data=fields,files={'file':('main.pdf',raw,'application/pdf')});assert first.status_code==200,first.text
+    digest=hashlib.sha256(raw).hexdigest()
+    assert imported(c,h,item_key='OTHER123',doi='',title='Imported variation',pdf_hash=digest)==pid
+    duplicate=c.post(url,headers=h,data={**fields,'item_key':'OTHER123','attachment_key':'OTHERPDF','role':'supplement'},files={'file':('copy.pdf',raw,'application/pdf')})
+    assert duplicate.status_code==200,duplicate.text
+    assert duplicate.json()['version_id']==first.json()['version_id']
+    assert a.state.db.execute('SELECT count(*) FROM papers').fetchone()[0]==1
+    assert a.state.db.execute('SELECT count(*) FROM paper_documents').fetchone()[0]==1
+    assert a.state.db.execute('SELECT title FROM papers WHERE id=?',(pid,)).fetchone()[0]=='Robotics paper'
+
+
+def test_duplicate_queue_click_reuses_pending_job_and_claim_refreshes_mapping(secured):
+    c,a=secured;admin=login(c);h,d=paired(c,admin);pid=imported(c,h)
+    payload={'device_id':d['device_id'],'paper_ids':[pid],'request_key':'first-click'}
+    first=c.post('/api/zotero/exports',headers=admin,json=payload).json()['jobs'][0]
+    again=c.post('/api/zotero/exports',headers=admin,json={**payload,'request_key':'second-click'}).json()['jobs'][0]
+    assert first['id']==again['id']
+    assert a.state.db.execute('SELECT count(*) FROM zotero_exports').fetchone()[0]==1
+    # An old queued snapshot may not have known the local mapping yet.
+    job=a.state.db.execute('SELECT payload_json FROM zotero_exports').fetchone()[0]
+    snap=json.loads(job);snap['library_key']=snap['item_key']=None
+    a.state.db.execute('UPDATE zotero_exports SET payload_json=?',(json.dumps(snap),));a.state.db.commit()
+    received=c.post('/api/zotero/device/exports/claim',headers=h,json={}).json()['job']
+    assert received['payload']['library_key']=='1'
+    assert received['payload']['item_key']=='ABC12345'
+
+    ack={'lease_token':received['lease_token'],'success':True,'library_key':'1','item_key':'ABC12345','attachments':{}}
+    assert c.post('/api/zotero/device/exports/'+first['id']+'/ack',headers=h,json=ack).status_code==200
+    # A repeated second click must retain its original result even after completion.
+    after=c.post('/api/zotero/exports',headers=admin,json={**payload,'request_key':'second-click'}).json()['jobs'][0]
+    assert after['id']==first['id'] and after['status']=='completed'
+
+
+
+def test_later_identifier_enrichment_updates_the_same_source_without_duplicates(secured):
+    c,a=secured;admin=login(c);h,d=paired(c,admin)
+    pid=imported(c,h,doi='')
+    assert imported(c,h,doi='10.1234/later',arxiv_id='2401.12345')==pid
+    row=a.state.db.execute('SELECT doi,arxiv_id FROM papers WHERE id=?',(pid,)).fetchone()
+    assert tuple(row)==('10.1234/later','2401.12345')
+    assert imported(c,h,item_key='OTHER123',doi='10.1234/later')==pid
+    assert a.state.db.execute('SELECT count(*) FROM papers').fetchone()[0]==1
+
+
+
+def test_export_uses_research_paths_without_device_namespace_wrappers(secured):
+    c,a=secured;admin=login(c);h,d=paired(c,admin);pid=imported(c,h)
+    c.post('/api/zotero/exports',headers=admin,json={'device_id':d['device_id'],'paper_ids':[pid],'request_key':'human-category-paths'})
+    job=c.post('/api/zotero/device/exports/claim',headers=h,json={}).json()['job']
+    assert sorted(job['payload']['collection_paths'])==[['Robotics','Reading'],['Vision','Reading']]
+
+
+
+def test_recovery_activates_only_verified_first_main_pdf_and_is_idempotent(secured):
+    from app.integrations.zotero.service import recover_first_pdfs
+    c,a=secured;admin=login(c);h,d=paired(c,admin);pid=imported(c,h)
+    raw=pdf('Previously timed out transfer')
+    fields={'library_key':'1','item_key':'ABC12345','attachment_key':'PDF12345','label':'Original','role':'main'}
+    r=c.post(f'/api/zotero/device/papers/{pid}/attachments',headers=h,data=fields,files={'file':('original.pdf',raw,'application/pdf')});assert r.status_code==200
+    # Recreate the exact old failure state: source mapping + immutable file, no reading default.
+    a.state.db.execute('UPDATE papers SET pdf_path=NULL,default_version_id=NULL WHERE id=?',(pid,));a.state.db.commit()
+    assert recover_first_pdfs(a.state.db,a.state.settings)==1
+    assert recover_first_pdfs(a.state.db,a.state.settings)==0
+    assert c.get('/api/reader/papers/'+str(pid)+'/file',headers=admin).content==raw
+    assert a.state.db.execute('SELECT count(*) FROM chunks_meta').fetchone()[0]==0
+    assert a.state.db.execute('SELECT count(*) FROM agent_runs').fetchone()[0]==0

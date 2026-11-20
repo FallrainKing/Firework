@@ -13,8 +13,9 @@ test('receives PDF and resumes after lost receipt without duplicate items or att
  const items=new Map();let count=0,attachmentCount=0,ackCount=0;
  class Item{constructor(type){this.type=type;this.fields={};this.attachments=[]}setField(k,v){this.fields[k]=v}getField(k){return this.fields[k]??''}setCreators(){}setTags(){}addToCollection(){}getAttachments(){return this.attachments}async saveTx(){if(!this.id)this.id=++count;items.set(this.key,this);return this.id}}
  context.Zotero.Item=Item;context.Zotero.DataObjectUtilities={generateKey:()=> 'NEW12345'};context.Zotero.Libraries={get:()=>({editable:true})};context.Zotero.getActiveZoteroPane=()=>({getSelectedLibraryID:()=>1,getSelectedCollection:()=>({id:7,name:'Target'})});context.Services.prompt={confirm:()=>true};
+ context.Zotero.Collections.get=id=>({id,name:'Target'});
  context.Zotero.Items={getByLibraryAndKeyAsync:async(_lib,key)=>items.get(key),get:id=>[...items.values()].find(i=>i.id===id)};
- context.Zotero.Attachments={importFromFile:async({file,parentItemID})=>{assert.ok(files.has(file));attachmentCount++;const a=new Item('attachment');a.key='PDF12345';a.attachmentContentType='application/pdf';a.getFilePathAsync=async()=> '/stored.pdf';await a.saveTx();context.Zotero.Items.get(parentItemID).attachments.push(a.id);return a}};
+ context.Zotero.Attachments={importFromFile:async({file,parentItemID})=>{assert.ok(files.has(file));attachmentCount++;const a=new Item('attachment');a.key='PDF12345';a.parentItemID=parentItemID;a.attachmentContentType='application/pdf';a.getFilePathAsync=async()=> '/stored.pdf';await a.saveTx();context.Zotero.Items.get(parentItemID).attachments.push(a.id);return a}};
  context.Zotero.getTempDirectory=()=>({path:'/mock/temp'});context.Zotero.Utilities={randomString:()=> 'temporary-id'};
  context.IOUtils.write=async(file,data,o)=>{assert.equal(o.mode,'create');files.set(file,data)};context.IOUtils.remove=async file=>files.delete(file);context.IOUtils.read=async file=>files.get(file);
  const raw=new Uint8Array([37,80,68,70]),hash=require('node:crypto').createHash('sha256').update(raw).digest('hex');p.hash=async bytes=>require('node:crypto').createHash('sha256').update(bytes).digest('hex');
@@ -25,3 +26,17 @@ test('receives PDF and resumes after lost receipt without duplicate items or att
 });
 
 test('declares privileged hash interfaces in the Zotero bootstrap sandbox',()=>{const context={Components:{classes:{hash:'class'},interfaces:{hash:'interface'}}};vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../bootstrap.js'),'utf8'),context);assert.equal(context.Cc.hash,'class');assert.equal(context.Ci.hash,'interface')});
+
+async function receiveMetadata({mappedLibrary='1',selectedLibrary=1,existing=true}={}){
+ const f=plugin(),{p,context}=f;await p.start('test','file:///');p.set('origin','https://paper.example');p.set('device','device');p.notice=()=>{};
+ let created=0,assigned=0,claimed=false;
+ const item={id:10,key:'OLD12345',deleted:false,addToCollection(){assigned++},saveTx:async()=>{},getAttachments:()=>[]};
+ context.Services.prompt={confirm:()=>true};context.Zotero.Libraries={get:()=>({editable:true})};context.Zotero.getActiveZoteroPane=()=>({getSelectedLibraryID:()=>selectedLibrary,getSelectedCollection:()=>({id:99,name:'Unrelated category'})});context.Zotero.Items={getByLibraryAndKeyAsync:async()=>existing?item:null};context.Zotero.Item=class{constructor(){created++;throw Error('must not create')}};
+ const job={id:'one',lease_token:'token',payload:{paper_id:1,library_key:mappedLibrary,item_key:'OLD12345',files:[],collection_paths:[['Research']]}};
+ p.request=async(path)=>path.endsWith('/claim')?(claimed?{job:null}:(claimed=true,{job})):{saved:true};
+ return {p,stats:()=>({created,assigned})};
+}
+test('receiving an existing paper preserves its Zotero collections',async()=>{const f=await receiveMetadata();await f.p.receive();assert.deepEqual(f.stats(),{created:0,assigned:0})});
+test('rejects a mapped paper in another library before creating a duplicate',async()=>{const f=await receiveMetadata({mappedLibrary:'2'});await assert.rejects(()=>f.p.receive(),/切换到原库/);assert.deepEqual(f.stats(),{created:0,assigned:0})});
+test('selection of a PDF resolves its parent and deduplicates the selection',async()=>{const {p,context}=plugin();const parent={id:1,isRegularItem:()=>true};const attachment={isRegularItem:()=>false,parentItemID:1};context.Zotero.Items={get:()=>parent};p.credential=async()=>true;let message='';context.Services.prompt={confirm:(_w,_title,text)=>{message=text;return false}};await p.enqueueItems([parent,attachment,attachment]);assert.match(message,/1 个条目/)});
+test('restart marks interrupted transfers as retryable rather than permanently sending',async()=>{const {p,files}=plugin();files.set('/mock/firework-sync.json',JSON.stringify({queue:[{status:'sending'}],exports:{}}));await p.start('test','file:///');assert.equal(p.queue[0].status,'failed');assert.match(p.queue[0].error,/传输中断/)});

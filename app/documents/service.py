@@ -142,7 +142,7 @@ def list_documents(db, settings, pid):
         docs.append({**dict(d), 'versions': vs})
     known = {v['file_hash'] for d in docs for v in d['versions']}
     missing = [{'file_hash': x['file_version'], 'count': x['n']} for x in db.execute('SELECT file_version,count(*) AS n FROM reader_annotations WHERE paper_id=? AND deleted=0 GROUP BY file_version', (pid,)) if x['file_version'] not in known]
-    return {'paper_id': pid, 'title': paper['title'], 'default_version_id': paper['default_version_id'], 'documents': docs, 'unresolved_annotations': missing}
+    return {'paper_id': pid, 'title': paper['title'], 'default_version_id': paper['default_version_id'], 'documents': docs, 'unresolved_annotations': missing,'fulltext_indexed':bool(db.execute('SELECT 1 FROM chunks_meta WHERE paper_id=? LIMIT 1',(pid,)).fetchone())}
 
 
 def add_version(db, settings, pid, data, *, label, filename, document_id=None, role='main', title='正文', source='', description=''):
@@ -212,7 +212,7 @@ async def make_default(db, state, pid, vid, expected_version):
     paper = reader.paper(db, pid)
     if paper['default_version_id'] != expected_version:
         raise ServiceError(409, '默认版本已变化，请刷新后重试')
-    if paper['default_version_id'] == vid:
+    if paper['default_version_id'] == vid and db.execute('SELECT 1 FROM chunks_meta WHERE paper_id=? LIMIT 1',(pid,)).fetchone():
         return {'version_id': vid, 'unchanged': True}
     if not hasattr(state, 'document_switches'):
         state.document_switches = set()

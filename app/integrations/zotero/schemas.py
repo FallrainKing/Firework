@@ -9,6 +9,7 @@ class PairClaim(Strict):
     device_code:str=Field(min_length=32,max_length=100)
 class Approval(Strict):user_code:str=Field(pattern=r'^[a-fA-F0-9]{8}$')
 class ImportItem(Strict):
+    pdf_hash:str=Field('',pattern=r'^$|^[a-f0-9]{64}$')
     library_key:str=Field(min_length=1,max_length=80)
     item_key:str=Field(pattern=r'^[A-Z0-9]{8}$')
     title:str=Field(min_length=1,max_length=500)

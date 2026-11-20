@@ -57,6 +57,8 @@ class WorkspaceManager:
             try:
                 from ..documents.service import backfill
                 backfill(state.db, settings)
+                from ..integrations.zotero.service import recover_first_pdfs
+                recover_first_pdfs(state.db, settings)
                 agents.init_agent_state(wrapper)
                 await agents.cancel_orphaned_runner_jobs(state)
                 self.states[key]=state

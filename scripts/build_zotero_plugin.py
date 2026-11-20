@@ -35,8 +35,9 @@ def build(root: Path) -> Path:
     feed = {'addons': {app['id']: {'updates': [update]}}}
     (target.parent / 'firework-zotero-updates.json').write_text(json.dumps(feed, indent=2) + '\n')
     # Cached v0.1.0 download pages must also receive the corrected manifest.
-    if target.name != 'firework-zotero-0.1.0.xpi':
-        (target.parent / 'firework-zotero-0.1.0.xpi').write_bytes(payload)
+    for old in ('0.1.0','0.1.1'):
+        if target.name != f'firework-zotero-{old}.xpi':
+            (target.parent / f'firework-zotero-{old}.xpi').write_bytes(payload)
     return target
 
 

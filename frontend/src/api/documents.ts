@@ -2,7 +2,7 @@ import { api } from './client'
 import type { Annotation } from './types'
 export interface DocumentVersion { id:string; document_id:string; file_hash:string; label:string; original_filename:string; source:string; description:string; size:number; page_count:number; available:boolean; is_default:boolean; annotation_count:number; created_at:string }
 export interface PaperDocument { id:string; title:string; role:'main'|'supplement'; current_version_id:string|null; versions:DocumentVersion[] }
-export interface DocumentList { paper_id:number; title:string; default_version_id:string|null; documents:PaperDocument[]; unresolved_annotations:Array<{file_hash:string;count:number}> }
+export interface DocumentList { fulltext_indexed?:boolean; paper_id:number; title:string; default_version_id:string|null; documents:PaperDocument[]; unresolved_annotations:Array<{file_hash:string;count:number}> }
 const base=(pid:number)=>`/api/library/papers/${pid}`
 export const documentsApi={
  list:(pid:number)=>api<DocumentList>(`${base(pid)}/documents`),

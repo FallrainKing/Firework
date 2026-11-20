@@ -8,7 +8,7 @@ def begin(store,name,instance):
     ident=uuid.uuid4().hex;secret=secrets.token_urlsafe(32);code=secrets.token_hex(4).upper()
     store.db.execute('DELETE FROM zotero_pairings WHERE expires_at<?',(int(time.time()),))
     store.db.execute('INSERT INTO zotero_pairings(id,secret_hash,user_code,name,instance_id,expires_at) VALUES (?,?,?,?,?,?)',(ident,token_hash(secret),code,name,instance,int(time.time())+600));store.db.commit()
-    return {'pair_id':ident,'device_code':secret,'user_code':code,'verification_url':store.public_origin+'/integrations/zotero','expires_in':600}
+    return {'pair_id':ident,'device_code':secret,'user_code':code,'verification_url':store.public_origin+'/#/integrations/zotero','expires_in':600}
 
 
 def approve(store,code,account):

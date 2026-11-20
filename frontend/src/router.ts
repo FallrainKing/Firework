@@ -1,10 +1,13 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
+import {loginPath, migrateLegacyLocation, safeReturnTarget} from '@/shared/navigation'
 import {refreshAuth,authState} from '@/auth/session'
 
 // 单路由工作台：视图切换走 workbench store.view（随工作区持久化）。
 // /reader/:paperId 与 ?paper_id/session_id 深链由 WorkbenchView 启动时解析。
+migrateLegacyLocation()
+
 export const router = createRouter({
-  history: createWebHistory('/'),
+  history: createWebHashHistory('/'),
   routes: [
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
     { path: '/register', name: 'register', component: () => import('@/views/RegisterView.vue') },
@@ -17,9 +20,9 @@ export const router = createRouter({
 })
 
 router.beforeEach(async to=>{
-  try{await refreshAuth()}catch{return to.path==='/login'||to.path==='/register'?true:'/login'}
-  if(!authState.value?.authenticated&&to.path!=='/login'&&to.path!=='/register')return '/login'
-  if(authState.value?.authenticated&&(to.path==='/login'||to.path==='/register'))return '/'
+  try{await refreshAuth()}catch{return to.path==='/login'||to.path==='/register'?true:loginPath(to.fullPath)}
+  if(!authState.value?.authenticated&&to.path!=='/login'&&to.path!=='/register')return loginPath(to.fullPath)
+  if(authState.value?.authenticated&&(to.path==='/login'||to.path==='/register'))return safeReturnTarget(to.query.redirect)
   if(to.path==='/accounts'&&authState.value?.account?.role!=='admin')return '/'
   return true
 })

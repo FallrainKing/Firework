@@ -1,3 +1,4 @@
+import {replaceAppLocation} from '@/shared/navigation'
 import {ref} from 'vue'
 import {api,setCsrfToken} from '@/api/client'
 export interface Account {id:string;username:string;role:'admin'|'user';enabled:number;login_allowed:boolean;created_at:number;last_login_at:number|null}
@@ -21,4 +22,4 @@ export async function refreshAuth(){
  return pending
 }
 export async function login(username:string,password:string){const data=await api<AuthSession>('/api/auth/login',{body:{username,password}});setCsrfToken(data.csrf_token??'');resetBrowserIdentity(data.account!.id,data.account?.role==='admin');authState.value=data;return data}
-export async function logout(){await api('/api/auth/logout',{method:'POST'});setCsrfToken('');resetBrowserIdentity(null);authState.value=null;window.location.replace('/login')}
+export async function logout(){await api('/api/auth/logout',{method:'POST'});setCsrfToken('');resetBrowserIdentity(null);authState.value=null;replaceAppLocation('/login')}

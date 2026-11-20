@@ -9,7 +9,7 @@ from test_documents import pdf
 
 def paired(c,headers,name='Desktop'):
     p=c.post('/api/zotero/pair/start',json={'name':name,'instance_id':'desktop-instance-'+name});assert p.status_code==200,p.text
-    p=p.json();claim={'pair_id':p['pair_id'],'device_code':p['device_code']}
+    p=p.json();assert p['verification_url'].endswith('/#/integrations/zotero');claim={'pair_id':p['pair_id'],'device_code':p['device_code']}
     assert c.post('/api/zotero/pair/claim',json=claim).json()['status']=='pending'
     assert c.post('/api/zotero/pair/approve',headers=headers,json={'user_code':p['user_code']}).status_code==200
     r=c.post('/api/zotero/pair/claim',json=claim);assert r.status_code==200,r.text

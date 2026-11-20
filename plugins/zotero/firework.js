@@ -15,6 +15,10 @@ var FireworkPlugin = {
       this.menus.push(menuID);
     }
     this.menus.push(Zotero.MenuManager.registerMenu({menuID:'firework-context',pluginID:id,target:'main/library/item',menus:[{menuType:'menuitem',onShowing:(_e,c)=>{c.menuElem.setAttribute('label','发送到 Firework');c.setVisible(c.items?.some(i=>i.isRegularItem()))},onCommand:()=>this.run(()=>this.sendSelected())}]}));
+    this.menus.push(Zotero.MenuManager.registerMenu({menuID:'firework-collection-context',pluginID:id,target:'main/library/collection',menus:[
+      {menuType:'menuitem',onShowing:(_e,c)=>c.menuElem.setAttribute('label','Firework · 发送当前分类'),onCommand:()=>this.run(()=>this.sendCollection())},
+      {menuType:'menuitem',onShowing:(_e,c)=>c.menuElem.setAttribute('label','Firework · 接收到当前分类'),onCommand:()=>this.run(()=>this.receive())}
+    ]}));
   },
   stop(){for(const id of this.menus)if(id)Zotero.MenuManager.unregisterMenu(id);this.menus=[]},
   async save(){const temp=this.path+'.tmp';await IOUtils.writeUTF8(temp,JSON.stringify({queue:this.queue,exports:this.exports}),{mode:'overwrite'});await IOUtils.setPermissions(temp,0o600);await IOUtils.move(temp,this.path,{noOverwrite:false})},
@@ -92,7 +96,8 @@ var FireworkPlugin = {
         const p=job.payload;let item=await Zotero.Items.getByLibraryAndKeyAsync(libraryID,entry.itemKey);
         if(item?.deleted)throw new Error('已映射条目位于回收站，请先恢复后重试。');
         if(!item&&(p.doi||p.arxiv_id)){const all=await Zotero.Items.getAll(libraryID,true,false);const matches=all.filter(i=>i.isRegularItem()&&!i.deleted&&((p.doi&&this.normalizedDOI(i.getField('DOI'))===this.normalizedDOI(p.doi))||(p.arxiv_id&&this.arxiv(i).replace(/v\d+$/i,'')===p.arxiv_id.replace(/v\d+$/i,''))));if(matches.length>1)throw new Error('本地存在多个标识相同的条目，请先人工核对；未创建新副本。');item=matches[0];if(item){entry.itemKey=item.key;entry.created=false;await this.save()}}
-        if(!item){entry.created=true;await this.save();item=new Zotero.Item('journalArticle');item.libraryID=libraryID;item.key=entry.itemKey;item.setField('title',p.title||'Untitled');if(p.doi)item.setField('DOI',p.doi);if(p.url)item.setField('url',p.url);if(p.abstract)item.setField('abstractNote',p.abstract);if(p.arxiv_id)item.setField('extra','arXiv: '+p.arxiv_id);item.setCreators((p.authors||[]).map(name=>({lastName:name,creatorType:'author',fieldMode:1})));item.setTags((p.tags||[]).map(tag=>({tag})));await item.saveTx()}
+        // Assigning a recovery key identifies the object; Zotero must load/initialize its data before field writes.
+        if(!item){entry.created=true;await this.save();item=new Zotero.Item('journalArticle');item.libraryID=libraryID;item.key=entry.itemKey;await item.loadPrimaryData();item.setField('title',p.title||'Untitled');if(p.doi)item.setField('DOI',p.doi);if(p.url)item.setField('url',p.url);if(p.abstract)item.setField('abstractNote',p.abstract);if(p.arxiv_id)item.setField('extra','arXiv: '+p.arxiv_id);item.setCreators((p.authors||[]).map(name=>({lastName:name,creatorType:'author',fieldMode:1})));item.setTags((p.tags||[]).map(tag=>({tag})));await item.saveTx()}
         // Existing local papers retain their collections; a receive is not a move.
         if(entry.created){let root=entry.targetCollectionID?Zotero.Collections.get(entry.targetCollectionID):null;if(!root){root=target||await this.findCollection(libraryID,false,'Firework');entry.targetCollectionID=root.id;await this.save()}const paths=p.collection_paths||[];if(!paths.length)item.addToCollection(root.id);
           for(const path of paths){let parent=root;const parts=path[0]===root.name?path.slice(1):path;for(const name of parts)parent=await this.findCollection(libraryID,parent.id,name);item.addToCollection(parent.id)}await item.saveTx()}

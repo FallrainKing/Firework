@@ -44,7 +44,8 @@ class PackageTest(unittest.TestCase):
         self.assertEqual(update['version'], manifest['version'])
         self.assertTrue(update['update_link'].endswith('/' + package.name))
         self.assertEqual(update['update_hash'], 'sha256:' + hashlib.sha256(data).hexdigest())
-        self.assertEqual((package.parent / 'firework-zotero-0.1.0.xpi').read_bytes(), data)
+        for old in ('0.1.0','0.1.1','0.1.2','0.1.3'):
+            self.assertEqual((package.parent / f'firework-zotero-{old}.xpi').read_bytes(), data)
 
 
 if __name__ == '__main__':

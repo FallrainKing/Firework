@@ -1,0 +1,47 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
+import { documentsApi, type DocumentList, type DocumentVersion } from '@/api/documents'
+import { renderMarkdown } from '@/shared/markdown'
+import type { Annotation } from '@/api/types'
+const props=defineProps<{paperId:number}>()
+const emit=defineEmits<{close:[];changed:[]}>()
+const data=ref<DocumentList|null>(null), error=ref(''), message=ref(''), busy=ref(false), loading=ref(true)
+const tab=ref<'files'|'annotations'>('files'), chosen=ref(''), origin=ref('all'), items=ref<Annotation[]>([])
+const fileInput=ref<HTMLInputElement|null>(null)
+const label=ref(''), title=ref('补充材料'), role=ref<'main'|'supplement'>('main'), target=ref(''), source=ref(''), description=ref(''), file=ref<File|null>(null)
+const versions=computed(()=>data.value?.documents.flatMap(d=>d.versions)??[])
+const selected=computed(()=>versions.value.find(v=>v.id===chosen.value))
+async function load(){try{data.value=await documentsApi.list(props.paperId);if(!versions.value.some(v=>v.id===chosen.value))chosen.value=data.value.default_version_id??versions.value[0]?.id??'';error.value=''}catch(e){error.value=e instanceof Error?e.message:'文件载入失败'}finally{loading.value=false}}
+async function loadNotes(){if(!chosen.value){items.value=[];return}try{items.value=(await documentsApi.annotations(props.paperId,chosen.value,origin.value)).annotations;error.value=''}catch(e){error.value=e instanceof Error?e.message:'批注载入失败'}}
+function select(v:DocumentVersion){chosen.value=v.id;if(tab.value==='annotations')void loadNotes()}
+async function upload(){if(!file.value||!label.value.trim()||busy.value)return;busy.value=true;error.value='';message.value='';try{const f=new FormData();f.append('file',file.value);f.append('label',label.value.trim());if(target.value)f.append('document_id',target.value);f.append('role',role.value);f.append('title',role.value==='main'?'正文':title.value);f.append('source',source.value);f.append('description',description.value);const r=await documentsApi.upload(props.paperId,f);await load();chosen.value=r.version_id;message.value=r.deduplicated?'相同文件已存在，已定位到已有版本。':'版本已保存；原文件未覆盖。正文版本需明确设为默认后用于阅读。';file.value=null;if(fileInput.value)fileInput.value.value='';label.value='';emit('changed')}catch(e){error.value=e instanceof Error?e.message:'上传失败'}finally{busy.value=false}}
+async function makeDefault(v:DocumentVersion){if(busy.value||!data.value)return;if(!window.confirm('切换默认版本会更新阅读与检索材料。旧文件及批注保留；已有旧版本会话只能查看历史，请新建会话继续研究。确认切换？'))return;busy.value=true;error.value='';try{await documentsApi.setDefault(props.paperId,v.id,data.value.default_version_id);await load();message.value='默认版本已更新。请重新打开阅读器，并新建会话；旧版本仍可预览、下载及管理批注。';window.dispatchEvent(new CustomEvent('firework-document-default',{detail:{paperId:props.paperId}}));emit('changed')}catch(e){error.value=e instanceof Error?e.message:'切换失败'}finally{busy.value=false}}
+onMounted(load)
+</script>
+<template>
+<section class="document-manager" role="dialog" aria-modal="true" aria-label="论文文件与批注管理">
+<header><div><small>论文管理</small><h2>{{data?.title??'文件与版本'}}</h2></div><button :disabled="busy" aria-label="关闭文件管理" @click="emit('close')">关闭</button></header>
+<nav aria-label="论文详情"><button :aria-current="tab==='files'?'page':undefined" @click="tab='files'">文件与版本</button><button :aria-current="tab==='annotations'?'page':undefined" @click="tab='annotations';loadNotes()">批注</button></nav>
+<p v-if="loading" role="status">正在载入…</p><p v-if="error" role="alert" class="error">{{error}}</p><p v-if="message" role="status" class="notice">{{message}}</p>
+<div class="manager-scroll">
+<template v-if="tab==='files'">
+<p class="muted">原始文件按版本保存。正文默认版本用于阅读与检索；补充材料单独管理。所有下载均不会调用智能体。</p>
+<p v-if="data&&!data.documents.length">尚无 PDF。可在下面上传正文，保存后设为默认阅读版本。</p>
+<article v-for="doc in data?.documents" :key="doc.id" class="document"><h3>{{doc.title}} <small>{{doc.role==='main'?'正文':'补充材料'}}</small></h3>
+<div v-for="v in doc.versions" :key="v.id" class="version" :class="{selected:chosen===v.id}" @click="select(v)"><div><strong>{{v.label}}</strong> <span v-if="v.is_default" class="badge">默认阅读</span><span v-if="!v.available" class="error">文件缺失</span><p class="muted">{{v.page_count}} 页 · {{(v.size/1024/1024).toFixed(2)}} MiB · {{v.annotation_count}} 条批注 · {{v.created_at}}</p><p v-if="v.description">{{v.description}}</p><p v-if="v.source" class="muted">来源：{{v.source}}</p><small class="hash">SHA-256 {{v.file_hash}}</small></div>
+<div class="version-actions"><a v-if="v.available" :href="documentsApi.url(paperId,v.id,'original','all',true)" target="_blank" rel="noopener">预览原文 ↗</a><a v-if="v.available" :href="documentsApi.url(paperId,v.id)">下载原件</a><button @click.stop="chosen=v.id;tab='annotations';loadNotes()">查看批注</button><button v-if="doc.role==='main'&&!v.is_default&&v.available" :disabled="busy" @click.stop="makeDefault(v)">{{busy?'正在处理…':'设为默认阅读版本'}}</button></div></div></article>
+<form class="upload-form" @submit.prevent="upload"><h3>添加文件或版本</h3><label>归属文档<select v-model="target"><option value="">新增正文版本 / 补充材料</option><option v-for="d in data?.documents" :key="d.id" :value="d.id">{{d.title}}：添加新版本</option></select></label><label v-if="!target">材料类型<select v-model="role"><option value="main">正文</option><option value="supplement">补充材料</option></select></label><label v-if="!target&&role==='supplement'">文档名称<input v-model="title" maxlength="120" required></label><label>版本名称<input v-model="label" maxlength="100" placeholder="例如 arXiv v2、会议正式版" required></label><label>来源说明<input v-model="source" maxlength="500" placeholder="可选：来源页面或版本说明"></label><label>备注<textarea v-model="description" maxlength="2000" rows="2"></textarea></label><label>PDF 文件<input ref="fileInput" type="file" accept="application/pdf,.pdf" @change="file=($event.target as HTMLInputElement).files?.[0]??null" required></label><p class="muted">最多 50 MiB、300 页；不支持加密文件。上传不会调用研究模型。</p><button class="primary" :disabled="busy||!file||!label.trim()">{{busy?'正在保存 / 更新索引…':'保存文件版本'}}</button></form>
+</template>
+<template v-else>
+<label>文件版本<select v-model="chosen" aria-label="批注文件版本" @change="loadNotes"><option v-for="v in versions" :key="v.id" :value="v.id">{{v.label}} · {{v.file_hash.slice(0,8)}}</option></select></label>
+<label>导出与显示范围<select v-model="origin" aria-label="批注来源范围" @change="loadNotes"><option value="all">全部有效批注</option><option value="personal">个人与已采纳批注</option><option value="ai">AI 批注</option></select></label>
+<div v-if="selected?.available" class="downloads"><a :href="documentsApi.url(paperId,chosen,'annotated',origin)">下载带批注 PDF</a><a :href="documentsApi.url(paperId,chosen,'markdown',origin)">下载批注 Markdown</a><a :href="documentsApi.url(paperId,chosen)">下载原始 PDF</a></div>
+<p class="muted">只导出此文件版本中未删除且有效的批注。AI 解释作为 PDF 备注保存；原文件已有的 PDF 批注仍保留。</p>
+<p v-if="!items.length">此版本暂无符合条件的批注。</p><article v-for="a in items" :key="a.id" class="note"><strong>第 {{a.page}} 页 · {{a.kind==='highlight'?'高亮':a.kind==='ink'?'手绘':'笔记'}} · {{a.origin==='ai'?'AI':a.origin==='ai_adopted'?'已采纳':'个人'}}</strong><blockquote v-if="a.quote">{{a.quote}}</blockquote><div class="note-content" v-html="renderMarkdown(a.content)"></div></article>
+</template>
+<p v-if="data?.unresolved_annotations.length" class="notice">有 {{data.unresolved_annotations.reduce((n,x)=>n+x.count,0)}} 条历史批注尚未找到对应原文件，已保留，未关联到其他版本。</p>
+</div></section>
+</template>
+<style scoped>
+.document-manager{background:var(--bg);color:var(--text);width:min(880px,95vw);max-height:90vh;display:flex;flex-direction:column;border:1px solid var(--border);border-radius:12px;box-shadow:0 16px 70px #0003;overflow:hidden}.document-manager header{display:flex;justify-content:space-between;align-items:center;gap:18px;padding:18px 22px;border-bottom:1px solid var(--border)}h2{font-size:18px;margin:4px 0;overflow-wrap:anywhere}h3{font-size:15px}nav{display:flex;gap:8px;padding:12px 22px}nav [aria-current=page]{color:var(--accent);background:var(--accent-soft)}.manager-scroll{padding:0 22px 24px;overflow:auto;min-height:0}.error{color:var(--danger)}.notice{padding:12px 22px;background:var(--accent-soft);overflow-wrap:anywhere}.document{margin:12px 0}.version{padding:15px;margin:8px 0;border:1px solid var(--border);border-radius:8px}.version.selected{border-color:var(--accent)}.version-actions,.downloads{display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:12px 0}a{color:var(--accent);text-decoration:underline}.hash{display:block;overflow-wrap:anywhere;color:var(--text-muted)}label{display:flex;flex-direction:column;gap:6px;margin:12px 0}.upload-form{border-top:1px solid var(--border);margin-top:24px}input,select,textarea{max-width:100%;box-sizing:border-box}.note{border-bottom:1px solid var(--border);padding:16px 0}.note-content{white-space:pre-wrap;overflow-wrap:anywhere}blockquote{margin:12px 0;padding-left:12px;border-left:3px solid var(--accent)}.badge{background:var(--accent-soft);padding:3px 7px;border-radius:5px;font-size:11px}@media(max-width:600px){.manager-scroll{padding:0 12px 16px}.document-manager header{padding:12px}}
+</style>

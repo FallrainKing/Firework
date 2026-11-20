@@ -7,6 +7,7 @@ import { sessionsApi } from '@/api/sessions'
 import type { SelectionContext, Session } from '@/api/types'
 import ReaderSidebar from '@/components/reader/ReaderSidebar.vue'
 import ChatPanel from '@/components/reader/ChatPanel.vue'
+import PaperDocuments from '@/components/manage/PaperDocuments.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 import GuideActions from '@/components/reader/GuideActions.vue'
 import { usePaperGuide } from '@/reader/usePaperGuide'
@@ -19,6 +20,7 @@ const emit = defineEmits<{
   'save-failed': [message: string]
 }>()
 
+const reloadPage = () => window.location.reload()
 const toast = (m: string) => emit('save-failed', m)
 const scrollEl = ref<HTMLElement | null>(null)
 const pagesEl = ref<HTMLElement | null>(null)
@@ -30,6 +32,9 @@ const selected = ref<(SelectionContext & { screen: { left: number; bottom: numbe
 const popupStyle = ref<Record<string, string>>({})
 const sessions = ref<Session[]>([])
 const dialogOpen = ref(false)
+const documentsOpen = ref(false)
+const versionChanged = ref(false)
+const defaultChanged = (e: Event) => { if ((e as CustomEvent).detail.paperId === props.paperId) versionChanged.value = true }
 const narrow = ref(window.innerWidth <= 760)
 const mobileToolsOpen = ref(false)
 const color = ref('#f5d76e')
@@ -120,6 +125,7 @@ const onResize = () => { narrow.value = window.innerWidth <= 760 }
 
 onMounted(async () => {
   window.addEventListener('resize', onResize)
+  window.addEventListener('firework-document-default', defaultChanged)
   await nextTick()
   engine = new PDFReader(scrollEl.value!, pagesEl.value!)
   engine.addEventListener('page', e => { pageInput.value = (e as CustomEvent).detail; orch.savePosition() })
@@ -141,6 +147,7 @@ onActivated(() => { if (engine?.pdf) { void nextTick(() => engine?.layout()) } }
 onDeactivated(() => { selected.value = null; void flush() })
 onBeforeUnmount(() => {
   window.removeEventListener('resize', onResize)
+  window.removeEventListener('firework-document-default', defaultChanged)
   void flush()
   engine?.destroy()
 })
@@ -167,6 +174,7 @@ defineExpose({ flush, orchestrator: orch })
       ></div>
       <main class="pdf-pane" :aria-label="'论文原文：' + (orch.profile.value?.title ?? '论文阅读')">
         <div class="reader-top" role="toolbar" aria-label="论文阅读工具栏">
+          <button @click="documentsOpen = true">文件 / 下载</button>
           <div class="page-controls">
             <button aria-label="上一页" @click="engine?.jump(pageInput - 1)">‹</button>
             <input v-model.number="pageInput" type="number" min="1" :max="orch.doc.value?.page_count ?? 1" aria-label="页码" @change="engine?.jump(pageInput)" @keydown.enter="engine?.jump(pageInput)" />
@@ -196,6 +204,7 @@ defineExpose({ flush, orchestrator: orch })
           <button v-if="narrow" class="mobile-more" aria-label="更多操作" :aria-expanded="mobileToolsOpen" @click="mobileToolsOpen = !mobileToolsOpen">⋯</button>
         </div>
         <div class="pdf-document">
+          <div v-if="versionChanged" class="version-notice" role="status">默认 PDF 已更新。旧版本与批注已保存；请刷新后新建会话继续阅读。<button @click="reloadPage">刷新工作台</button></div>
           <div ref="scrollEl" class="pdf-scroll">
             <div ref="pagesEl" class="pdf-pages"></div>
           </div>
@@ -220,7 +229,7 @@ defineExpose({ flush, orchestrator: orch })
       ></div>
       <aside class="chat-pane">
         <ChatPanel ref="chatRef" :session="orch.session.value" :paper-id="paperId" :paper-title="orch.profile.value?.title" :orchestrator="orch"><template #session-controls><div class="session-controls">      <select class="reader-session" :value="orch.session.value?.id" aria-label="当前会话" @change="onSessionChange(Number(($event.target as HTMLSelectElement).value))">
-        <option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.title }}</option>
+        <option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.stale_paper_ids?.includes(paperId) ? '旧版本历史 · ' : '' }}{{ s.title }}</option>
       </select>
       <button class="new-session" @click="dialogOpen = true">＋ 新会话</button>
 </div></template><template #paper-actions><GuideActions :controller="guide" :ready="!!orch.doc.value && !orch.loading.value" :page-count="orch.doc.value?.page_count??0" :reading-busy="readingBusy" @read="startReading" @show-guide="openGuide" /></template></ChatPanel>
@@ -252,6 +261,7 @@ defineExpose({ flush, orchestrator: orch })
       <button :aria-pressed="layout.mobileMode.value === 'chat'" @click="layout.setMobile('chat')">会话</button>
     </div>
 
+    <div v-if="documentsOpen" class="dialog-overlay"><PaperDocuments :paper-id="paperId" @close="documentsOpen = false" /></div>
     <div v-if="dialogOpen" class="dialog-overlay" @click.self="dialogOpen = false">
       <TaskDialog mode="read" :paper-ids="[paperId]" @created="onCreated" @close="dialogOpen = false" />
     </div>
@@ -259,6 +269,7 @@ defineExpose({ flush, orchestrator: orch })
 </template>
 
 <style scoped>
+.version-notice {padding:12px;background:var(--accent-soft);font-size:12px;z-index:3}.version-notice button{margin-left:8px}
 .reading-layout { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .reader-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; min-height:50px; flex-shrink:0; }
 .session-controls { display:flex; gap:6px; min-width:0; }

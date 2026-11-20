@@ -88,3 +88,13 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 错误体可能包含字符串或结构化 detail，客户端不能假设全部为固定文本。Run、导读、导入和前沿有不同状态集合，不将所有 partial 都转换成 succeeded。
 
 用量和 cli_estimated_cost_usd 属于执行记录；未知费用不能显示为零，不可当作核实账单。当前协议兼容由 `/api/agent/status` 判断，不使用页面版本号推测。
+
+## 文件、版本与批注下载
+
+- `GET /api/library/papers/{paper_id}/documents`：当前文档、版本、默认版本及未解析历史批注。
+- `POST /api/library/papers/{paper_id}/document-versions`：multipart 上传 PDF；file、label 必填，可带 document_id，或 role=main/supplement 与 title；source/description 为可选说明。上限 50 MiB、300 页，不支持加密。相同文档和文件哈希复用已有版本。
+- `POST /api/library/papers/{paper_id}/document-versions/{version_id}/default`：必须带 confirmed=true 与 expected_version_id（首次可为 null）；只允许正文，冲突或在途任务返回 409。切换会解析、嵌入和更新索引，但不调用研究模型。
+- `GET /api/library/papers/{paper_id}/document-versions/{version_id}/annotations`：仅返回该版本有效批注；origin=all/personal/ai，personal 包含已采纳副本。
+- `GET /api/library/papers/{paper_id}/document-versions/{version_id}/file`：mode=original/annotated/markdown，origin 同上；仅 original 支持 inline=true 预览。原件与输出均禁止共享缓存，且必须属于当前账号与论文。
+
+旧版会话的材料哈希与默认正文不同后，发送返回 409；会话响应的 stale_paper_ids 标识差异。重新进入阅读时选择或创建当前版本会话，旧原生会话不被覆盖。

@@ -16,7 +16,7 @@
 | Runner | 用户级 `research-agent-runner`，协议 5，并发 2 |
 | 实际模型快照 | 状态接口报告 `qwen4-max[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
-| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0013_reader_guides.sql` |
+| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0014_document_versions.sql` |
 
 远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
 

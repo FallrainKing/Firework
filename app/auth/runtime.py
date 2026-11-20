@@ -55,6 +55,8 @@ class WorkspaceManager:
             wrapper=SimpleNamespace(state=state)
             token=workspace_context.set(key)
             try:
+                from ..documents.service import backfill
+                backfill(state.db, settings)
                 agents.init_agent_state(wrapper)
                 await agents.cancel_orphaned_runner_jobs(state)
                 self.states[key]=state

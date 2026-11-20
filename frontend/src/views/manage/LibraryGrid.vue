@@ -3,6 +3,7 @@ import { onMounted, ref, watch } from 'vue'
 import { papersApi } from '@/api/papers'
 import type { Collection, Paper } from '@/api/types'
 import PaperEditDialog from '@/components/manage/PaperEditDialog.vue'
+import PaperDocuments from '@/components/manage/PaperDocuments.vue'
 import StateFeedback from '@/components/StateFeedback.vue'
 import TaskDialog from '@/components/TaskDialog.vue'
 import type { Session } from '@/api/types'
@@ -33,6 +34,7 @@ const batchCollectionId = ref('')
 const batchSaving = ref(false)
 const savingCollection = ref(false)
 const editId = ref<number | null>(null)
+const documentsId = ref<number | null>(null)
 const task = ref<{ mode: 'compare' | 'review'; paperIds: number[] } | null>(null)
 const newCollectionOpen = ref(false)
 const newCollectionName = ref('')
@@ -219,6 +221,7 @@ function onSaved() {
           <div class="paper-actions">
             <button v-if="p.has_pdf" class="primary read-paper" @click="emit('open-paper', p.id)">打开原文</button>
             <button v-else class="primary supplement-pdf" @click="emit('open-import', p.id)">补充全文</button>
+            <button class="manage-documents" @click="documentsId = p.id">文件与批注</button>
             <div class="card-more">
               <button class="more-actions" :aria-expanded="openMenuId === p.id" aria-haspopup="true" @click.stop="openMenuId = openMenuId === p.id ? null : p.id">更多</button>
               <div v-if="openMenuId === p.id" class="card-menu" role="menu" :aria-label="'论文操作 ' + p.title">
@@ -233,6 +236,7 @@ function onSaved() {
     </div>
     <button v-if="hasMore" class="more-papers" :disabled="loadingMore" @click="load(false)">{{ loadingMore ? '正在载入…' : '加载更多' }}</button>
 
+    <div v-if="documentsId !== null" class="dialog-overlay" @click.self="documentsId = null"><PaperDocuments :paper-id="documentsId" @close="documentsId = null" @changed="onSaved" /></div>
     <div v-if="editId !== null" class="dialog-overlay" @click.self="editId = null">
       <PaperEditDialog :paper-id="editId" @close="editId = null" @saved="onSaved" />
     </div>

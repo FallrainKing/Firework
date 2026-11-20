@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
+from .documents.router import router as documents_router
 from .imports.router import router as imports_router, internal as imports_internal
 from .papers.router import router as papers_router
 from .schedules.router import router as schedules_router
@@ -106,6 +107,8 @@ async def lifespan(app: FastAPI):
     app.state.settings = settings
     db = get_conn(settings)
     app.state.db = db
+    from .documents.service import backfill
+    backfill(db, settings)
 
 
     embedder, store = await _init_rag_stack(settings)
@@ -160,6 +163,7 @@ def create_app(*, authentication: bool = True) -> FastAPI:
     app.include_router(frontier_internal)
     app.include_router(sessions_router)
     app.include_router(papers_router)
+    app.include_router(documents_router)
     app.include_router(reader_router)
     app.include_router(guide_router)
     app.include_router(guide_internal)

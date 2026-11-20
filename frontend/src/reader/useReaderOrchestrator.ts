@@ -143,8 +143,9 @@ export function useReaderOrchestrator(deps: Deps) {
         return
       }
       const { sessions } = await sessionsApi.list({ paper_id: paperId, limit: 100 })
-      const existing = sessions.filter(s => ['paper_read', 'paper_review'].includes(s.skill))
-      let sid = sessionId || existing[0]?.id || null
+      const usable = sessions.filter(s => !s.stale_paper_ids?.includes(paperId))
+      const existing = usable.filter(s => ['paper_read', 'paper_review'].includes(s.skill))
+      let sid = (sessionId && usable.some(s=>s.id===sessionId) ? sessionId : null) || existing[0]?.id || null
       if (!sid) {
         const created = await sessionsApi.create({ template_id: 'read', title: (profile.value?.title ?? '论文') + ' · 阅读', paper_ids: [paperId] })
         sid = created.session.id

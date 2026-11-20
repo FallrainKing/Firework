@@ -136,3 +136,21 @@ def test_admin_only_backup_still_has_an_empty_accounts_bundle(tmp_path):
     assert (backups/f'identity-{date}.db').is_file()
     with tarfile.open(backups/f'accounts-{date}.tar.gz','r:gz') as bundle:
         assert 'accounts' in bundle.getnames()
+
+
+def test_restore_checks_all_immutable_versions_before_replacing_data(tmp_path):
+    if not shutil.which('sqlite3'):
+        pytest.skip('sqlite3 CLI unavailable')
+    data,backups=_make_bundle(tmp_path)
+    with sqlite3.connect(backups/'app-20261119.db') as db:
+        db.execute('CREATE TABLE file_objects(storage_key TEXT PRIMARY KEY)')
+        db.execute("INSERT INTO file_objects VALUES ('blob-old-revision.pdf')")
+    env={**os.environ,'DATA_DIR':str(data),'RESTORE_QDRANT':'0'}
+    first=subprocess.run(['sh',str(RESTORE_SH),str(backups),'20261119','--confirm'],env=env,capture_output=True,text=True)
+    assert first.returncode!=0 and 'Missing document version PDF' in first.stderr
+    assert (data/'imports/old.txt').is_file()
+    root=tmp_path/'papers';root.mkdir();(root/'blob-old-revision.pdf').write_bytes(b'%PDF historical bytes')
+    with tarfile.open(backups/'papers-20261119.tar.gz','w:gz') as tar:tar.add(root,arcname='papers')
+    second=subprocess.run(['sh',str(RESTORE_SH),str(backups),'20261119','--confirm'],env=env,capture_output=True,text=True)
+    assert second.returncode==0,second.stderr
+    assert (data/'papers/blob-old-revision.pdf').read_bytes()==b'%PDF historical bytes'

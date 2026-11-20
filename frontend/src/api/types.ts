@@ -24,6 +24,7 @@ export interface Session {
   draft_prompt: string
   created_at: string
   updated_at: string
+  stale_paper_ids?: number[]
   paper_ids: number[]
   run_count: number
   last_status: string

@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-更新：2026-11-19。Runner 协议 5。由当前应用 OpenAPI 提取，接口文档和业务 API 需登录；调用约定见 [接口说明](API.md) 与 [认证说明](AUTHENTICATION.md)。
+更新：2026-11-20。业务迁移 0014，Runner 协议 5。由当前应用 OpenAPI 提取；私有接口需登录，写请求需 CSRF。调用约定见 [接口说明](API.md) 和 [认证说明](AUTHENTICATION.md)。
 
 | 方法 | 路径 |
 | --- | --- |
@@ -78,6 +78,11 @@
 | PATCH | `/api/library/papers/{paper_id}` |
 | GET | `/api/library/papers/{paper_id}/thumbnail` |
 | POST | `/api/library/papers/{paper_id}/refresh-card` |
+| GET | `/api/library/papers/{paper_id}/documents` |
+| POST | `/api/library/papers/{paper_id}/document-versions` |
+| POST | `/api/library/papers/{paper_id}/document-versions/{version_id}/default` |
+| GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/annotations` |
+| GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/file` |
 | GET | `/api/reader/papers/{paper_id}` |
 | GET | `/api/reader/papers/{paper_id}/file` |
 | GET | `/api/reader/papers/{paper_id}/pages/{page}` |
@@ -118,4 +123,4 @@
 | POST | `/api/workbench/schedules/{ident}/run` |
 | GET | `/health` |
 
-共 94 个路径、113 个 HTTP 操作；不包含静态挂载及私有 Runner Socket。
+共 99 个路径、118 个操作。

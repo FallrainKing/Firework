@@ -186,6 +186,8 @@ async def create_run(body: RunCreate, state) -> dict:
     skill = body.skill or 'chat'
     if conv_id is not None:
         session = require_session(db, conv_id)
+        from ..documents.service import guard_session
+        guard_session(db, state.settings, state, conv_id)
         if session['archived']:
             raise ServiceError(409, '请先取消归档，再继续会话')
         if body.skill is not None and body.skill != session['skill']:

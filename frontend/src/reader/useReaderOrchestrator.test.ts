@@ -126,3 +126,5 @@ describe('reader orchestrator', () => {
     expect(engine.load).toHaveBeenCalledTimes(1)
   })
 })
+
+it('creates a fresh reading session when the restored session references an old PDF',async()=>{vi.mocked(sessionsApi.list).mockResolvedValue({sessions:[{...session,stale_paper_ids:[1]}]} as never);const {orch}=setup();await orch.boot(session.id);expect(sessionsApi.create).toHaveBeenCalledWith(expect.objectContaining({paper_ids:[1],template_id:'read'}))})

@@ -25,6 +25,7 @@ def session_view(db: sqlite3.Connection, row) -> dict:
 
     out = {k: row[k] for k in ('id', 'title', 'kind', 'skill', 'skill_version_id', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
     out['paper_ids'] = repo.paper_ids(db, row['id'])
+    out['stale_paper_ids'] = [r[0] for r in db.execute('SELECT cp.paper_id FROM conversation_papers cp JOIN papers p ON p.id=cp.paper_id JOIN document_versions v ON v.id=p.default_version_id WHERE cp.conversation_id=? AND cp.file_version IS NOT NULL AND cp.file_version<>v.file_hash', (row['id'],))]
     out['run_count'] = agent_service.run_count(db, row['id'])
     last = agent_service.last_run_summary(db, row['id'])
     out['last_status'] = last['status'] if last else 'draft'

@@ -67,6 +67,7 @@ def annotate(db: sqlite3.Connection, settings, body: Annotation) -> dict:
     except ValueError as e:
         raise ServiceError(409, str(e))
     ident = insert_annotation_record(db,body)
+    db.execute("UPDATE reader_annotations SET document_version_id=(SELECT v.id FROM document_versions v JOIN paper_documents d ON d.id=v.document_id WHERE d.paper_id=? AND v.file_hash=? ORDER BY d.role LIMIT 1) WHERE id=?", (body.paper_id, body.file_version, ident))
     db.commit()
     return {**annotation_view(repo.find_annotation(db, ident)), 'validation': ctx['validation']}
 

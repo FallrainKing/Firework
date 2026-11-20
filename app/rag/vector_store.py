@@ -9,6 +9,7 @@ post-filtering results.
 from __future__ import annotations
 
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import httpx
@@ -170,6 +171,31 @@ class VectorStore:
             )
         except Exception as exc:  # noqa: BLE001
             raise _wrap(exc)
+
+    @contextmanager
+    def replacing_paper_chunks(self, paper_id, points):
+        """Restore the prior vector snapshot if publishing a version fails."""
+        from qdrant_client.models import PointStruct
+        records = []
+        offset = None
+        query = Filter(must=[FieldCondition(key="paper_id", match=MatchValue(value=paper_id))])
+        while True:
+            batch, offset = self._client.scroll(collection_name=self._collection, scroll_filter=query,
+                with_vectors=True, with_payload=True, limit=256, offset=offset)
+            records.extend(batch)
+            if offset is None:
+                break
+        try:
+            self.delete_paper(paper_id)
+            if points:
+                self.upsert_chunks(points)
+            yield
+        except BaseException:
+            self.delete_paper(paper_id)
+            if records:
+                self._client.upsert(collection_name=self._collection,
+                    points=[PointStruct(id=r.id, vector=r.vector, payload=r.payload) for r in records])
+            raise
 
     def search(
         self,

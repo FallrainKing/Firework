@@ -108,6 +108,20 @@ if [ -f "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" ]; then
     tar -xzf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$STAGE/agent" --strip-components 2
 fi
 
+# Every immutable version must be present, including non-default and supplement PDFs.
+check_document_files() {
+    version_db=$1
+    version_root=$2
+    if [ "$(sqlite3 "$version_db" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='file_objects';")" = "1" ]; then
+        for object_key in $(sqlite3 "$version_db" 'SELECT storage_key FROM file_objects'); do
+            case "$object_key" in blob-*.pdf) ;; *) echo 'Invalid document storage key' >&2; exit 1;; esac
+            case "$object_key" in */*|*..*) echo 'Invalid document path' >&2; exit 1;; esac
+            [ -f "$version_root/$object_key" ] || { echo 'Missing document version PDF' >&2; exit 1; }
+        done
+    fi
+}
+check_document_files "$DB" "$STAGE/papers"
+
 # Authentication-enabled backups must restore identity and tenant data together.
 IDENTITY_BACKUP="${BACKUP_DIR}/identity-${DATE}.db"
 if [ -f "$IDENTITY_BACKUP" ]; then
@@ -134,6 +148,7 @@ if [ -f "$IDENTITY_BACKUP" ]; then
         for pdf in $(sqlite3 "$tenant_db" "SELECT pdf_path FROM papers WHERE pdf_path<>'' AND pdf_path IS NOT NULL"); do
             [ -f "$STAGE/accounts/$workspace_id/papers/${pdf##*/}" ] || exit 1
         done
+        check_document_files "$tenant_db" "$STAGE/accounts/$workspace_id/papers"
         for image in $(sqlite3 "$tenant_db" 'SELECT id FROM image_attachments'); do
             [ -f "$STAGE/accounts/$workspace_id/attachments/$image" ] || exit 1
         done

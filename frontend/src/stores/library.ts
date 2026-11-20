@@ -31,8 +31,8 @@ export const useLibraryStore = defineStore('library', {
       const { papers } = await papersApi.list({ collection_id: id, limit: 100 })
       this.papersByCollection[id] = papers
     },
-    async createCollection(name: string): Promise<Collection> {
-      const created = await papersApi.createCollection(name)
+    async createCollection(name: string, parentId: number|null = null): Promise<Collection> {
+      const created = await papersApi.createCollection(name,parentId)
       await this.refresh()
       return created
     },

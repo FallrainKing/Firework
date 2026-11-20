@@ -18,8 +18,8 @@ def list_collections(db: sqlite3.Connection):
     ).fetchall()
 
 
-def insert_collection(db: sqlite3.Connection, name: str):
-    return db.execute('INSERT INTO paper_collections(name) VALUES (?)', (name,))
+def insert_collection(db: sqlite3.Connection, name: str, parent_id: int | None = None):
+    return db.execute('INSERT INTO paper_collections(name,parent_id) VALUES (?,?)', (name,parent_id))
 
 
 def collection_exists(db: sqlite3.Connection, ident: int):

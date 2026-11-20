@@ -17,8 +17,8 @@ export const papersApi = {
   collections(): Promise<{ collections: Collection[] }> {
     return api('/api/library/collections')
   },
-  createCollection(name: string): Promise<Collection> {
-    return api('/api/library/collections', { body: { name } })
+  createCollection(name: string, parentId: number | null = null): Promise<Collection> {
+    return api('/api/library/collections', { body: { name, parent_id: parentId } })
   },
   refreshCard(id: number): Promise<Paper> {
     return api(`/api/library/papers/${id}/refresh-card`, { method: 'POST', body: {} })

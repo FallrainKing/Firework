@@ -111,3 +111,6 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 
 
 0.1.2 契约补充：入站 `items.pdf_hash` 可选，采用正文 SHA-256 精确查重；不进入书目变更指纹。相同内容的不同附件键可关联同一文档版本。首次正文上传直接返回可阅读状态和 `fulltext_indexed`，不等待嵌入；文件列表也返回该标志。当前默认版本尚无索引时，使用既有 `POST .../document-versions/{vid}/default`、`expected_version_id=vid`、`confirmed=true` 明确补建，原文版本不改变。出站任务列表增加论文题名与租约到期信息；不同请求键可复用同一未完成任务，各自仍有持久幂等结果。领取任务时读取最新来源映射，材料内容仍保持排队时的快照。
+
+
+分类创建 `POST /api/library/collections` 支持 `{name, parent_id}`；`parent_id` 可省略或为 null（顶层），正整数父级必须存在于当前账号工作区，缺失返回 404。同父级名称唯一，重复返回 409；不同父级允许同名。响应包含 ID、父 ID、完整路径和计数。使用既有 parent_id 结构，无新增数据库迁移。

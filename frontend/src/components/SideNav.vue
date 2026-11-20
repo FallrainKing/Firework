@@ -5,12 +5,15 @@ import StateFeedback from './StateFeedback.vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useLibraryStore } from '@/stores/library'
 import { sessionsApi } from '@/api/sessions'
+import { collectionTree } from '@/shared/collections'
 import type { Session } from '@/api/types'
 
 const wb = useWorkbenchStore()
 const lib = useLibraryStore()
 const emit = defineEmits<{ 'new-task': []; 'open-import': []; 'new-domain': []; 'open-paper': [paperId: number, sessionId?: number] }>()
 const expanded = ref<number | null>(null)
+const collapsedFolders = ref(new Set<number>())
+function toggleFolder(id:number){const next=new Set(collapsedFolders.value);next.has(id)?next.delete(id):next.add(id);collapsedFolders.value=next}
 const navMode = ref<'papers' | 'sessions'>('papers')
 const paperQuery = ref('')
 const sessionQuery = ref('')
@@ -30,8 +33,7 @@ const recentPapers = computed(() => lib.recent
   .filter(r => paperTitle(r.paper_id).toLowerCase().includes(paperQuery.value.trim().toLowerCase()))
   .slice(0, 8))
 
-const filteredCollections = computed(() => lib.collections.filter(c =>
-  c.name.toLowerCase().includes(paperQuery.value.trim().toLowerCase())))
+const filteredCollections = computed(() => collectionTree(lib.collections,collapsedFolders.value,paperQuery.value))
 
 const filteredSessions = computed(() => {
   const q = sessionQuery.value.trim().toLowerCase()
@@ -203,11 +205,11 @@ onMounted(() => {
         <button aria-label="新增论文领域" @click="emit('new-domain')">＋</button>
       </div>
       <div class="domain-papers">
-        <div v-for="c in filteredCollections" :key="c.id" class="domain">
-          <button class="side-item domain-head" @click="toggleCollection(c.id)">
+        <div v-for="c in filteredCollections" :key="c.id" class="domain" :style="{marginInlineStart:c.depth*12+'px'}">
+          <div class="domain-row"><button v-if="c.hasChildren" class="domain-tree-toggle" :aria-label="(collapsedFolders.has(c.id)?'展开分类':'收起分类')+c.name" :aria-expanded="!collapsedFolders.has(c.id)" @click="toggleFolder(c.id)">{{collapsedFolders.has(c.id)?'▸':'▾'}}</button><button class="side-item domain-head" :title="c.path??c.name" @click="toggleCollection(c.id)">
             <span class="folder-icon" aria-hidden="true">{{ expanded === c.id ? '▾' : '▸' }}</span><span class="item-title">{{ c.name }}</span>
             <span class="muted">{{ c.count ?? 0 }}</span>
-          </button>
+          </button></div>
           <div v-if="expanded === c.id" class="domain-list">
             <button v-for="p in lib.papersByCollection[c.id] ?? []" :key="p.id" class="side-item" @click="openPaper(p.id)">
               <span class="item-title">{{ p.title }}</span>
@@ -319,3 +321,5 @@ onMounted(() => {
 .session-actions button { flex:1; padding:3px; font-size:10px; border-color:transparent; background:var(--surface); }
 @media(max-width:760px) { .work-sidebar { position:absolute; inset:0 auto 0 0; z-index:35; box-shadow:8px 0 24px rgb(0 0 0 / .12%); } }
 </style>
+
+<style scoped>.domain-row{display:flex;align-items:center}.domain-row .domain-head{flex:1;min-width:0}.domain-tree-toggle{padding:4px;border:0;background:none;flex:none;color:var(--text-muted)}</style>

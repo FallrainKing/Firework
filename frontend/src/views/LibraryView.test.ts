@@ -38,3 +38,19 @@ describe('LibraryView manage container', () => {
     expect(wrapper.find('.sessions-manager').exists()).toBe(true)
   })
 })
+
+it('creates a child in the explicitly chosen parent and renders a collapsible tree',async()=>{
+ const groups=[{id:1,name:'Root',parent_id:null,path:'Root'},{id:2,name:'Other',parent_id:null,path:'Other'},{id:3,name:'Child',parent_id:1,path:'Root / Child'}]
+ vi.mocked(papersApi.collections).mockResolvedValue({collections:groups})
+ const create=vi.spyOn(papersApi,'createCollection').mockResolvedValue({id:4,name:'New',parent_id:3,path:'Root / Child / New'})
+ const w=mount(LibraryView);await flushPromises()
+ expect(w.findAll('[role="treeitem"]').map(n=>n.attributes('aria-level'))).toEqual(['1','2','1'])
+ await w.find('[aria-label="收起Root"]').trigger('click');expect(w.findAll('[role="treeitem"]')).toHaveLength(2)
+ await w.find('[aria-label="展开Root"]').trigger('click')
+ await w.find('[aria-label="在Root / Child下新建子分类"]').trigger('click')
+ expect((w.find('[aria-label="新分类的父分类"]').element as HTMLSelectElement).value).toBe('3')
+ await w.find('[aria-label="新增资料分类"]').setValue('New')
+ await w.find('.category-create').trigger('submit');await flushPromises()
+ expect(create).toHaveBeenCalledWith('New',3)
+ expect(w.emitted('library-updated')).toBeTruthy()
+})

@@ -77,6 +77,7 @@ const importOpen = ref(false)
 const taskRequest = ref<null | { mode: 'read' | 'compare' | 'chat' | 'review'; question?: string; template?: Template }>(null)
 const domainOpen = ref(false)
 const domainName = ref('')
+const domainParent = ref('')
 const domainError = ref('')
 const domainSaving = ref(false)
 const domainSaved = ref(false)
@@ -157,7 +158,7 @@ async function createDomain() {
   domainSaved.value = false
   domainError.value = ''
   try {
-    await lib.createCollection(name)
+    await lib.createCollection(name,domainParent.value?Number(domainParent.value):null)
     domainName.value = ''
     domainSaved.value = true
   } catch (e) {
@@ -209,7 +210,7 @@ async function createDomain() {
         <SchedulesView v-if="wb.view === 'schedules'" />
       <SkillsView v-if="wb.view === 'skills'" />
       <SettingsView v-if="wb.view === 'settings'" />
-        <LibraryView v-if="wb.view === 'library'" :session-id="librarySession" @open-paper="openPaper" @open-import="openImport" @open-session="openSessionInLibrary" />
+        <LibraryView @library-updated="lib.refresh()" v-if="wb.view === 'library'" :session-id="librarySession" @open-paper="openPaper" @open-import="openImport" @open-session="openSessionInLibrary" />
       </main>
     </div>
     <div v-if="toast" class="work-toast" role="status">{{ toast }}</div>
@@ -227,7 +228,7 @@ async function createDomain() {
     </div>
     <div v-if="domainOpen" class="dialog-overlay" @click.self="domainOpen = !domainSaving">
       <div class="domain-dialog" role="dialog" aria-label="新增论文领域">
-        <h2>新增论文领域</h2>
+        <h2>新增论文领域</h2><label>父分类<select v-model="domainParent" aria-label="论文领域的父分类"><option value="">顶层分类</option><option v-for="c in lib.collections" :key="c.id" :value="String(c.id)">{{c.path??c.name}}</option></select></label>
         <input v-model="domainName" maxlength="80" placeholder="领域名称，如：基础模型" @keydown.enter="createDomain" />
         <StateFeedback
           :saving="domainSaving"

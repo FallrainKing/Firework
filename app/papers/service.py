@@ -73,13 +73,15 @@ def create_collection(db: sqlite3.Connection, body: CollectionCreate) -> dict:
     name = body.name.strip()
     if not name:
         raise ServiceError(400, '分类名称不能为空')
+    if body.parent_id is not None and not repo.collection_exists(db, body.parent_id):
+        raise ServiceError(404, '父分类不存在')
     try:
-        cur = repo.insert_collection(db, name)
+        cur = repo.insert_collection(db, name, body.parent_id)
         db.commit()
     except sqlite3.IntegrityError:
         db.rollback()
-        raise ServiceError(409, '分类名称已存在')
-    return {'id': cur.lastrowid, 'name': name}
+        raise ServiceError(409, '该父分类下已存在同名分类')
+    return next(c for c in collections_view(db)['collections'] if c['id']==cur.lastrowid)
 
 
 def papers_view(db, q='', collection_id=None, reading_status=None, limit=60, offset=0) -> dict:

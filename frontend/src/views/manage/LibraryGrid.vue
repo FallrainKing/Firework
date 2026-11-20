@@ -9,7 +9,7 @@ import TaskDialog from '@/components/TaskDialog.vue'
 import type { Session } from '@/api/types'
 
 const props = withDefaults(defineProps<{ filterCollection?: string; filterStatus?: '' | 'unread' | 'reading' | 'read' }>(), { filterCollection: '', filterStatus: '' })
-const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number]; 'filter-change': [collection: string, status: '' | 'unread' | 'reading' | 'read'] }>()
+const emit = defineEmits<{ 'open-paper': [paperId: number]; 'open-import': [paperId?: number]; 'open-session': [sessionId: number]; 'filter-change': [collection: string, status: '' | 'unread' | 'reading' | 'read']; 'collections-changed': [] }>()
 
 const papers = ref<Paper[]>([])
 const loading = ref(false)
@@ -38,6 +38,8 @@ const documentsId = ref<number | null>(null)
 const task = ref<{ mode: 'compare' | 'review'; paperIds: number[] } | null>(null)
 const newCollectionOpen = ref(false)
 const newCollectionName = ref('')
+const newCollectionParent = ref('')
+function openNewCollection(){newCollectionParent.value=Number(collectionId.value)>0?collectionId.value:'';newCollectionOpen.value=true}
 
 async function load(reset: boolean) {
   const busy = reset ? loading : loadingMore
@@ -114,6 +116,7 @@ async function applyBatchCollection() {
     batchCollectionId.value = ''
     await Promise.all([load(true), refreshCollections()])
     savedMessage.value = true
+    emit('collections-changed')
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : '批量分类失败'
   } finally {
@@ -128,10 +131,11 @@ async function createCollection() {
   saveError.value = null
   savedMessage.value = false
   try {
-    await papersApi.createCollection(name)
+    await papersApi.createCollection(name,newCollectionParent.value?Number(newCollectionParent.value):null)
     newCollectionOpen.value = false
     newCollectionName.value = ''
     await refreshCollections()
+    emit('collections-changed')
     savedMessage.value = true
   } catch (e) {
     saveError.value = e instanceof Error ? e.message : '新增分类失败'
@@ -147,6 +151,7 @@ function onCreated(session: Session, _prompt: string) {
 }
 
 function onSaved() {
+  emit('collections-changed')
   void load(true)
   void refreshCollections()
 }
@@ -174,7 +179,7 @@ function onSaved() {
         <button :aria-pressed="density === 'card'" @click="setDensity('card')">卡片</button>
         <button :aria-pressed="density === 'compact'" @click="setDensity('compact')">紧凑列表</button>
       </div>
-      <button @click="newCollectionOpen = true">＋ 新分类</button>
+      <button @click="openNewCollection">＋ 新分类</button>
       <span class="muted">共 {{ total }} 篇论文</span>
       <span class="spacer"></span>
       <button class="primary" @click="emit('open-import')">添加论文</button>
@@ -260,7 +265,7 @@ function onSaved() {
 
     <div v-if="newCollectionOpen" class="dialog-overlay" @click.self="newCollectionOpen = false">
       <div class="name-dialog" role="dialog" aria-label="新建论文分类">
-        <h2>新建论文分类</h2>
+        <h2>新建论文分类</h2><label>父分类<select v-model="newCollectionParent" aria-label="新建论文分类的父分类"><option value="">顶层分类</option><option v-for="c in collections" :key="c.id" :value="String(c.id)">{{c.path??c.name}}</option></select></label>
         <input v-model="newCollectionName" maxlength="80" placeholder="分类名称" @keydown.enter="createCollection" />
         <div class="dialog-footer">
           <button @click="newCollectionOpen = false">取消</button>
@@ -321,3 +326,5 @@ function onSaved() {
 .image-placeholder { display:grid; place-items:center; height:100%; text-align:center; }
 @media(max-width:600px) { .paper-grid.compact .paper-card { grid-template-columns:1fr; }.card-menu { right:4px; }.library-grid-view { padding:12px; } .library-toolbar form { flex-basis:100%; } .library-toolbar button,.library-toolbar select { font-size:12px; padding:7px 10px; } .spacer { display:none; } }
 </style>
+
+<style scoped>.name-dialog label{display:grid;gap:6px;margin-bottom:12px}.name-dialog select{min-width:0;width:100%}</style>

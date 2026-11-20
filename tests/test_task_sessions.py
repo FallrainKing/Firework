@@ -231,3 +231,21 @@ def test_collection_edit_does_not_silently_confirm_automatic_units(client):
     assert result['affiliation_source']=='pdf_first_page_unverified'
     result=c.patch(f'/api/library/papers/{pid}',json={'metadata_version':result['metadata_version'],'affiliations':['University'],'confirm_affiliations':True}).json()
     assert result['affiliation_source']=='user'
+
+
+def test_nested_collections_preserve_parent_scope_and_descendant_filter(client):
+    c,s=client
+    a=c.post('/api/library/collections',json={'name':'Robotics'}).json()
+    b=c.post('/api/library/collections',json={'name':'Vision'}).json()
+    child=c.post('/api/library/collections',json={'name':'Reading','parent_id':a['id']});assert child.status_code==201,child.text
+    child=child.json();assert child['parent_id']==a['id'] and child['path']=='Robotics / Reading'
+    assert c.post('/api/library/collections',json={'name':' Reading ','parent_id':a['id']}).status_code==409
+    assert c.post('/api/library/collections',json={'name':'Reading','parent_id':b['id']}).status_code==201
+    assert c.post('/api/library/collections',json={'name':'Ghost','parent_id':999999}).status_code==404
+    pid=paper(s)
+    current=c.get(f'/api/library/papers/{pid}').json()
+    assert c.patch(f'/api/library/papers/{pid}',json={'metadata_version':current['metadata_version'],'collection_ids':[child['id']]}).status_code==200
+    assert c.get('/api/library/papers',params={'collection_id':a['id']}).json()['total']==1
+    assert c.get('/api/library/papers',params={'collection_id':b['id']}).json()['total']==0
+    listing=c.get('/api/library/collections').json()['collections']
+    assert next(x for x in listing if x['id']==a['id'])['count']==1

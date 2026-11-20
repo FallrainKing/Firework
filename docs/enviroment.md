@@ -141,6 +141,9 @@ docker compose logs --tail=80 app
 | 认证发布后成套备份 | `backups/after-auth-20261119-2250/` |
 | 文件管理发布前成套备份 | `backups/before-documents-20261120/` |
 | 文件管理发布后成套备份 | `backups/after-documents-20261120/` |
+| Zotero 发布前成套备份 | `backups/before-zotero-20261120/` |
+| Zotero 发布后成套备份 | `backups/after-zotero-20261120/` |
+| Zotero 发布前应用镜像 | `research-assistant-app:before-zotero-20261120` |
 | 文件管理前应用镜像 | `research-assistant-app:before-documents-20261120` |
 | 改名前应用镜像 | `research-assistant-app:before-firework-20261119` |
 | 认证改造前 app/backup 镜像 | `research-assistant-app:before-auth-20261119`、`research-assistant-backup:before-auth-20261119` |
@@ -166,3 +169,5 @@ docker compose logs --tail=80 app
 本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.0.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.0.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
 
 设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0015）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。
+
+本次 Zotero 功能发布为 `b97000e`，业务迁移 0015 与身份 schema 2 已在生产应用。公网插件 SHA-256 为 `80d70b3b5c29f3d547941577c4462f92ebf2c8be64dc740583519a4fef45e5e4`；线上五步冒烟、匿名隔离、设备令牌拒绝和 PDF Range 验证通过，未新增真实设备或研究运行。

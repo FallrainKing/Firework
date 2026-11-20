@@ -1,6 +1,6 @@
 # 当前环境、部署与排障
 
-核对日期：2026-11-19（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 5。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+核对日期：2026-11-20（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 5。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
 ## 1. 当前实例
 
@@ -14,7 +14,7 @@
 | 前端构建 | Docker Node 24，多阶段构建 Vue/Vite |
 | 生产分支 | `release/frontier-workbench-20261119` |
 | Runner | 用户级 `research-agent-runner`，协议 5，并发 2 |
-| 实际模型快照 | 状态接口报告 `qwen4-max[1M]`，以运行时状态为准 |
+| 实际模型快照 | 本次发布冒烟报告 `glm-5.3[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
 | 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0014_document_versions.sql` |
 
@@ -139,6 +139,9 @@ docker compose logs --tail=80 app
 | --- | --- |
 | 完整认证改造前备份 | `backups/before-auth-complete-20261119-2248/` |
 | 认证发布后成套备份 | `backups/after-auth-20261119-2250/` |
+| 文件管理发布前成套备份 | `backups/before-documents-20261120/` |
+| 文件管理发布后成套备份 | `backups/after-documents-20261120/` |
+| 文件管理前应用镜像 | `research-assistant-app:before-documents-20261120` |
 | 改名前应用镜像 | `research-assistant-app:before-firework-20261119` |
 | 认证改造前 app/backup 镜像 | `research-assistant-app:before-auth-20261119`、`research-assistant-backup:before-auth-20261119` |
 | 网关单次登录修改前配置 | 网关 `/root/research-auth-gateway-backups/20261119-before-app-login-only.conf` |

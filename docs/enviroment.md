@@ -176,3 +176,5 @@ docker compose logs --tail=80 app
 Zotero 初版功能提交为 `b97000e`；当前 0.1.3 对应业务迁移 0016，身份 schema 保持 2。插件 SHA-256 为 `ca881b9b747d876a2f62eac51014d1565d720d6e12c19e5899ce84ad9e3e764c`。发布验证情况见 STATUS 与 CHANGELOG。
 
 当前流程修复功能提交 `58dcc70`，服务端与公开插件 0.1.3 已发布。2026-11-20 发布验证保留 18 篇论文、9 个分类、12 条批注和 15 个文件版本；本机仍运行 0.1.1，需通过插件管理更新，配对无需重建。
+
+子分类与目录树修复功能提交为 `ade154a`，无需新迁移；发布前备份 `backups/before-subcollections-20261120/`，回退镜像 `research-assistant-app:before-subcollections-20261120`。线上五步检查和 Chrome 目录操作核对通过。

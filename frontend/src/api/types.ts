@@ -65,6 +65,8 @@ export interface Category {
 }
 
 export interface Collection {
+  path?: string
+  parent_id?: number | null
   id: number
   name: string
   count?: number

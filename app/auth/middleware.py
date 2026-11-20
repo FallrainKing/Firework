@@ -8,7 +8,7 @@ from ..core.workspaces import workspace_context,valid_workspace,workspace_path
 from .store import COOKIE
 
 SAFE={'GET','HEAD','OPTIONS'}
-PUBLIC={'/api/auth/session','/api/auth/login','/api/auth/register'}
+PUBLIC={'/api/auth/session','/api/auth/login','/api/auth/register','/api/zotero/pair/start','/api/zotero/pair/claim'}
 
 
 def same_origin(request,store):
@@ -43,6 +43,13 @@ class AuthenticationMiddleware:
                 account=store.by_workspace(key)
                 if not store.login_allowed(account):
                     return await JSONResponse({'detail':'账号当前不可执行任务'},status_code=403)(scope,receive,send)
+            elif path.startswith('/api/zotero/device/'):
+                from ..integrations.zotero.auth import principal
+                header=request.headers.get('authorization','')
+                user=principal(store,header[7:]) if header.startswith('Bearer ') else None
+                if user is None:
+                    return await JSONResponse({'detail':'插件未配对、已过期或已撤销'},status_code=401)(scope,receive,send)
+                key=user['workspace_key']
             elif path not in PUBLIC:
                 user=store.session(request.cookies.get(store.cookie_name,''))
                 if user is None:

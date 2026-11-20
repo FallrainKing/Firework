@@ -162,7 +162,7 @@ function onSaved() {
       <select v-model="collectionId" class="collection-filter" aria-label="按分类筛选" @change="emit('filter-change', collectionId, readingStatus); reload()">
         <option value="">全部论文</option>
         <option value="0">未分类</option>
-        <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+        <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.path ?? c.name }}</option>
       </select>
       <select v-model="readingStatus" class="reading-filter" aria-label="按阅读状态筛选" @change="emit('filter-change', collectionId, readingStatus); reload()">
         <option value="">全部阅读状态</option>
@@ -215,7 +215,7 @@ function onSaved() {
           <div class="badges">
             <span class="badge" :class="{ danger: !p.has_pdf }">{{ p.has_pdf ? '有全文' : '缺全文' }}</span>
             <span class="badge">{{ { unread: '未开始阅读', reading: '阅读中', read: '已完成阅读任务' }[p.reading_status] }}</span>
-            <span v-for="c in p.collections" :key="c.id" class="badge">{{ c.name }}</span>
+            <span v-for="c in p.collections" :key="c.id" class="badge">{{ c.path ?? c.name }}</span>
             <span v-if="!p.collections.length" class="badge">未分类</span>
           </div>
           <div class="paper-actions">
@@ -249,7 +249,7 @@ function onSaved() {
         <select v-model="batchCollectionId" aria-label="目标分类">
           <option value="" disabled>请选择分类</option>
           <option value="0">未分类</option>
-          <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+          <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.path ?? c.name }}</option>
         </select>
         <div class="dialog-footer">
           <button @click="batchCollectionOpen = false">取消</button>

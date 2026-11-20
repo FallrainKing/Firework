@@ -16,3 +16,17 @@ CREATE TABLE IF NOT EXISTS auth_audit(
  id INTEGER PRIMARY KEY,actor_id TEXT,action TEXT NOT NULL,target_id TEXT,created_at INTEGER NOT NULL
 );
 INSERT OR IGNORE INTO auth_meta VALUES ('schema_version','1');
+CREATE TABLE IF NOT EXISTS zotero_pairings(
+ id TEXT PRIMARY KEY,secret_hash TEXT NOT NULL,user_code TEXT NOT NULL UNIQUE,
+ name TEXT NOT NULL,instance_id TEXT NOT NULL,expires_at INTEGER NOT NULL,
+ account_id TEXT REFERENCES accounts(id),claimed INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS zotero_devices(
+ id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),
+ name TEXT NOT NULL,instance_id TEXT NOT NULL,token_hash TEXT NOT NULL UNIQUE,
+ session_version INTEGER NOT NULL,created_at INTEGER NOT NULL,expires_at INTEGER NOT NULL,
+ revoked INTEGER NOT NULL DEFAULT 0,last_seen INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_zotero_account_instance ON zotero_devices(account_id,instance_id);
+UPDATE auth_meta SET value='2' WHERE key='schema_version';

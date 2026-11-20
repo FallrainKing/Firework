@@ -8,6 +8,7 @@ export const router = createRouter({
   routes: [
     { path: '/login', name: 'login', component: () => import('@/views/LoginView.vue') },
     { path: '/register', name: 'register', component: () => import('@/views/RegisterView.vue') },
+    { path: '/integrations/zotero', name: 'zotero', component: () => import('@/views/ZoteroView.vue') },
     { path: '/accounts', name: 'accounts', component: () => import('@/views/AccountsView.vue') },
     { path: '/', name: 'workbench', component: () => import('@/views/WorkbenchView.vue') },
     { path: '/reader/:paperId', name: 'reader', component: () => import('@/views/WorkbenchView.vue') },

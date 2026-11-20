@@ -1,6 +1,6 @@
 # Firework 项目文档
 
-更新：2026-11-19。当前版本：Firework；业务迁移 0014、独立身份 schema 1、Runner 协议 5。
+更新：2026-11-19。当前版本：Firework；业务迁移 0015、独立身份 schema 2、Runner 协议 5。
 
 ## 当前维护文档
 

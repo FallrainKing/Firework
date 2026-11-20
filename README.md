@@ -17,6 +17,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - **Research frontier tracking:** Define topics, keywords, authors, or teams. Use the agent to discover papers and open-source projects, generate deduplicated timeline reports, and approve discoveries before adding them to your library.
 - **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, and enable or disable capabilities. Templates and structured outputs connect Skills to the interface.
 - **Richer agent input:** Combine editable templates, selected paper passages, and image attachments. Image interpretation requires a vision-capable agent or model.
+- **Manual Zotero exchange:** Pair a local Zotero 10 client, exchange selected papers, collection paths, tags, and immutable PDF files, and retry transfers without research-model calls. Native annotation sync and automatic Connector ingestion are planned. See the [setup guide](docs/USER-GUIDE.md#zotero-手动交换).
 - **Account isolation:** Separate each account's research database, files, private Skills, vector collection, and agent workspace. Public registration is currently closed, and the default release permits only the primary administrator to log in.
 
 Firework is under active development. Unified knowledge entries, cross-task long-term memory, OCR-based reading guides, and a complete six-stage deep-reading workflow are planned rather than complete. See the [implementation status](docs/STATUS.md) and [roadmap](docs/ROADMAP.md).

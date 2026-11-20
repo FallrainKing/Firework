@@ -16,7 +16,7 @@
 | Runner | 用户级 `research-agent-runner`，协议 5，并发 2 |
 | 实际模型快照 | 本次发布冒烟报告 `glm-5.3[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
-| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0014_document_versions.sql` |
+| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0015_zotero_manual_sync.sql` |
 
 远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
 
@@ -159,3 +159,10 @@ docker compose logs --tail=80 app
 旧的匿名五步冒烟在认证版会收到 401；先按认证说明签发 5 分钟私有维护会话，再设置 AUTH_SESSION_FILE 执行。生产 Cookie 只通过 HTTPS，临时维护文件只在受信任宿主使用。HTTP 本地开发可显式配置 RESEARCH_AUTH_COOKIE_SECURE=0，同时配置匹配的 RESEARCH_PUBLIC_ORIGIN；使用单独的 research_session_dev Cookie，不用于公网。
 
 当前实例的完整备份和回退镜像见第 7 节。回退不能混合新身份库与其他日期研究库；恢复后旧浏览器会话必须撤销。
+
+
+## Zotero 插件构建
+
+本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.0.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.0.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
+
+设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0015）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。

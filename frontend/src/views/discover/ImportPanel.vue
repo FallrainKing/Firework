@@ -131,7 +131,7 @@ defineExpose({ uploadFiles })
     <label>保存到分类
       <select v-model="collectionId" class="import-collection">
         <option value="">未分类</option>
-        <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
+        <option v-for="c in collections" :key="c.id" :value="String(c.id)">{{ c.path ?? c.name }}</option>
       </select>
     </label>
     <form class="source-form" @submit.prevent="submitSource">

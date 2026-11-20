@@ -38,8 +38,16 @@ def card(db: sqlite3.Connection, row) -> dict:
             d[k] = []
         if not isinstance(d[k], list):
             d[k] = []
+    d['tags'] = [r[0] for r in db.execute('SELECT DISTINCT tag FROM paper_tags WHERE paper_id=?',(d['id'],))]
     d['summary'] = d['brief_summary'] or (d['abstract'] or '')[:320]
     d['collections'] = [dict(r) for r in repo.paper_collections(db, d['id'])]
+    for c in d['collections']:
+        names=[c['name']];parent=db.execute('SELECT parent_id FROM paper_collections WHERE id=?',(c['id'],)).fetchone()[0];seen={c['id']}
+        while parent and parent not in seen:
+            seen.add(parent);node=db.execute('SELECT name,parent_id FROM paper_collections WHERE id=?',(parent,)).fetchone()
+            if not node:break
+            names.append(node['name']);parent=node['parent_id']
+        c['path']=' / '.join(reversed(names))
     d['thumbnail_url'] = f"/api/library/papers/{d['id']}/thumbnail" if d['pdf_path'] else None
     d['image_caption'] = '原始 PDF 首页预览' if d['pdf_path'] else '书目信息 · 全文待补充'
     d['has_pdf'] = bool(d['pdf_path'])
@@ -50,7 +58,15 @@ def card(db: sqlite3.Connection, row) -> dict:
 
 
 def collections_view(db: sqlite3.Connection) -> dict:
-    return {'collections': [dict(r) for r in repo.list_collections(db)]}
+    rows=[dict(r) for r in repo.list_collections(db)]
+    nodes={r['id']:r for r in rows}
+    for r in rows:
+        names=[r['name']];parent=r['parent_id'];seen={r['id']}
+        while parent in nodes and parent not in seen:
+            seen.add(parent);names.append(nodes[parent]['name']);parent=nodes[parent]['parent_id']
+        r['path']=' / '.join(reversed(names))
+        r['count']=db.execute('WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id) SELECT count(DISTINCT paper_id) FROM paper_collection_items WHERE collection_id IN (SELECT id FROM tree)',(r['id'],)).fetchone()[0]
+    return {'collections':rows}
 
 
 def create_collection(db: sqlite3.Connection, body: CollectionCreate) -> dict:

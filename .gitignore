@@ -31,3 +31,6 @@ app/web/md.js
 ops/public-access-credentials.txt
 ops/tunnel.log
 ops/tunnel.sh
+
+# Reproducible Zotero package (built into deployment image)
+/app/web/downloads/*.xpi

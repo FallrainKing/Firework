@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
 from .documents.router import router as documents_router
+from .integrations.zotero.router import router as zotero_router
 from .imports.router import router as imports_router, internal as imports_internal
 from .papers.router import router as papers_router
 from .schedules.router import router as schedules_router
@@ -149,7 +150,7 @@ def create_app(*, authentication: bool = True) -> FastAPI:
     register_error_handlers(app)
     @app.exception_handler(RequestValidationError)
     async def private_validation_errors(request,exc):
-        if request.url.path.startswith(('/api/auth/','/api/admin/')):
+        if request.url.path.startswith(('/api/auth/','/api/admin/','/api/zotero/')):
             # FastAPI's default errors include raw input, which can be a password.
             errors=[{k:e[k] for k in ('loc','msg','type') if k in e} for e in exc.errors()]
             return JSONResponse({'detail':errors},status_code=422)
@@ -164,6 +165,7 @@ def create_app(*, authentication: bool = True) -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(papers_router)
     app.include_router(documents_router)
+    app.include_router(zotero_router)
     app.include_router(reader_router)
     app.include_router(guide_router)
     app.include_router(guide_internal)

@@ -79,3 +79,6 @@ AUTH_SESSION_FILE=/tmp/research-auth-smoke.json .venv/bin/python scripts/smoke_t
 认证默认开启。旧业务单元测试可显式构造 create_app(authentication=False)，认证/隔离测试必须使用默认工厂并真实执行中间件；不得将测试参数作为生产开关。维护冒烟文件的签发与清理见 [认证说明](AUTHENTICATION.md)。
 
 本项目 Git 提交身份为 `fallrain <fallrainking@gmail.com>`。远程默认分支为 `main`；提交前核对目标分支与远程状态，不使用旧提交编号作为现行部署基线。
+
+
+Zotero 插件验证：`node --test plugins/zotero/tests/plugin.test.cjs`；可重复构建：`python3 scripts/build_zotero_plugin.py`。后端交换契约见 `tests/test_zotero_sync.py`，前端授权交互见 `frontend/src/views/ZoteroView.test.ts`。模拟测试验证接口和恢复逻辑，不能替代真实 Zotero 安装/配对后的一篇双向验证。XPI 为构建产物，不提交个人凭据或队列；镜像构建时从仓库源代码生成下载包。

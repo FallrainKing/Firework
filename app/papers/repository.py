@@ -45,7 +45,7 @@ def _search_where(q, collection_id, reading_status=None):
         if collection_id == 0:
             where += ' AND NOT EXISTS (SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id)'
         else:
-            where += ' AND EXISTS(SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id AND x.collection_id=?)'
+            where += ' AND EXISTS(SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id AND x.collection_id IN (WITH RECURSIVE tree(id) AS (SELECT id FROM paper_collections WHERE id=? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id) SELECT id FROM tree))'
             args.append(collection_id)
     if reading_status is not None:
         where += " AND (CASE WHEN EXISTS(SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id JOIN agent_runs ar ON ar.conversation_id=c.id WHERE cp.paper_id=p.id AND c.skill='paper_read' AND ar.status='succeeded') THEN 'read' WHEN EXISTS(SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id WHERE cp.paper_id=p.id AND c.skill='paper_read') THEN 'reading' ELSE 'unread' END)=?"

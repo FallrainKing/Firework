@@ -101,7 +101,7 @@ async function refreshCard() {
       <label>简要摘要<textarea v-model="summary" rows="3" maxlength="4000"></textarea></label>
       <label>论文分类
         <select v-model="selectedCollections" multiple size="4">
-          <option v-for="c in collections" :key="c.id" :value="c.id">{{ c.name }}</option>
+          <option v-for="c in collections" :key="c.id" :value="c.id">{{ c.path ?? c.name }}</option>
         </select>
       </label>
       <StateFeedback :saving="saving" :saved="saved" :save-error="saveError" />

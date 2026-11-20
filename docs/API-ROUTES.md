@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-更新：2026-11-20。业务迁移 0014，Runner 协议 5。由当前应用 OpenAPI 提取；私有接口需登录，写请求需 CSRF。调用约定见 [接口说明](API.md) 和 [认证说明](AUTHENTICATION.md)。
+更新：2026-11-20。业务迁移 0015，Runner 协议 5。由当前应用 OpenAPI 提取；浏览器私有接口需登录，写请求需 CSRF；Zotero 配对和限域设备凭据例外见接口说明。调用约定见 [接口说明](API.md) 和 [认证说明](AUTHENTICATION.md)。
 
 | 方法 | 路径 |
 | --- | --- |
@@ -83,6 +83,21 @@
 | POST | `/api/library/papers/{paper_id}/document-versions/{version_id}/default` |
 | GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/annotations` |
 | GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/file` |
+| POST | `/api/zotero/pair/start` |
+| POST | `/api/zotero/pair/claim` |
+| POST | `/api/zotero/pair/inspect` |
+| POST | `/api/zotero/pair/approve` |
+| GET | `/api/zotero/devices` |
+| DELETE | `/api/zotero/devices/{ident}` |
+| GET | `/api/zotero/exports` |
+| POST | `/api/zotero/exports` |
+| POST | `/api/zotero/exports/{ident}/retry` |
+| POST | `/api/zotero/device/items` |
+| POST | `/api/zotero/device/papers/{pid}/attachments` |
+| POST | `/api/zotero/device/exports/claim` |
+| GET | `/api/zotero/device/exports/{ident}/files/{vid}` |
+| POST | `/api/zotero/device/exports/{ident}/ack` |
+| POST | `/api/zotero/device/papers/{pid}/attachments/check` |
 | GET | `/api/reader/papers/{paper_id}` |
 | GET | `/api/reader/papers/{paper_id}/file` |
 | GET | `/api/reader/papers/{paper_id}/pages/{page}` |
@@ -122,5 +137,3 @@
 | PATCH | `/api/workbench/schedules/{ident}` |
 | POST | `/api/workbench/schedules/{ident}/run` |
 | GET | `/health` |
-
-共 99 个路径、118 个操作。

@@ -39,7 +39,7 @@ function onOpenSession(sid: number) {
       <button :class="{active:page==='library'&&category===''}" @click="page='library'; category='';reading=''">全部论文</button>
       <button :class="{active:page==='projects'}" @click="page='projects'">开源项目</button>
       <h2>领域分类</h2>
-      <button v-for="c in collections" :key="c.id" :class="{active:category===String(c.id)}" @click="category=String(c.id); if(page==='sessions')page='library'">{{c.name}} <small>{{c.count??0}} 篇论文</small></button>
+      <button v-for="c in collections" :key="c.id" :class="{active:category===String(c.id)}" @click="category=String(c.id); if(page==='sessions')page='library'">{{c.path ?? c.name}} <small>{{c.count??0}} 篇论文</small></button>
       <form class="category-create" @submit.prevent="addCategory"><input v-model="categoryName" maxlength="80" placeholder="新增分类" aria-label="新增资料分类"><button :disabled="!categoryName.trim()">＋</button></form>
       <h2>阅读状态</h2>
       <button v-for="s in [{id:'unread',name:'未开始阅读'},{id:'reading',name:'阅读中'},{id:'read',name:'已完成阅读'}] as const" :key="s.id" :class="{active:reading===s.id&&page==='library'}" @click="page='library';reading=s.id">{{s.name}}</button>

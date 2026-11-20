@@ -98,3 +98,13 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 - `GET /api/library/papers/{paper_id}/document-versions/{version_id}/file`：mode=original/annotated/markdown，origin 同上；仅 original 支持 inline=true 预览。原件与输出均禁止共享缓存，且必须属于当前账号与论文。
 
 旧版会话的材料哈希与默认正文不同后，发送返回 409；会话响应的 stale_paper_ids 标识差异。重新进入阅读时选择或创建当前版本会话，旧原生会话不被覆盖。
+
+## Zotero 交换接口
+
+`POST /api/zotero/pair/start`、`pair/claim` 为无登录的短期配对交换，JSON 且受来源约束；其他非 device 接口要求网页登录，写请求仍需 CSRF。`pair/inspect` 先显示设备身份，`pair/approve` 明确批准；`GET /devices`、`DELETE /devices/{ident}` 管理当前账号授权。
+
+`POST /exports` 接收 `device_id`、`paper_ids`（1–30）与 `request_key`，快照当时元数据和文件版本；同请求键复用任务。`GET /exports` 查最近记录；`POST /exports/{ident}/retry` 仅重排失败任务。
+
+插件只使用 `Authorization: Bearer <device-token>` 调用 `/api/zotero/device/*`：`items` 提交书目，`papers/{pid}/attachments/check` 以来源键和 SHA-256 查询文件，`papers/{pid}/attachments` 用 multipart 上传 PDF（50 MiB/300 页）；`exports/claim` 返回任务、文件清单和 15 分钟租约；下载 `exports/{ident}/files/{vid}` 必须携带 `X-Sync-Lease`；`exports/{ident}/ack` 提交租约、成功/失败、目标库/条目与完整附件映射。同租约的相同终态回执可重复提交，不得据此继续下载文件。账号由服务端路由，插件不能选工作区。
+
+409 表示元数据冲突、失效租约或来源映射冲突，不触发模型和自动覆盖；附件缺失、只读库或配对失效应先排除原因，再人工重试。详细字段以 `app/integrations/zotero/schemas.py` 为准。

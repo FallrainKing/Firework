@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { parseDeepLink } from '@/shared/deeplink'
 import TopNav from '@/components/TopNav.vue'
 import SideNav from '@/components/SideNav.vue'
@@ -105,7 +105,13 @@ function openImport(paperId?: number) {
 }
 
 const route = useRoute()
-watch(() => route.query.home, home => { if (home === '1') goHome() })
+const router = useRouter()
+function enterHome() {
+  goHome()
+  // Consume the navigation intent so a later refresh can restore a newly opened paper.
+  void router.replace({ path: '/' })
+}
+watch(() => route.query.home, home => { if (home === '1' && wb.loaded) enterHome() })
 
 function openSessionInLibrary(sessionId: number) {
   librarySession.value = sessionId
@@ -116,7 +122,7 @@ onMounted(async () => {
   try {
     await Promise.all([wb.load(), lib.refresh()])
     const deep = parseDeepLink(route)
-    if (route.query.home === '1') goHome()
+    if (route.query.home === '1') enterHome()
     else if (deep) {
       openPaper(deep.paperId, deep.sessionId ?? undefined)
     }

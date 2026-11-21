@@ -8,7 +8,8 @@ import { papersApi } from '@/api/papers'
 import { workbenchApi } from '@/api/workbench'
 import { agentApi } from '@/api/agent'
 const route = vi.hoisted(() => ({ query: {} as Record<string, string>, params: {} }))
-vi.mock('vue-router', () => ({ useRoute: () => route }))
+const replaceRoute = vi.hoisted(() => vi.fn())
+vi.mock('vue-router', () => ({ useRoute: () => route, useRouter: () => ({ replace: replaceRoute }) }))
 
 beforeEach(() => {
   route.query = {}
@@ -41,6 +42,7 @@ describe('reading full-text boundary', () => {
     expect(wb.activePaperId).toBeNull()
     expect(wb.tabs).toEqual([{ paper_id: 19, session_id: 5 }])
     expect(wrapper.findComponent({ name: 'WelcomeView' }).exists()).toBe(true)
+    expect(replaceRoute).toHaveBeenCalledWith({ path: '/' })
     wrapper.unmount()
   })
   it('metadata-only paper shows PDF import and never mounts its agent reader', async () => {

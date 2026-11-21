@@ -25,7 +25,7 @@ Firework 将论文库、PDF 阅读与智能体会话放在同一工作区。平�
 
 ## 架构
 
-Vue 3 / TypeScript 前端连接 FastAPI。SQLite 保存业务与身份数据，Qdrant 配合 bge-m3 提供语义检索；宿主私有 Runner 对接现有 Claude Code 和已注册 Skills。当前 Runner 协议为 **5**。
+Vue 3 / TypeScript 前端连接 FastAPI。SQLite 保存业务与身份数据，Qdrant 配合 bge-m3 提供语义检索；宿主私有 Runner 对接现有 Claude Code 和已注册 Skills。当前 Runner 协议为 **7**。
 
 ## 自托管
 
@@ -61,3 +61,7 @@ docker compose up -d --build
 项目尚未添加项目级许可证；仓库公开不表示已授予开源许可。第三方组件保留各自许可证。
 
 Zotero 手动交换已提供插件打包与配对、分类/标签/PDF 传输、队列和重试，使用步骤见 [使用指南](docs/USER-GUIDE.md#zotero-手动交换)。需在本地安装插件完成真实双向最小验证；原生批注同步和 Connector 自动采集尚未实现。
+
+## 个人模型连接与任务额度
+
+用户菜单 → 模型连接，可配置 Anthropic Messages 兼容 API、Key、模型名称、图片/上下文能力声明和研究角色补充要求。凭据加密保存、不回显；新会话绑定连接版本，自定义连接不继承宿主 Claude 密钥。能力预检仅检查配置，不调用模型。任务额度可在相邻设置页管理并在阅读讨论中按次选择。更换或修订连接请新建会话，原会话不会隐式切换服务商。

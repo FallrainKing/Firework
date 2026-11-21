@@ -18,6 +18,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, and enable or disable capabilities. Templates and structured outputs connect Skills to the interface.
 - **Richer agent input:** Combine editable templates, selected paper passages, and image attachments. Image interpretation requires a vision-capable agent or model.
 - **Manual Zotero exchange:** Pair a local Zotero 10 client, exchange selected papers, collection paths, tags, and immutable PDF files, and retry transfers without research-model calls. Imported PDFs become readable without waiting for embeddings; full-text indexing is an explicit action. Native annotation sync and automatic Connector ingestion are planned. See the [setup guide](docs/USER-GUIDE.md#zotero-手动交换).
+- **Personal model connections:** Configure an Anthropic Messages-compatible API, encrypted credentials, model name, declared vision/context capabilities, and a research role in the Web UI. Sessions bind a connection revision; custom runs do not inherit host Claude credentials. Per-account and per-run budgets are configurable. Capability checks are configuration-only and do not invoke a model.
 - **Account isolation:** Separate each account's research database, files, private Skills, vector collection, and agent workspace. Public registration is currently closed, and the default release permits only the primary administrator to log in.
 
 Firework is under active development. Unified knowledge entries, cross-task long-term memory, OCR-based reading guides, and a complete six-stage deep-reading workflow are planned rather than complete. See the [implementation status](docs/STATUS.md) and [roadmap](docs/ROADMAP.md).
@@ -59,7 +60,7 @@ Firework currently targets self-hosted deployments. The repository includes conf
 
 - Docker Engine and Docker Compose.
 - Python 3.12+ and a host-side virtual environment for the Runner and maintenance tools.
-- A configured Claude Code CLI that can use your selected model or provider.
+- An installed Claude Code CLI. Configure personal API connections in the Web UI, or retain the primary administrator's existing host configuration.
 - Storage for papers, databases, backups, and the approximately 2.3 GB bge-m3 model cache.
 - Node.js 24 for local frontend development. Production frontend assets are built inside Docker.
 
@@ -76,7 +77,7 @@ Before starting services:
 1. Set `RESEARCH_PUBLIC_ORIGIN` in `.env` to your HTTPS origin. Keep secure session cookies enabled for production.
 2. Adapt the port bindings in `docker-compose.yml`. The additional `100.64.0.7:8600` binding belongs to the original deployment and must be removed or replaced on another host.
 3. Prepare the bge-m3 model cache. Compose defaults to `HF_HUB_OFFLINE=1`; a fresh installation needs an intentional initial download with offline mode disabled.
-4. Install and configure the host Runner using the [deployment guide](docs/enviroment.md). Update the working directory, executable paths, and model selection in the service template for your installation. Model credentials are read from the host's agent configuration.
+4. Install and configure the host Runner using the [deployment guide](docs/enviroment.md). Update the working directory, executable paths, and model selection in the service template for your installation. Personal connections are configured under **Model connections** in the user menu. Only the primary administrator's legacy mode reads the existing host configuration; custom connections use isolated environments.
 5. Initialize the administrator locally. On a new installation, use the interactive command below; no public registration or default password is provided.
 
 ```sh
@@ -87,7 +88,7 @@ Before starting services:
 docker compose up -d --build
 ```
 
-Starting Compose alone does not start the host Runner. Both components must be ready for agent tasks to work. The current application requires Runner protocol **5**.
+Starting Compose alone does not start the host Runner. Both components must be ready for agent tasks to work. The current application requires Runner protocol **7**.
 
 Open your configured HTTPS address and sign in with your administrator account. See the [user guide](docs/USER-GUIDE.md) for importing papers, reading, conversations, and Skills.
 

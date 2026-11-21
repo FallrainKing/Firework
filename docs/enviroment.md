@@ -1,6 +1,6 @@
 # 当前环境、部署与排障
 
-核对日期：2026-11-20（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 5。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+核对日期：2026-11-21（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 6。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
 ## 1. 当前实例
 
@@ -13,10 +13,10 @@
 | Claude Code CLI | 2.1.322，`/home/f/.local/bin/claude` |
 | 前端构建 | Docker Node 24，多阶段构建 Vue/Vite |
 | 生产分支 | `release/frontier-workbench-20261119` |
-| Runner | 用户级 `research-agent-runner`，协议 5，并发 2 |
+| Runner | 用户级 `research-agent-runner`，协议 6，并发 2 |
 | 实际模型快照 | 本次发布冒烟报告 `glm-5.3[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
-| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0016_zotero_export_request_keys.sql` |
+| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0017_runner_budgets.sql` |
 
 远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
 

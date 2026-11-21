@@ -117,6 +117,7 @@ onMounted(refresh)
 
     <StateFeedback :loading="loading" :error="error || null" :empty="!loading && !error && !profile" empty-text="未提供用户资料。" @retry="refresh" />
 
+    <p><RouterLink to="/settings/runner/budgets">Runner 任务额度：配置预设、默认额度与发送前校验 →</RouterLink></p>
     <AccountSecurity />
     <template v-if="profile">
       <div class="settings-grid">
@@ -142,7 +143,7 @@ onMounted(refresh)
         <article class="settings-card">
           <h2>身份与能力</h2>
           <dl>
-            <div><dt>身份模式</dt><dd>本机模式，无需登录</dd></div>
+            <div><dt>身份模式</dt><dd>{{ profile.capabilities.auth ? '账号隔离模式' : '本机模式，无需登录' }}</dd></div>
             <div><dt>多用户认证</dt><dd>{{ profile.capabilities.auth ? '可用' : '未实现' }}</dd></div>
             <div><dt>头像上传</dt><dd>{{ profile.capabilities.avatar_upload ? '可用' : '未实现' }}</dd></div>
             <div><dt>偏好设置</dt><dd>{{ profile.capabilities.preferences ? '可用' : '未实现' }}</dd></div>

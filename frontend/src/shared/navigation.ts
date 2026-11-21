@@ -5,7 +5,7 @@ export function safeReturnTarget(value: unknown): string {
   try { decoded = decodeURIComponent(value) } catch { return '/' }
   if (/[\\\u0000-\u0020]/.test(decoded) || decoded.startsWith('//')) return '/'
   const path = value.split(/[?#]/, 1)[0]
-  if (!/^\/(?:reader\/\d+|integrations\/zotero|accounts)?\/?$/.test(path)) return '/'
+  if (!/^\/(?:reader\/\d+|integrations\/zotero|settings\/runner\/budgets|accounts)?\/?$/.test(path)) return '/'
   return value
 }
 
@@ -19,7 +19,7 @@ export function loginPath(returnTo: string): string {
 export function legacyHashUrl(location: Pick<Location, 'pathname' | 'search' | 'hash'>): string | null {
   const { pathname, search, hash } = location
   if (hash.startsWith('#/')) return pathname === '/' && !search ? null : '/' + hash
-  if (!/^\/(?:login|register|accounts|integrations\/zotero|reader\/\d+)?\/?$/.test(pathname)) return null
+  if (!/^\/(?:login|register|accounts|settings\/runner\/budgets|integrations\/zotero|reader\/\d+)?\/?$/.test(pathname)) return null
   return appHref(pathname + search + hash)
 }
 

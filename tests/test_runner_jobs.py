@@ -336,3 +336,17 @@ def test_custom_skill_files_use_the_account_runtime_not_global_data(engine,runti
     assert env['RESEARCH_DB_PATH']==str(runtime.parent/'app.db')
     assert env['RESEARCH_WORKSPACE']=='a'*32
     assert 'Account-private skill instructions' in args[args.index('--system-prompt')+1]
+
+
+def test_budget_stop_preserves_partial_output(engine,monkeypatch):
+    lines=[json.dumps({'type':'assistant','message':{'content':[{'type':'text','text':'partial findings'}]}}),result_line('',subtype='error_max_budget_usd',is_error=True)]
+    monkeypatch.setattr(jobs_mod.asyncio,'create_subprocess_exec',make_spawn(lines))
+    async def main():
+        await engine.start()
+        await engine.submit('e'*32,'chat',body())
+        frames=[f async for f in engine.events('e'*32)]
+        r=frames[-1]['result']
+        assert r['status']=='failed' and r['answer']=='partial findings'
+        assert r['metadata']['finish_reason']=='budget_usd' and r['metadata']['partial_answer']
+        await engine.close()
+    asyncio.run(main())

@@ -6,6 +6,7 @@
 
 | 文档 | 用途 |
 | --- | --- |
+| [Runner 配置与会话调试设计](RUNNER-CONFIGURATION.md) | 待实施：连接、模型能力、Skills/MCP、额度、会话与诊断 |
 | [Hash 路由方案](HASH-ROUTING.md) | 地址格式、旧书签兼容、认证返回和验收 |
 | [认证与多账号](AUTHENTICATION.md) | 登录/注册限制、隔离、初始化和安全恢复 |
 | [使用指南](USER-GUIDE.md) | 添加论文、阅读、导读、会话、图片、追踪和技能管理 |

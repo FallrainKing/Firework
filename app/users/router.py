@@ -60,3 +60,6 @@ async def patch_preferences(body: PreferenceUpdate, request: Request):
         return service.update_preferences(request.app.state.db, body)
     except ValueError as exc:
         raise ServiceError(409, str(exc)) from exc
+
+from ..runner_config.router import router as budget_router
+router.include_router(budget_router)

@@ -8,6 +8,8 @@ import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { Attachment, Run, SelectionContext, Session, SessionUsage, Template } from '@/api/types'
+import RunBudgetControl from './RunBudgetControl.vue'
+import type {BudgetRef} from '@/api/runnerBudgets'
 import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
@@ -21,6 +23,8 @@ const QUICK: Template[] = [
 
 const runs = ref<Run[]>([])
 const question = ref('')
+const selectedBudget=ref<BudgetRef|null>(null)
+watch(()=>props.session?.id,()=>{selectedBudget.value=null})
 const contexts = ref<SelectionContext[]>([])
 const attachments = ref<Attachment[]>([])
 const templates = ref<Template[]>([])
@@ -493,9 +497,9 @@ async function ask(prompt: string, selectedContexts: SelectionContext[] = [], pu
   let body: Record<string, unknown> | null = null
   try {
     const old = JSON.parse(localStorage.getItem(storage) || 'null')
-    body = old && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
+    body = old && JSON.stringify(old.budget??null)===JSON.stringify(selectedBudget.value) && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
   } catch { /* ignore */ }
-  body = body ?? { conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, request_key: uid32() }
+  body = body ?? { conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, ...(selectedBudget.value?{budget:selectedBudget.value}:{}), request_key: uid32() }
   localStorage.setItem(storage, JSON.stringify(body))
   busy.value = true
   try {
@@ -744,7 +748,8 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         </div>
         <div v-if="run.answer" class="answer markdown-content" v-html="renderMd(run.answer)"></div>
         <button v-if="run.answer" class="copy-answer" type="button" @click="copyAnswer(run)">复制回答</button>
-        <p v-if="run.error" class="error">{{ run.error }}</p>
+        <p v-if="run.error" class="error">{{ run.diagnostics?.message || run.error }}</p>
+        <p v-if="run.diagnostics?.partial_available" class="muted">以下为中断前的部分输出，尚未完成。调整额度后可重新编辑并手动发送。</p>
         <button v-if="run.status === 'failed' || run.status === 'cancelled'" class="reedit" @click="reedit(run)">重新编辑</button>
         <details v-if="run.tool_calls.length" class="tool-group">
           <summary>工具调用 {{ run.tool_calls.length }} 项（已折叠）</summary>
@@ -759,6 +764,8 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <details class="execution-details">
           <summary>执行详情</summary>
           <dl>
+            <div v-if="run.diagnostics"><dt>结束原因</dt><dd>{{ run.diagnostics.finish_reason }} · {{ run.diagnostics.subtype || '无原始子类型' }}</dd></div>
+            <div v-if="run.diagnostics"><dt>任务额度快照</dt><dd>{{ run.diagnostics.budget_snapshot?.name || 'Skill 原有额度' }} · {{ JSON.stringify(run.diagnostics.effective_budget) }} <a href="/#/settings/runner/budgets">管理</a></dd></div>
             <div><dt>运行编号</dt><dd>{{ run.id }}</dd></div>
             <div><dt>技能 / 版本</dt><dd>{{ run.skill }} / {{ run.skill_version || '未提供' }}</dd></div>
             <div><dt>模型</dt><dd>{{ run.model || '未提供' }}</dd></div>
@@ -770,6 +777,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </article>
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
+    <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading" />
     <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
       <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">
         <strong>{{ c.paper_id === paperId ? '当前论文' : '引用论文' }}</strong>

@@ -110,6 +110,7 @@ export interface SelectionContext {
 }
 
 export interface Run {
+  diagnostics?: {finish_reason:string;message:string;subtype:string|null;effective_budget:Record<string,number|null>;budget_snapshot:{name:string;revision:number}|null;partial_available:boolean}
   id: string
   request_key: string
   conversation_id: number
@@ -134,6 +135,7 @@ export interface Run {
 }
 
 export interface RunCreate {
+  budget?: {id:string;revision:number} | null
   prompt: string
   skill?: string
   conversation_id?: number

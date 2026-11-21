@@ -206,6 +206,7 @@ class JobEngine:
         body = job['body']
         folder = self._folder(job['run_id'])
         proc = None
+        partial_text = ''
         timeout_s = skill['timeout_s']
         try:
             async with self._sem:
@@ -264,7 +265,9 @@ class JobEngine:
                 proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=sfolder, env=env, start_new_session=True, limit=10 * 1024 * 1024)
                 job['proc'] = proc
 
+                partial_text = ''
                 async def monitor():
+                    nonlocal partial_text
                     proc.stdin.write(input_bytes)
                     await proc.stdin.drain()
                     proc.stdin.write_eof()
@@ -287,6 +290,8 @@ class JobEngine:
                                 job['result_event'] = event
                             elif event.get('type') in ('assistant', 'user', 'system'):
                                 if event.get('type') == 'assistant':
+                                    texts=[b.get('text','') for b in (event.get('message') or {}).get('content',[]) if b.get('type')=='text']
+                                    if texts: partial_text='\n'.join(texts)[-20000:]
                                     usage = (event.get('message') or {}).get('usage') or {}
                                     for k, v in usage.items():
                                         if isinstance(v, (int, float)):
@@ -306,11 +311,14 @@ class JobEngine:
                     await asyncio.wait_for(monitor(), timeout_s)
                 calls = [json.loads(l) for l in log_path.read_text().splitlines()] if log_path.exists() else []
                 payload = cli.build_payload(job['result_event'] or {}, model=model, session_id=session_id, resume=resume, history=history, calls=calls, allowed=allowed, skill_id=job['skill'], returncode=proc.returncode, native_ready=transcript_exists())
+                if payload['status']=='failed' and partial_text and not payload.get('answer'):
+                    payload['answer']=partial_text
+                    payload['metadata']['partial_answer']=True
                 self._terminal(job, payload)
         except asyncio.TimeoutError:
             if proc:
                 await cli.stop_process(proc)
-            self._terminal(job, {'status': 'failed', 'error': f'Agent timed out after {timeout_s} seconds; no automatic retry', 'answer': '', 'usage': (job['result_event'] or {}).get('usage') or job['usage_acc'], 'tool_calls': [], 'metadata': {}})
+            self._terminal(job, {'status': 'failed', 'error': f'Agent timed out after {timeout_s} seconds; no automatic retry', 'answer': partial_text, 'usage': (job['result_event'] or {}).get('usage') or job['usage_acc'], 'tool_calls': [], 'metadata': {'partial_answer':bool(partial_text)}})
         except asyncio.CancelledError:
             if proc:
                 await cli.stop_process(proc)

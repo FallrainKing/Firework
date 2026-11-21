@@ -20,6 +20,8 @@ from ..skills import service as skills_service
 from . import repository as repo, runner_client
 from .catalog import SKILLS as CATALOG, TEMPLATES
 from .schemas import RunCreate
+from ..runner_config import budgets
+from . import diagnostics
 from .protocol import RUNNER_PROTOCOL_VERSION
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,7 @@ def view(row) -> dict:
     result['contexts'] = json.loads(result.pop('context_json', '[]'))
     result['attachment_ids'] = json.loads(result.pop('attachment_ids_json', '[]'))
     result['progress'] = json.loads(result.pop('progress_json', '{}') or '{}')
+    result['diagnostics'] = diagnostics.view(row)
     result['cost_verified'] = False
     return result
 
@@ -175,6 +178,7 @@ async def create_run(body: RunCreate, state) -> dict:
         if (json.loads(prior['attachment_ids_json']) != body.attachment_ids
                 or json.loads(prior['context_json']) != prior_contexts
                 or prior['purpose'] != body.purpose
+                or json.loads(prior['execution_policy_json'] or '{}').get('budget_selection') != (body.budget.model_dump() if body.budget else None)
                 or prior['prompt'] != prompt
                 or (body.skill is not None and prior['skill'] != body.skill)
                 or (body.conversation_id is not None and prior['conversation_id'] != body.conversation_id)):
@@ -222,6 +226,7 @@ async def create_run(body: RunCreate, state) -> dict:
         policy = skills_service.execution_policy(db, skill, session_version_id)
     except ValueError as exc:
         raise ServiceError(409, str(exc)) from exc
+    policy = budgets.resolve(db, policy, body.budget)
     if conv_id is not None and session_version_id is None:
         repo.set_conversation_skill_version(db, conv_id, policy['version_id'])
         db.commit()
@@ -325,7 +330,12 @@ async def execute_run(run_id: str, state):
             return
         try:
             async with runner_client.client() as c:
-                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash']})
+                if json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot'):
+                    health = await c.get('/health', timeout=5)
+                    health.raise_for_status()
+                    if health.json().get('protocol_version') != RUNNER_PROTOCOL_VERSION:
+                        raise ValueError('runner_protocol_mismatch')
+                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash'], 'budget_policy': json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot')})
                 sub.raise_for_status()
                 if repo.find_run(db, run_id)['status'] not in ('queued', 'running'):
                     with contextlib.suppress(httpx.HTTPError):
@@ -355,8 +365,9 @@ async def execute_run(run_id: str, state):
                     result = got.json().get('result')
                 if not result or result.get('status') not in ('succeeded', 'failed', 'cancelled'):
                     raise ValueError('Invalid runner status')
-        except (httpx.HTTPError, ValueError):
-            result = {'status': 'failed', 'error': 'Agent connection failed or timed out; retry manually. No automatic retry was made.'}
+        except (httpx.HTTPError, ValueError) as exc:
+            result = {'status': 'failed', 'error': ('Runner 版本不支持当前额度配置；本轮没有调用模型，请升级运行服务。' if str(exc)=='runner_protocol_mismatch' else 'Agent connection failed or timed out; retry manually. No automatic retry was made.')}
+            if str(exc)=='runner_protocol_mismatch': result['metadata']={'subtype':'runner_protocol_mismatch'}
         repo.finish_run(db, run_id, result['status'], str(result.get('answer') or ''), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
         if result['status'] == 'cancelled':
             repo.fail_imports_for_run(db, run_id, str(result.get('error') or '已取消'))

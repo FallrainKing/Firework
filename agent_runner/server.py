@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from app.agent.catalog import SKILLS
 from app.agent.protocol import RUNNER_PROTOCOL_VERSION
 from . import cli, jobs
+from app.runner_config.budgets import BudgetSnapshot, KEYS
 from app.core.workspaces import workspace_path,valid_workspace
 import sqlite3
 
@@ -45,6 +46,7 @@ async def lifespan(app):
 app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
 class RunRequest(BaseModel):
+    budget_policy: BudgetSnapshot | None = None
     run_id: str = Field(pattern=r'^[a-f0-9]{32}$')
     skill: str
     skill_version_id: int | None = None
@@ -122,6 +124,10 @@ async def submit_run(body: RunRequest, request: Request):
             raise HTTPException(409, 'Skill version changed; retry with the current version')
     else:
         raise HTTPException(400, 'Unknown skill')
+    if body.budget_policy:
+        resolved=body.budget_policy.model_dump()
+        policy.update({k:resolved[k] for k in KEYS})
+        policy['budget_snapshot']=resolved
     payload['skill_policy'] = policy
     payload['workspace_key'] = key
     try:

@@ -69,7 +69,9 @@ def image_blocks(body, runtime: Path):
 
 
 def build_args(skill, model, session_id, resume, mcp, skill_md, has_images):
-    args = [str(Path.home() / '.local/bin/claude'), '--bare', '--restricted', '--print', '--output-format', 'stream-json', '--verbose', '--model', model, '--tools', '', '--strict-mcp-config', '--mcp-config', json.dumps(mcp), '--max-turns', str(skill['max_turns']), '--max-budget-usd', str(skill['max_budget_usd']), '--system-prompt', SYSTEM_PREFIX + skill_md]
+    args = [str(Path.home() / '.local/bin/claude'), '--bare', '--restricted', '--print', '--output-format', 'stream-json', '--verbose', '--model', model, '--tools', '', '--strict-mcp-config', '--mcp-config', json.dumps(mcp), '--max-turns', str(skill['max_turns']), '--system-prompt', SYSTEM_PREFIX + skill_md]
+    if skill.get('max_budget_usd') is not None:
+        args += ['--max-budget-usd', str(skill['max_budget_usd'])]
     args += ['--resume' if resume else '--session-id', session_id]
     if skill['tools']:
         args += ['--allowedTools', ','.join('mcp__research__' + name for name in skill['tools'])]
@@ -111,7 +113,10 @@ def build_payload(result, *, model, session_id, resume, history, calls, allowed,
     if result.get('session_id') and result['session_id'] != session_id:
         payload.update(status='failed', error='原生会话 ID 不匹配，结果未发布')
     elif returncode or result.get('is_error') or result.get('subtype') != 'success' or not text:
-        payload.update(status='failed', error='Agent did not complete successfully; partial usage preserved')
+        from app.agent.diagnostics import describe
+        reason,message=describe('failed',meta,'')
+        meta['finish_reason']=reason
+        payload.update(status='failed', error=message if reason!='execution_error' else 'Agent did not complete successfully; partial usage preserved')
     elif allowed and (skill_id.startswith('search_') or skill_id in ('paper_discover', 'paper_import') or not resume) and not any(c['tool'] in allowed and c['ok'] for c in calls):
         payload.update(status='failed', error='Search did not produce a successful tool response; answer is unverified')
     elif any(not c['ok'] for c in calls) and not any(c['ok'] for c in calls):

@@ -191,6 +191,8 @@ async def create_run(body: RunCreate, state) -> dict:
     skill = body.skill or 'chat'
     if conv_id is not None:
         session = require_session(db, conv_id)
+        if db.execute('SELECT 1 FROM conversation_papers cp JOIN papers p ON p.id=cp.paper_id WHERE cp.conversation_id=? AND p.deleted_at IS NOT NULL LIMIT 1', (conv_id,)).fetchone():
+            raise ServiceError(409, '会话关联的论文在回收站中，请先恢复论文再执行任务')
         from ..documents.service import guard_session
         guard_session(db, state.settings, state, conv_id)
         if session['archived']:

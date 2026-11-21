@@ -9,7 +9,7 @@ def find_paper(db: sqlite3.Connection, ident: int):
 
 
 def paper_exists(db: sqlite3.Connection, ident: int):
-    return db.execute('SELECT 1 FROM papers WHERE id=?', (ident,)).fetchone()
+    return db.execute('SELECT 1 FROM papers WHERE id=? AND deleted_at IS NULL', (ident,)).fetchone()
 
 
 def list_collections(db: sqlite3.Connection):
@@ -36,11 +36,12 @@ def paper_collections(db: sqlite3.Connection, pid: int):
 READING_STATUSES = ('unread', 'reading', 'read')
 
 
-def _search_where(q, collection_id, reading_status=None):
+def _search_where(q, collection_id, reading_status=None, trashed=False):
     if reading_status is not None and reading_status not in READING_STATUSES:
         raise ValueError('reading_status must be unread, reading or read')
     where = " WHERE (instr(lower(coalesce(p.title,'')),lower(?))>0 OR instr(lower(coalesce(p.abstract,'')),lower(?))>0 OR instr(lower(coalesce(p.authors,'')),lower(?))>0 OR instr(lower(p.affiliations),lower(?))>0 OR instr(lower(p.brief_summary),lower(?))>0)"
     args = [q] * 5
+    where += ' AND p.deleted_at IS ' + ('NOT NULL' if trashed else 'NULL')
     if collection_id is not None:
         if collection_id == 0:
             where += ' AND NOT EXISTS (SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id)'
@@ -61,13 +62,13 @@ def reading_status(db: sqlite3.Connection, pid: int) -> str:
     return 'unread'
 
 
-def count_papers(db: sqlite3.Connection, q: str, collection_id: int | None, reading_status: str | None = None) -> int:
-    where, args = _search_where(q, collection_id, reading_status)
+def count_papers(db: sqlite3.Connection, q: str, collection_id: int | None, reading_status: str | None = None, trashed=False) -> int:
+    where, args = _search_where(q, collection_id, reading_status, trashed)
     return db.execute('SELECT count(*) FROM papers p' + where, args).fetchone()[0]
 
 
-def search_papers(db: sqlite3.Connection, q: str, collection_id: int | None, limit: int, offset: int, reading_status: str | None = None):
-    where, args = _search_where(q, collection_id, reading_status)
+def search_papers(db: sqlite3.Connection, q: str, collection_id: int | None, limit: int, offset: int, reading_status: str | None = None, trashed=False):
+    where, args = _search_where(q, collection_id, reading_status, trashed)
     return db.execute(
         'SELECT p.* FROM papers p' + where + ' ORDER BY p.id DESC LIMIT ? OFFSET ?',
         args + [limit, offset],

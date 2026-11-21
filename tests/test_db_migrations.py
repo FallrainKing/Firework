@@ -68,6 +68,7 @@ def test_papers_schema(conn):
         "source_url",
         "frontier_entity_id",
         "default_version_id",
+        "deleted_at",
     }
     # defaults
     assert cols["status"][4] == "'new'"

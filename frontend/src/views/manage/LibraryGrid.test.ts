@@ -1,27 +1,78 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import LibraryGrid from './LibraryGrid.vue'
 import { papersApi } from '@/api/papers'
 import { sessionsApi } from '@/api/sessions'
+import { useWorkbenchStore } from '@/stores/workbench'
 
 const paper = { id: 1, title: 'Attention', authors: ['A'], affiliations: [], abstract: 'abs', brief_summary: null, summary: 'abs', doi: null, arxiv_id: null, status: 'ready', reading_status: 'unread', collections: [{ id: 2, name: '基础模型' }], thumbnail_url: '/api/library/papers/1/thumbnail', image_caption: '原始 PDF 首页预览', has_pdf: true, metadata_version: 1 }
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   setActivePinia(createPinia())
   vi.spyOn(papersApi, 'list').mockResolvedValue({ papers: [paper], total: 1, offset: 0, has_more: false } as never)
   vi.spyOn(papersApi, 'collections').mockResolvedValue({ collections: [{ id: 2, name: '基础模型', count: 1 }] })
   vi.spyOn(sessionsApi, 'templates').mockResolvedValue({ templates: [], kinds: {}, skills: [] })
   vi.spyOn(sessionsApi, 'categories').mockResolvedValue({ categories: [] })
 })
+afterEach(() => document.body.innerHTML = '')
 
 async function mountGrid() {
-  const wrapper = mount(LibraryGrid)
+  const wrapper = mount(LibraryGrid, { global: { stubs: { teleport: true } } })
   await flushPromises()
   return wrapper
 }
 
 describe('LibraryGrid', () => {
+  it('confirms before trashing and closes the reading tab only after success', async () => {
+    const trash = vi.spyOn(papersApi, 'trash').mockResolvedValue(paper as never)
+    const wb = useWorkbenchStore()
+    const close = vi.spyOn(wb, 'closeTab')
+    const wrapper = await mountGrid()
+    await wrapper.find('.more-actions').trigger('click')
+    await wrapper.find('.trash-paper').trigger('click')
+    expect(trash).not.toHaveBeenCalled()
+    expect(wrapper.find('[aria-labelledby="trash-title"]').text()).toContain('PDF、批注、分类和会话保留')
+    await wrapper.find('.confirm-trash').trigger('click')
+    await flushPromises()
+    expect(trash).toHaveBeenCalledWith(1)
+    expect(close).toHaveBeenCalledWith(1)
+    expect(wrapper.emitted('collections-changed')).toBeTruthy()
+    wrapper.unmount()
+  })
+  it('keeps the paper and confirmation when trash fails and allows restoring from trash', async () => {
+    vi.spyOn(papersApi, 'trash').mockRejectedValue(new Error('论文有正在执行的任务'))
+    const restore = vi.spyOn(papersApi, 'restore').mockResolvedValue(paper as never)
+    const wrapper = await mountGrid()
+    await wrapper.find('.more-actions').trigger('click')
+    await wrapper.find('.trash-paper').trigger('click')
+    await wrapper.find('.confirm-trash').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('[role="dialog"]').text()).toContain('论文有正在执行的任务')
+    await wrapper.find('.dialog-footer button').trigger('click')
+    await wrapper.find('.trash-toggle').trigger('click')
+    await flushPromises()
+    expect(papersApi.list).toHaveBeenLastCalledWith(expect.objectContaining({ trashed: true }))
+    expect(wrapper.find('.more-actions').exists()).toBe(false)
+    await wrapper.find('.restore-paper').trigger('click')
+    await flushPromises()
+    expect(restore).toHaveBeenCalledWith(1)
+    wrapper.unmount()
+  })
+  it('renders the real menu outside clipped cards and closes it on Escape', async () => {
+    const wrapper = mount(LibraryGrid, { attachTo: document.body })
+    await flushPromises()
+    await wrapper.find('.more-actions').trigger('click')
+    await flushPromises()
+    const menu = document.querySelector<HTMLElement>('body > .card-menu')!
+    expect(menu).not.toBeNull()
+    expect(wrapper.find('.paper-card .card-menu').exists()).toBe(false)
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await flushPromises()
+    expect(document.querySelector('.card-menu')).toBeNull()
+    wrapper.unmount()
+  })
   it('renders paper cards with collection badges', async () => {
     const wrapper = await mountGrid()
     expect(wrapper.text()).toContain('Attention')

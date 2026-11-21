@@ -28,6 +28,8 @@
 
 ## 2. 会话与执行
 
+论文删除为可恢复操作：`DELETE /api/library/papers/{paper_id}` 移入回收站；`POST /api/library/papers/{paper_id}/restore` 恢复；`GET /api/library/papers?trashed=true` 查询回收站（仍支持搜索、分类和分页）。操作按认证工作区隔离、需要 CSRF，重复删除/恢复幂等；未知 ID 返回 404，关联执行中/排队 Run 或待处理导入返回 409。物理文件、分类关系、会话和批注不删除，不传播 Zotero 删除。
+
 创建会话只准备上下文，不等于发送。示意 JSON（不在文档检查中执行）：
 
 ```json

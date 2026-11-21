@@ -99,12 +99,12 @@ def library_search(query: str, db_path: str) -> dict:
     pattern = '%' + query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
     with sqlite3.connect(Path(db_path).resolve().as_uri() + '?mode=ro', uri=True, timeout=5) as db:
         db.row_factory = sqlite3.Row
-        rows = db.execute("SELECT id,title,authors,abstract,arxiv_id FROM papers WHERE title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\' ORDER BY id DESC LIMIT 5", (pattern, pattern)).fetchall()
+        rows = db.execute("SELECT id,title,authors,abstract,arxiv_id FROM papers WHERE deleted_at IS NULL AND (title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\') ORDER BY id DESC LIMIT 5", (pattern, pattern)).fetchall()
         papers = [dict(r) for r in rows]
-        matched_count = db.execute("SELECT count(*) FROM papers WHERE title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\'", (pattern, pattern)).fetchone()[0]
+        matched_count = db.execute("SELECT count(*) FROM papers WHERE deleted_at IS NULL AND (title LIKE ? ESCAPE '\\' OR abstract LIKE ? ESCAPE '\\')", (pattern, pattern)).fetchone()[0]
         chunks = []
         if query:
-            chunks = [dict(r) for r in db.execute("SELECT paper_id,section,page,substr(text,1,900) AS text FROM chunks_meta WHERE text LIKE ? ESCAPE '\\' LIMIT 3", (pattern,))]
+            chunks = [dict(r) for r in db.execute("SELECT cm.paper_id,cm.section,cm.page,substr(cm.text,1,900) AS text FROM chunks_meta cm JOIN papers p ON p.id=cm.paper_id WHERE p.deleted_at IS NULL AND cm.text LIKE ? ESCAPE '\\' LIMIT 3", (pattern,))]
     for p in papers:
         p['abstract'] = (p['abstract'] or '')[:1200]
         p['url'] = 'https://arxiv.org/abs/' + p['arxiv_id'] if p['arxiv_id'] else None

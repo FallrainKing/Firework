@@ -12,7 +12,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - [System architecture](docs/架构.md): deployed components, data boundaries, and how the agent executes tasks.
 - [Implementation status](docs/STATUS.md): current scope and verification limits.
 
-The current baseline uses business migrations through **0018**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
+The current baseline uses business migrations through **0019**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
 
 ## Features
 

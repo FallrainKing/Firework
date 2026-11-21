@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useWorkbenchStore } from '@/stores/workbench'
 import { papersApi } from '@/api/papers'
 import type { Collection, Paper } from '@/api/types'
 import PaperEditDialog from '@/components/manage/PaperEditDialog.vue'
@@ -29,6 +30,15 @@ const readingStatus = ref<'' | 'unread' | 'reading' | 'read'>(props.filterStatus
 watch(() => [props.filterCollection, props.filterStatus], () => { collectionId.value = props.filterCollection; readingStatus.value = props.filterStatus; selected.value = new Set(); reload() })
 const failedThumbnails = ref<Set<number>>(new Set())
 const openMenuId = ref<number | null>(null)
+const menuPaper = ref<Paper | null>(null)
+const menuPosition = ref({ left: '0px', top: '0px' })
+const menuElement = ref<HTMLElement | null>(null)
+const menuTrigger = ref<HTMLButtonElement | null>(null)
+const trashed = ref(false)
+const trashTarget = ref<Paper | null>(null)
+const trashBusy = ref(false)
+const trashError = ref('')
+const wb = useWorkbenchStore()
 const batchCollectionOpen = ref(false)
 const batchCollectionId = ref('')
 const batchSaving = ref(false)
@@ -40,27 +50,32 @@ const newCollectionOpen = ref(false)
 const newCollectionName = ref('')
 const newCollectionParent = ref('')
 function openNewCollection(){newCollectionParent.value=Number(collectionId.value)>0?collectionId.value:'';newCollectionOpen.value=true}
+let listEpoch = 0
 
 async function load(reset: boolean) {
   const busy = reset ? loading : loadingMore
-  if (busy.value) return
+  if (!reset && (loading.value || loadingMore.value)) return
+  const epoch = reset ? ++listEpoch : listEpoch
+  if (reset) loadingMore.value = false
   busy.value = true
   const requestOffset = reset ? 0 : offset.value
-  const params: { q?: string; collection_id?: number; reading_status?: 'unread' | 'reading' | 'read'; limit: number; offset: number } = { limit: 30, offset: requestOffset }
+  const params: Parameters<typeof papersApi.list>[0] = { limit: 30, offset: requestOffset }
+  if (trashed.value) params.trashed = true
   if (query.value) params.q = query.value
   if (collectionId.value !== '') params.collection_id = Number(collectionId.value)
   if (readingStatus.value) params.reading_status = readingStatus.value
   try {
     const d = await papersApi.list(params)
+    if (epoch !== listEpoch) return
     papers.value = reset ? d.papers : [...papers.value, ...d.papers]
     offset.value = requestOffset + d.papers.length
     total.value = d.total
     hasMore.value = d.has_more
     if (reset) loadError.value = null
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '论文列表载入失败'
+    if (epoch === listEpoch) loadError.value = e instanceof Error ? e.message : '论文列表载入失败'
   } finally {
-    busy.value = false
+    if (epoch === listEpoch) busy.value = false
   }
 }
 
@@ -98,6 +113,65 @@ function markThumbnailFailed(paperId: number) {
 
 function closeMenus() {
   openMenuId.value = null
+  menuPaper.value = null
+}
+
+async function toggleMenu(paper: Paper, event: MouseEvent) {
+  if (openMenuId.value === paper.id) { closeMenus(); return }
+  menuTrigger.value = event.currentTarget as HTMLButtonElement
+  const rect = menuTrigger.value.getBoundingClientRect()
+  openMenuId.value = paper.id
+  menuPaper.value = paper
+  await nextTick()
+  if (!menuElement.value || openMenuId.value !== paper.id) return
+  const { width, height } = menuElement.value.getBoundingClientRect()
+  menuPosition.value = {
+    left: Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8)) + 'px',
+    top: Math.max(8, rect.bottom + height + 8 <= window.innerHeight ? rect.bottom + 4 : rect.top - height - 4) + 'px',
+  }
+  menuElement.value.querySelector<HTMLButtonElement>('button')?.focus({ preventScroll: true })
+}
+function dismissMenu(event: Event) {
+  if ((event.target as Element | null)?.closest?.('.card-menu,.more-actions')) return
+  closeMenus()
+}
+function menuKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape') { closeMenus(); menuTrigger.value?.focus(); return }
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return
+  event.preventDefault()
+  const buttons = [...(menuElement.value?.querySelectorAll<HTMLButtonElement>('button') ?? [])]
+  const index = buttons.indexOf(document.activeElement as HTMLButtonElement)
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+  buttons[next]?.focus()
+}
+function menuFocusout(event: FocusEvent) {
+  if (!(event.currentTarget as HTMLElement).contains(event.relatedTarget as Node | null)) closeMenus()
+}
+onMounted(() => {
+  document.addEventListener('pointerdown', dismissMenu)
+  window.addEventListener('resize', closeMenus)
+  window.addEventListener('scroll', dismissMenu, true)
+})
+onUnmounted(() => {
+  document.removeEventListener('pointerdown', dismissMenu)
+  window.removeEventListener('resize', closeMenus)
+  window.removeEventListener('scroll', dismissMenu, true)
+})
+watch(trashed, () => { closeMenus(); selected.value = new Set(); reload() })
+async function applyTrash(paper: Paper, restore = false) {
+  if (trashBusy.value) return
+  trashBusy.value = true
+  trashError.value = ''
+  try {
+    if (restore) await papersApi.restore(paper.id)
+    else { await papersApi.trash(paper.id); wb.closeTab(paper.id) }
+    selected.value.delete(paper.id)
+    trashTarget.value = null
+    await Promise.all([load(true), refreshCollections()])
+    emit('collections-changed')
+  } catch (e) {
+    trashError.value = e instanceof Error ? e.message : '操作失败，请重试'
+  } finally { trashBusy.value = false }
 }
 
 async function applyBatchCollection() {
@@ -180,11 +254,14 @@ function onSaved() {
         <button :aria-pressed="density === 'compact'" @click="setDensity('compact')">紧凑列表</button>
       </div>
       <button @click="openNewCollection">＋ 新分类</button>
+      <button class="trash-toggle" :aria-pressed="trashed" @click="trashed = !trashed">{{ trashed ? '← 返回论文库' : '回收站' }}</button>
       <span class="muted">共 {{ total }} 篇论文</span>
       <span class="spacer"></span>
       <button class="primary" @click="emit('open-import')">添加论文</button>
     </div>
-    <div v-if="selected.size" class="batch-bar" role="toolbar" aria-label="批量操作">
+    <p v-if="trashed" class="muted trash-notice">回收站保留 PDF、批注、分类和会话，可恢复；不会删除 Zotero 中的条目。历史会话中的资料仍可查阅。</p>
+    <StateFeedback v-if="trashError && !trashTarget" :error="trashError" />
+    <div v-if="selected.size && !trashed" class="batch-bar" role="toolbar" aria-label="批量操作">
       <strong>已选择 {{ selected.size }} 篇</strong>
       <button class="compare-selected" :disabled="selected.size < 2" @click="task = { mode: 'compare', paperIds: [...selected] }">对比所选</button>
       <button @click="batchCollectionOpen = true">分类所选</button>
@@ -208,7 +285,7 @@ function onSaved() {
           <span v-else class="image-placeholder muted">仅书目信息 · 待添加全文</span>
           <span class="image-caption muted">{{ p.image_caption }}</span>
           <label class="paper-checkbox">
-            <input class="paper-select" type="checkbox" :checked="selected.has(p.id)" :aria-label="'选择 ' + p.title" @change="toggleSelect(p.id, ($event.target as HTMLInputElement).checked)" />
+            <input class="paper-select" type="checkbox" :disabled="trashed" :checked="selected.has(p.id)" :aria-label="'选择 ' + p.title" @change="toggleSelect(p.id, ($event.target as HTMLInputElement).checked)" />
             <span>选择</span>
           </label>
         </div>
@@ -224,22 +301,36 @@ function onSaved() {
             <span v-if="!p.collections.length" class="badge">未分类</span>
           </div>
           <div class="paper-actions">
-            <button v-if="p.has_pdf" class="primary read-paper" @click="emit('open-paper', p.id)">打开原文</button>
+            <button v-if="trashed" class="primary restore-paper" :disabled="trashBusy" @click="applyTrash(p, true)">恢复论文</button>
+            <button v-else-if="p.has_pdf" class="primary read-paper" @click="emit('open-paper', p.id)">打开原文</button>
             <button v-else class="primary supplement-pdf" @click="emit('open-import', p.id)">补充全文</button>
             <button class="manage-documents" @click="documentsId = p.id">文件与批注</button>
-            <div class="card-more">
-              <button class="more-actions" :aria-expanded="openMenuId === p.id" aria-haspopup="true" @click.stop="openMenuId = openMenuId === p.id ? null : p.id">更多</button>
-              <div v-if="openMenuId === p.id" class="card-menu" role="menu" :aria-label="'论文操作 ' + p.title">
-                <button class="edit-paper" role="menuitem" @click="closeMenus(); editId = p.id">完整信息 / 管理信息</button>
-                <button role="menuitem" @click="closeMenus(); task = { mode: 'review', paperIds: [p.id] }">审查</button>
-                <button v-if="!p.has_pdf" class="supplement-pdf" role="menuitem" @click="closeMenus(); emit('open-import', p.id)">补充 PDF</button>
-              </div>
+            <div v-if="!trashed" class="card-more">
+              <button class="more-actions" :aria-expanded="openMenuId === p.id" aria-haspopup="menu" @click.stop="toggleMenu(p, $event)">更多</button>
             </div>
           </div>
         </div>
       </article>
     </div>
     <button v-if="hasMore" class="more-papers" :disabled="loadingMore" @click="load(false)">{{ loadingMore ? '正在载入…' : '加载更多' }}</button>
+
+    <Teleport to="body">
+      <div v-if="menuPaper" ref="menuElement" class="card-menu" :style="menuPosition" role="menu" :aria-label="'论文操作 ' + menuPaper.title" @keydown="menuKeydown" @focusout="menuFocusout">
+        <button class="edit-paper" role="menuitem" @click="editId = menuPaper.id; closeMenus()">完整信息 / 管理信息</button>
+        <button role="menuitem" @click="task = { mode: 'review', paperIds: [menuPaper.id] }; closeMenus()">审查</button>
+        <button v-if="!menuPaper.has_pdf" class="supplement-pdf" role="menuitem" @click="emit('open-import', menuPaper.id); closeMenus()">补充 PDF</button>
+        <button class="trash-paper danger" role="menuitem" @click="trashTarget = menuPaper; trashError = ''; closeMenus()">删除论文（移入回收站）</button>
+      </div>
+    </Teleport>
+    <div v-if="trashTarget" class="dialog-overlay" @click.self="!trashBusy && (trashTarget = null)">
+      <section class="name-dialog" role="dialog" aria-modal="true" aria-labelledby="trash-title" @keydown.esc="!trashBusy && (trashTarget = null)">
+        <h2 id="trash-title">将论文移入回收站？</h2>
+        <strong>{{ trashTarget.title }}</strong>
+        <p>从论文库和最近阅读中移除，并关闭本机阅读标签。PDF、批注、分类和会话保留，可在回收站恢复。不会删除 Zotero 中的条目。关联定时任务保留，恢复论文后才能继续执行。</p>
+        <StateFeedback v-if="trashError" :error="trashError" />
+        <div class="dialog-footer"><button :disabled="trashBusy" @click="trashTarget = null">取消</button><button class="danger confirm-trash" :disabled="trashBusy" @click="applyTrash(trashTarget)">{{ trashBusy ? '处理中…' : '移入回收站' }}</button></div>
+      </section>
+    </div>
 
     <div v-if="documentsId !== null" class="dialog-overlay" @click.self="documentsId = null"><PaperDocuments :paper-id="documentsId" @close="documentsId = null" @changed="onSaved" /></div>
     <div v-if="editId !== null" class="dialog-overlay" @click.self="editId = null">
@@ -320,11 +411,13 @@ function onSaved() {
 .density-toggle { display:flex; gap:0; }
 .density-toggle button[aria-pressed='true'] { color:var(--accent); background:var(--accent-soft); }
 .card-more { position:relative; margin-left:auto; }
-.card-menu { position:absolute; right:0; top:100%; z-index:20; min-width:170px; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:var(--shadow); }
+.card-menu { position:fixed; z-index:70; width:min(240px,calc(100vw - 16px)); max-height:calc(100dvh - 16px); overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:0 8px 28px rgb(0 0 0 / .18); }
 .card-menu button { display:block; width:100%; padding:7px 8px; text-align:left; }
+.card-menu .danger,.confirm-trash { color:var(--danger); }
+.trash-notice,.name-dialog p { font-size:12px; line-height:1.7; }
 .badge.danger { border-color:var(--danger); color:var(--danger); }
 .image-placeholder { display:grid; place-items:center; height:100%; text-align:center; }
-@media(max-width:600px) { .paper-grid.compact .paper-card { grid-template-columns:1fr; }.card-menu { right:4px; }.library-grid-view { padding:12px; } .library-toolbar form { flex-basis:100%; } .library-toolbar button,.library-toolbar select { font-size:12px; padding:7px 10px; } .spacer { display:none; } }
+@media(max-width:600px) { .paper-grid.compact .paper-card { grid-template-columns:1fr; }.library-grid-view { padding:12px; } .library-toolbar form { flex-basis:100%; } .library-toolbar button,.library-toolbar select { font-size:12px; padding:7px 10px; } .spacer { display:none; } }
 </style>
 
 <style scoped>.name-dialog label{display:grid;gap:6px;margin-bottom:12px}.name-dialog select{min-width:0;width:100%}</style>

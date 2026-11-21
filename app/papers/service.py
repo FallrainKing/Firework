@@ -65,7 +65,7 @@ def collections_view(db: sqlite3.Connection) -> dict:
         while parent in nodes and parent not in seen:
             seen.add(parent);names.append(nodes[parent]['name']);parent=nodes[parent]['parent_id']
         r['path']=' / '.join(reversed(names))
-        r['count']=db.execute('WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id) SELECT count(DISTINCT paper_id) FROM paper_collection_items WHERE collection_id IN (SELECT id FROM tree)',(r['id'],)).fetchone()[0]
+        r['count']=db.execute('WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id) SELECT count(DISTINCT x.paper_id) FROM paper_collection_items x JOIN papers p ON p.id=x.paper_id WHERE p.deleted_at IS NULL AND x.collection_id IN (SELECT id FROM tree)',(r['id'],)).fetchone()[0]
     return {'collections':rows}
 
 
@@ -84,10 +84,30 @@ def create_collection(db: sqlite3.Connection, body: CollectionCreate) -> dict:
     return next(c for c in collections_view(db)['collections'] if c['id']==cur.lastrowid)
 
 
-def papers_view(db, q='', collection_id=None, reading_status=None, limit=60, offset=0) -> dict:
-    total = repo.count_papers(db, q, collection_id, reading_status)
-    rows = repo.search_papers(db, q, collection_id, limit, offset, reading_status)
+def papers_view(db, q='', collection_id=None, reading_status=None, limit=60, offset=0, trashed=False) -> dict:
+    total = repo.count_papers(db, q, collection_id, reading_status, trashed)
+    rows = repo.search_papers(db, q, collection_id, limit, offset, reading_status, trashed)
     return {'papers': [card(db, r) for r in rows], 'total': total, 'offset': offset, 'has_more': offset + len(rows) < total}
+
+
+def set_trashed(db: sqlite3.Connection, paper_id: int, trashed: bool) -> dict:
+    """Remove from the active library without destroying research evidence."""
+    try:
+        db.execute('BEGIN IMMEDIATE')
+        row = require_paper(db, paper_id)
+        if trashed and row['deleted_at'] is None:
+            active = db.execute("SELECT 1 FROM agent_runs r JOIN conversation_papers cp ON cp.conversation_id=r.conversation_id WHERE cp.paper_id=? AND r.status IN ('queued','running') LIMIT 1", (paper_id,)).fetchone()
+            imports = db.execute("SELECT 1 FROM import_requests WHERE (paper_id=? OR target_paper_id=?) AND status IN ('pending','running') LIMIT 1", (paper_id, paper_id)).fetchone()
+            if active or imports:
+                raise ServiceError(409, '该论文有正在执行的任务，请等待结束或停止后再移入回收站')
+            db.execute('UPDATE papers SET deleted_at=CURRENT_TIMESTAMP,metadata_version=metadata_version+1 WHERE id=?', (paper_id,))
+        elif not trashed and row['deleted_at'] is not None:
+            db.execute('UPDATE papers SET deleted_at=NULL,metadata_version=metadata_version+1 WHERE id=?', (paper_id,))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return card(db, require_paper(db, paper_id))
 
 
 def paper_detail(db: sqlite3.Connection, paper_id: int) -> dict:

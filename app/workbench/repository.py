@@ -6,7 +6,7 @@ import sqlite3
 
 def recent_reads(db: sqlite3.Connection):
     return db.execute(
-        'SELECT r.paper_id,r.conversation_id,r.updated_at FROM reader_states r JOIN conversations c ON c.id=r.conversation_id WHERE c.archived=0 ORDER BY r.updated_at DESC,r.rowid DESC LIMIT 80'
+        'SELECT r.paper_id,r.conversation_id,r.updated_at FROM reader_states r JOIN conversations c ON c.id=r.conversation_id JOIN papers p ON p.id=r.paper_id WHERE c.archived=0 AND p.deleted_at IS NULL ORDER BY r.updated_at DESC,r.rowid DESC LIMIT 80'
     ).fetchall()
 
 

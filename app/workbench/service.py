@@ -39,7 +39,11 @@ def get_workspace(db, ident: str) -> dict:
     if not re.fullmatch(r'[a-f0-9]{32}', ident):
         raise ServiceError(400, '无效工作区')
     r = repo.find_workspace(db, ident)
-    return json.loads(r[0]) if r else Workspace().model_dump()
+    value = json.loads(r[0]) if r else Workspace().model_dump()
+    value['tabs'] = [t for t in value.get('tabs', []) if db.execute('SELECT 1 FROM papers WHERE id=? AND deleted_at IS NULL', (t['paper_id'],)).fetchone()]
+    if value.get('active_paper_id') not in [t['paper_id'] for t in value['tabs']]:
+        value['active_paper_id'] = value['tabs'][-1]['paper_id'] if value['tabs'] else None
+    return value
 
 
 def save_workspace(db, ident: str, body: Workspace) -> dict:

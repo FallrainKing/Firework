@@ -41,7 +41,7 @@ def run_status_counts(db: sqlite3.Connection) -> dict:
 
 def search_papers(db: sqlite3.Connection, q: str):
     return db.execute(
-        "SELECT id,title,authors,abstract,arxiv_id,status FROM papers WHERE instr(lower(coalesce(title,'')),lower(?))>0 OR instr(lower(coalesce(abstract,'')),lower(?))>0 ORDER BY id DESC LIMIT 50",
+        "SELECT id,title,authors,abstract,arxiv_id,status FROM papers WHERE deleted_at IS NULL AND (instr(lower(coalesce(title,'')),lower(?))>0 OR instr(lower(coalesce(abstract,'')),lower(?))>0) ORDER BY id DESC LIMIT 50",
         (q, q),
     ).fetchall()
 

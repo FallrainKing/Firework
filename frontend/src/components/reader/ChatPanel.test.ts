@@ -160,6 +160,10 @@ describe('ChatPanel', () => {
 
 describe('ChatPanel research composer', () => {
   it('opens one task and template panel without executing a task and keeps the draft on close', async () => {
+    vi.spyOn(sessionsApi, 'templates').mockResolvedValue({ templates: [
+      { id: 'read', name: '阅读论文', description: '重复的起始模板', skill: 'paper_read', prompt: '阅读论文' },
+      { id: 'custom-read', name: '我的研究提问', description: '', skill: 'paper_read', prompt: '自定义问题' },
+    ] } as never)
     const create = vi.spyOn(agentApi, 'createRun')
     const wrapper = mount(ChatPanel, { props: { session, paperId: 1 }, slots: {
       'paper-actions': '<template #default="{ menuOpen }"><span v-if="menuOpen" class="reading-task-fixture">阅读任务 · 确认后执行</span></template>',
@@ -172,6 +176,8 @@ describe('ChatPanel research composer', () => {
     expect(wrapper.find('.task-template-panel').text()).toContain('阅读任务')
     expect(wrapper.find('.task-template-panel').text()).toContain('填入后发送')
     expect(wrapper.find('.task-template-panel').text()).toContain('快速概览')
+    expect(wrapper.find('[aria-label="提问模板"]').text()).not.toContain('重复的起始模板')
+    expect(wrapper.find('[aria-label="提问模板"]').text()).toContain('我的研究提问')
     await toggle.trigger('click')
     expect(wrapper.find('.reading-task-fixture').exists()).toBe(false)
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('保留我的问题')

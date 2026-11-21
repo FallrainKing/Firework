@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { renderMarkdown } from '@/shared/markdown'
-import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, useSlots, watch } from 'vue'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
 import { readerApi } from '@/api/reader'
@@ -16,6 +16,7 @@ import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
 const wb = useWorkbenchStore()
+const slots = useSlots()
 
 const QUICK: Template[] = [
   { id: 'quick_overview', name: '快速概览', description: '', kind: 'reading', skill: 'chat', prompt: '请概述当前论文的研究问题、方法、主要结论与材料覆盖范围。', builtin: 0 },
@@ -210,7 +211,9 @@ function resolvePaperTitle(id: number): string {
 
 async function loadTemplates() {
   const data = await sessionsApi.templates()
-  templates.value = [...data.templates.filter(t => t.skill === currentSession.value?.skill || t.skill === 'chat'), ...QUICK]
+  // The built-in reading starter is represented by the confirmed reading task.
+  // Keep custom prompts and quick questions in the same picker without a duplicate entry.
+  templates.value = [...data.templates.filter(t => (t.skill === currentSession.value?.skill || t.skill === 'chat') && !(slots['paper-actions'] && t.id === 'read')), ...QUICK]
 }
 
 async function load(session: Session) {

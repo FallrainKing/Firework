@@ -41,6 +41,11 @@ export const useWorkbenchStore = defineStore('workbench', {
     },
   },
   actions: {
+    goHome() {
+      this.activePaperId = null
+      this.view = 'read'
+      this.schedulePersist()
+    },
     async load() {
       const s = await workbenchApi.getState(this.workspaceId)
       this.tabs = s.tabs.map(t => ({ ...t }))

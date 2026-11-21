@@ -72,6 +72,12 @@ function resizeInput() {
 }
 watch(question, () => { void nextTick(resizeInput) })
 watch([slashMenuOpen, mentionMenuOpen, slashQuery, mentionQuery], () => { menuIndex.value = 0 })
+watch(slashMenuOpen, open => {
+  if (open) void nextTick(() => {
+    const extras = questionInput.value?.closest('.chat-panel')?.querySelector('.composer-extras')
+    if (extras) extras.scrollTop = 0
+  })
+})
 
 function focusInput() { void nextTick(() => questionInput.value?.focus()) }
 
@@ -84,7 +90,7 @@ function onComposerKeydown(event: KeyboardEvent) {
   if (menuOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
     event.preventDefault()
     if (count) menuIndex.value = (menuIndex.value + (event.key === 'ArrowDown' ? 1 : -1) + count) % count
-    void nextTick(() => questionInput.value?.closest('form')?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }))
+    void nextTick(() => questionInput.value?.closest('.chat-panel')?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({ block: 'nearest' }))
     return
   }
   if (event.key !== 'Enter' || event.shiftKey || event.altKey || event.repeat) return
@@ -463,6 +469,12 @@ function chooseTemplate(template: Template) {
   scheduleDraft()
 }
 
+function closeTaskPicker() {
+  removeMenuToken('/')
+  closeMenus()
+  scheduleDraft()
+}
+
 async function choosePaper(paper: { id: number; title: string }) {
   removeMenuToken('@')
   if (contexts.value.length >= 3) {
@@ -810,7 +822,16 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
     </div>
     <div class="composer-extras" aria-label="阅读辅助与本轮设置">
-      <slot name="paper-actions" />
+      <div class="task-template-panel" :class="{ open: slashMenuOpen }">
+        <slot name="paper-actions" :menu-open="slashMenuOpen" :close-menu="closeTaskPicker" />
+      <div v-if="slashMenuOpen" class="template-options" role="listbox" aria-label="提问模板">
+        <h3>提问模板 <small>填入后发送</small></h3>
+        <button v-for="(t, i) in visibleTemplates" :key="t.id" type="button" role="option" :aria-selected="menuIndex === i" @click="chooseTemplate(t)" @mousedown.prevent>
+          <strong>{{ t.name }}</strong><span>{{ t.description || t.prompt }}</span>
+        </button>
+        <StateFeedback v-if="!visibleTemplates.length" empty empty-text="暂无匹配模板。" />
+      </div>
+      </div>
       <details class="run-settings"><summary>模型与任务额度</summary>
     <RunConnectionControl v-model="selectedConnection" :disabled="busy || uploading" :bound="!!(runs.length || currentSession?.native_ready)" />
     <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading" />
@@ -837,12 +858,6 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     />
     </div>
     <form class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
-      <div v-if="slashMenuOpen" class="command-menu" role="listbox" aria-label="提问模板">
-        <button v-for="(t, i) in visibleTemplates" :key="t.id" type="button" role="option" :aria-selected="menuIndex === i" @click="chooseTemplate(t)" @mousedown.prevent>
-          <strong>{{ t.name }}</strong><span>{{ t.description || t.prompt }}</span>
-        </button>
-        <StateFeedback v-if="!visibleTemplates.length" empty empty-text="暂无匹配模板。" />
-      </div>
       <div v-if="mentionMenuOpen" class="command-menu" role="listbox" aria-label="论文引用">
         <button v-for="(p, i) in visiblePapers" :key="p.id" type="button" role="option" :aria-selected="menuIndex === i" @click="choosePaper(p)" @mousedown.prevent>
           <strong>{{ p.title }}</strong><span>已授权当前会话</span>
@@ -851,11 +866,11 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </div>
       <div class="composer-fields">
       <div class="composer-tools">
-        <button type="button" class="menu-toggle" @click="slashMenuOpen = !slashMenuOpen; mentionMenuOpen = false">/ 模板</button>
+        <button type="button" class="menu-toggle" :aria-expanded="slashMenuOpen" @click="slashMenuOpen = !slashMenuOpen; slashQuery = ''; mentionMenuOpen = false">/ 任务与模板</button>
         <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
         <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
       </div>
-      <textarea ref="questionInput" v-model="question" aria-label="向智能体提问" aria-describedby="composer-help" rows="3" maxlength="3000" placeholder="输入 / 选模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown="onComposerKeydown" @compositionstart="composing = true" @compositionend="composing = false" @paste="onPaste"></textarea>
+      <textarea ref="questionInput" v-model="question" aria-label="向智能体提问" aria-describedby="composer-help" rows="3" maxlength="3000" placeholder="输入 / 选任务与模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown="onComposerKeydown" @compositionstart="composing = true" @compositionend="composing = false" @paste="onPaste"></textarea>
       <StateFeedback
         v-if="uploadError"
         class="upload-error"
@@ -863,7 +878,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         retry-text="重试上传"
         @retry="retryUpload"
       />
-      <div id="composer-help" class="composer-help muted">Enter 发送 · Shift+Enter 换行 · / 模板 · @ 论文</div>
+      <div id="composer-help" class="composer-help muted">Enter 发送 · Shift+Enter 换行 · / 任务与模板 · @ 论文</div>
       </div>
       <div class="composer-footer"><span class="muted">{{ question.length }}/3000 · 图片 {{ attachments.length }}/3 · 引用 {{ contexts.length }}/3</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">{{ uploading ? '上传中…' : busy ? '处理中…' : '发送 ↑' }}</button></div>
     </form>
@@ -955,6 +970,14 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .composer-tools select { flex: 1; min-width:0; font-size:12px; padding:6px; }
 .menu-toggle,.image-picker { font-size:12px; padding:6px 8px; }
 .image-picker { flex-shrink:0; }
+.task-template-panel.open { border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); }
+.template-options { padding:8px; }
+.template-options h3 { font-size:12px; margin:0 0 8px; }
+.template-options small { font-weight:400; color:var(--text-muted); margin-left:6px; }
+.template-options button { display:grid; gap:2px; width:100%; padding:7px; border:0; background:none; text-align:left; }
+.template-options button:hover,.template-options button[aria-selected="true"] { background:var(--accent-soft); }
+.template-options strong { font-size:12px; }
+.template-options span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; color:var(--text-muted); }
 .command-menu { position:absolute; left:var(--space-3); right:var(--space-3); bottom:calc(100% - 8px); z-index:8; max-height:min(230px,30dvh); overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:0 8px 24px rgb(0 0 0 / .12); }
 .command-menu button { display:grid; gap:2px; width:100%; padding:7px; border:0; background:none; text-align:left; }
 .command-menu button:hover,.command-menu button[aria-selected="true"] { background:var(--accent-soft); }

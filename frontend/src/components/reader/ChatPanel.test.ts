@@ -159,6 +159,25 @@ describe('ChatPanel', () => {
 })
 
 describe('ChatPanel research composer', () => {
+  it('opens one task and template panel without executing a task and keeps the draft on close', async () => {
+    const create = vi.spyOn(agentApi, 'createRun')
+    const wrapper = mount(ChatPanel, { props: { session, paperId: 1 }, slots: {
+      'paper-actions': '<template #default="{ menuOpen }"><span v-if="menuOpen" class="reading-task-fixture">阅读任务 · 确认后执行</span></template>',
+    } })
+    await flushPromises()
+    await wrapper.find('textarea').setValue('保留我的问题')
+    const toggle = wrapper.findAll('.composer-tools button')[0]
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.task-template-panel').text()).toContain('阅读任务')
+    expect(wrapper.find('.task-template-panel').text()).toContain('填入后发送')
+    expect(wrapper.find('.task-template-panel').text()).toContain('快速概览')
+    await toggle.trigger('click')
+    expect(wrapper.find('.reading-task-fixture').exists()).toBe(false)
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('保留我的问题')
+    expect(create).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('shows slash templates and inserts the selected prompt without calling the agent', async () => {
     vi.spyOn(agentApi, 'createRun').mockResolvedValue(run())
     const wrapper = await mountPanel()

@@ -232,7 +232,7 @@ defineExpose({ flush, orchestrator: orch })
         <option v-for="s in sessions" :key="s.id" :value="s.id">{{ s.stale_paper_ids?.includes(paperId) ? '旧版本历史 · ' : '' }}{{ s.title }}</option>
       </select>
       <button class="new-session" @click="dialogOpen = true">＋ 新会话</button>
-</div></template><template #paper-actions><GuideActions :controller="guide" :ready="!!orch.doc.value && !orch.loading.value" :page-count="orch.doc.value?.page_count??0" :reading-busy="readingBusy" @read="startReading" @show-guide="openGuide" /></template></ChatPanel>
+</div></template><template #paper-actions="{ menuOpen, closeMenu }"><GuideActions :menu-open="menuOpen" @selected="closeMenu" :controller="guide" :ready="!!orch.doc.value && !orch.loading.value" :page-count="orch.doc.value?.page_count??0" :reading-busy="readingBusy" @read="startReading" @show-guide="openGuide" /></template></ChatPanel>
       </aside>
     </div>
 

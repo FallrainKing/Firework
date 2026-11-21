@@ -25,6 +25,18 @@ afterEach(() => {
 })
 
 describe('workbench store', () => {
+  it('returns to the reading home without losing paper tabs, sessions or layout', async () => {
+    const wb = useWorkbenchStore()
+    await wb.load()
+    wb.setView('library')
+    wb.goHome()
+    expect(wb.view).toBe('read')
+    expect(wb.activePaperId).toBeNull()
+    expect(wb.tabs).toEqual(fixture.tabs)
+    expect(wb.layout).toEqual(fixture.layout)
+    await vi.advanceTimersByTimeAsync(500)
+    expect(workbenchApi.saveState).toHaveBeenLastCalledWith(wb.workspaceId, expect.objectContaining({ view: 'read', active_paper_id: null, tabs: fixture.tabs }))
+  })
   it('load restores tabs, layout, active and view', async () => {
     const wb = useWorkbenchStore()
     await wb.load()

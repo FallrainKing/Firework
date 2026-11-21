@@ -105,6 +105,7 @@ function openImport(paperId?: number) {
 }
 
 const route = useRoute()
+watch(() => route.query.home, home => { if (home === '1') goHome() })
 
 function openSessionInLibrary(sessionId: number) {
   librarySession.value = sessionId
@@ -115,7 +116,8 @@ onMounted(async () => {
   try {
     await Promise.all([wb.load(), lib.refresh()])
     const deep = parseDeepLink(route)
-    if (deep) {
+    if (route.query.home === '1') goHome()
+    else if (deep) {
       openPaper(deep.paperId, deep.sessionId ?? undefined)
     }
   } catch (e) {
@@ -124,8 +126,8 @@ onMounted(async () => {
 })
 
 function goHome() {
-  wb.activePaperId = null
-  wb.schedulePersist()
+  wb.goHome()
+  sideHidden.value = window.innerWidth <= 760
 }
 
 function activeSessionId(): number | null {

@@ -7,9 +7,11 @@ import { useLibraryStore } from '@/stores/library'
 import { papersApi } from '@/api/papers'
 import { workbenchApi } from '@/api/workbench'
 import { agentApi } from '@/api/agent'
-vi.mock('vue-router', () => ({ useRoute: () => ({ query: {}, params: {} }) }))
+const route = vi.hoisted(() => ({ query: {} as Record<string, string>, params: {} }))
+vi.mock('vue-router', () => ({ useRoute: () => route }))
 
 beforeEach(() => {
+  route.query = {}
   localStorage.clear()
   setActivePinia(createPinia())
   vi.spyOn(useWorkbenchStore(), 'load').mockResolvedValue()
@@ -24,6 +26,23 @@ function shell() {
   } } })
 }
 describe('reading full-text boundary', () => {
+  it('an explicit home entry wins over the saved view and active paper after loading', async () => {
+    route.query = { home: '1' }
+    const wb = useWorkbenchStore()
+    vi.mocked(wb.load).mockImplementation(async () => {
+      wb.tabs = [{ paper_id: 19, session_id: 5 }]
+      wb.activePaperId = 19
+      wb.view = 'library'
+    })
+    vi.spyOn(papersApi, 'get').mockResolvedValue({ id: 19, title: '既有论文', has_pdf: true } as never)
+    const wrapper = shell()
+    await flushPromises()
+    expect(wb.view).toBe('read')
+    expect(wb.activePaperId).toBeNull()
+    expect(wb.tabs).toEqual([{ paper_id: 19, session_id: 5 }])
+    expect(wrapper.findComponent({ name: 'WelcomeView' }).exists()).toBe(true)
+    wrapper.unmount()
+  })
   it('metadata-only paper shows PDF import and never mounts its agent reader', async () => {
     vi.spyOn(papersApi, 'get').mockResolvedValue({ id: 8, title: '书目论文', has_pdf: false } as never)
     const wrapper = shell()

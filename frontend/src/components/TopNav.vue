@@ -42,7 +42,7 @@ onMounted(() => { void loadProfile() })
 
 <template>
   <header class="work-top">
-    <a class="work-brand" href="/#/">Firework <small>研究工作台</small></a>
+    <router-link class="work-brand" :to="{ path: '/', query: { home: '1' } }" aria-label="Firework · 返回首页" @click="wb.goHome(); userMenuOpen = false">Firework <small>研究工作台</small></router-link>
     <nav aria-label="功能导航">
       <button
         v-for="v in views"

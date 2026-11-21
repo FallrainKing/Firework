@@ -301,9 +301,12 @@ def test_account_runner_sessions_and_run_lookup_are_isolated(tmp_path,monkeypatc
     fake=make_spawn([result_line('private result')])
     async def spawn(*args,**kwargs):captures.append(kwargs);return await fake(*args,**kwargs)
     monkeypatch.setattr(jobs_mod.asyncio,'create_subprocess_exec',spawn)
+    monkeypatch.setattr(jobs_mod.connections,'check_current',lambda *a:None)
+    monkeypatch.setattr(jobs_mod.connections,'validate_destination',lambda *a:None)
     with TestClient(server.app) as c:
         rid='c'*32;sid='11111111-1111-4111-8111-111111111111'
-        payload={'run_id':rid,'skill':'chat','prompt':'read only own','session_id':sid}
+        assert c.post('/runs',headers={'X-Research-Workspace':first},json={'run_id':rid,'skill':'chat','prompt':'no own connection'}).status_code==403
+        payload={'run_id':rid,'skill':'chat','prompt':'read only own','session_id':sid,'connection_snapshot':{'id':'d'*32,'name':'own','revision':1,'base_url':'https://api.example.com','model':'test','auth_type':'api_key','vision':'unknown','context_window':200000,'role_prompt':''},'connection_secret':'test-only-own-key'}
         assert c.post('/runs',headers={'X-Research-Workspace':first},json=payload).status_code==202
         assert c.get('/runs/'+rid,headers={'X-Research-Workspace':second}).status_code==404
         assert c.post('/runs/'+rid+'/cancel',headers={'X-Research-Workspace':second}).status_code==404

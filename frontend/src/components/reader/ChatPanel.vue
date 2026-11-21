@@ -8,6 +8,8 @@ import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { Attachment, Run, SelectionContext, Session, SessionUsage, Template } from '@/api/types'
+import RunConnectionControl from './RunConnectionControl.vue'
+import type {ConnectionRef} from '@/api/runnerConnections'
 import RunBudgetControl from './RunBudgetControl.vue'
 import type {BudgetRef} from '@/api/runnerBudgets'
 import StateFeedback from '@/components/StateFeedback.vue'
@@ -24,7 +26,8 @@ const QUICK: Template[] = [
 const runs = ref<Run[]>([])
 const question = ref('')
 const selectedBudget=ref<BudgetRef|null>(null)
-watch(()=>props.session?.id,()=>{selectedBudget.value=null})
+const selectedConnection=ref<ConnectionRef|null>(null)
+watch(()=>props.session?.id,()=>{selectedBudget.value=null;selectedConnection.value=null})
 const contexts = ref<SelectionContext[]>([])
 const attachments = ref<Attachment[]>([])
 const templates = ref<Template[]>([])
@@ -497,9 +500,9 @@ async function ask(prompt: string, selectedContexts: SelectionContext[] = [], pu
   let body: Record<string, unknown> | null = null
   try {
     const old = JSON.parse(localStorage.getItem(storage) || 'null')
-    body = old && JSON.stringify(old.budget??null)===JSON.stringify(selectedBudget.value) && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
+    body = old && JSON.stringify(old.connection??null)===JSON.stringify(selectedConnection.value) && JSON.stringify(old.budget??null)===JSON.stringify(selectedBudget.value) && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
   } catch { /* ignore */ }
-  body = body ?? { conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, ...(selectedBudget.value?{budget:selectedBudget.value}:{}), request_key: uid32() }
+  body = body ?? { conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, ...(selectedConnection.value?{connection:selectedConnection.value}:{}), ...(selectedBudget.value?{budget:selectedBudget.value}:{}), request_key: uid32() }
   localStorage.setItem(storage, JSON.stringify(body))
   busy.value = true
   try {
@@ -697,7 +700,8 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       <dl>
         <div><dt>平台会话 ID</dt><dd>{{ currentSession?.id ?? '未提供' }}</dd></div>
         <div><dt>原生会话 ID</dt><dd>{{ currentSession?.native_session_id || '未提供' }}</dd></div>
-        <div><dt>模型</dt><dd>{{ sessionModel || '未提供' }}</dd></div>
+        <div v-if="latestRun?.diagnostics?.connection_snapshot"><dt>连接 / 版本</dt><dd>{{ latestRun?.diagnostics.connection_snapshot.name || '管理员原有连接' }} · {{ latestRun?.diagnostics.connection_snapshot.revision || '原配置' }}</dd></div>
+            <div><dt>模型</dt><dd>{{ sessionModel || '未提供' }}</dd></div>
         <div><dt>运行状态</dt><dd>{{ runStatus }}</dd></div>
       </dl>
       <h4>运行记录</h4>
@@ -768,6 +772,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
             <div v-if="run.diagnostics"><dt>任务额度快照</dt><dd>{{ run.diagnostics.budget_snapshot?.name || 'Skill 原有额度' }} · {{ JSON.stringify(run.diagnostics.effective_budget) }} <a href="/#/settings/runner/budgets">管理</a></dd></div>
             <div><dt>运行编号</dt><dd>{{ run.id }}</dd></div>
             <div><dt>技能 / 版本</dt><dd>{{ run.skill }} / {{ run.skill_version || '未提供' }}</dd></div>
+            <div v-if="run.diagnostics?.connection_snapshot"><dt>连接 / 版本</dt><dd>{{ run.diagnostics.connection_snapshot.name || '管理员原有连接' }} · {{ run.diagnostics.connection_snapshot.revision || '原配置' }}</dd></div>
             <div><dt>模型</dt><dd>{{ run.model || '未提供' }}</dd></div>
             <div><dt>开始 / 结束</dt><dd>{{ run.created_at || '未提供' }} → {{ run.finished_at || '未提供' }}</dd></div>
             <div><dt>费用估算</dt><dd>{{ run.cli_estimated_cost_usd === null ? '未提供' : `$${run.cli_estimated_cost_usd.toFixed(4)}（CLI 估算，非实际账单）` }}</dd></div>
@@ -777,6 +782,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </article>
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
+    <RunConnectionControl v-model="selectedConnection" :disabled="busy || uploading" :bound="!!(runs.length || currentSession?.native_ready)" />
     <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading" />
     <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
       <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">

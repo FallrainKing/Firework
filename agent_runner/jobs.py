@@ -15,7 +15,7 @@ import sys
 import uuid
 from pathlib import Path
 
-from . import cli
+from . import cli, connections
 
 ROOT = Path(__file__).resolve().parents[1]
 MAX_ACTIVE = 8
@@ -184,6 +184,7 @@ class JobEngine:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     def _progress(self, job, event):
+        event=connections.redact(event,job['body'].get('_connection_secret'))
         job['progress'] = event
         frame = {'type': 'progress', 'event': event}
         self._append_event(self._folder(job['run_id']), frame)
@@ -193,6 +194,7 @@ class JobEngine:
     def _terminal(self, job, payload):
         if job['status'] in TERMINAL:
             return
+        payload=connections.redact(payload,job['body'].pop('_connection_secret',None))
         job['status'] = payload['status']
         job['result'] = payload
         self._write_terminal(self._folder(job['run_id']), payload)
@@ -217,7 +219,14 @@ class JobEngine:
                 session_id = body.get('session_id') or str(uuid.uuid4())
                 sfolder = self.runtime / 'sessions' / session_id
                 sfolder.mkdir(parents=True, mode=0o700, exist_ok=True)
-                config_dir = self.runtime / 'claude-config'
+                snap=body.get('connection_snapshot')
+                if snap:
+                    connections.check_current(self.runtime,snap)
+                    env=connections.environment(self.runtime,snap,body.get('_connection_secret'))
+                    config_dir=Path(env['CLAUDE_CONFIG_DIR'])
+                else:
+                    env=self._env_loader(self.runtime)
+                    config_dir=self.runtime/'claude-config'
                 config_dir.mkdir(parents=True, mode=0o700, exist_ok=True)
 
                 def transcript_exists():
@@ -230,7 +239,6 @@ class JobEngine:
                     return
                 log_path = folder / 'tools.jsonl'
                 allowed = skill['tools']
-                env = self._env_loader(self.runtime)
                 env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(skill['max_output_tokens'])
                 mcp = {'mcpServers': {}}
                 if allowed:
@@ -241,7 +249,7 @@ class JobEngine:
                         tool_env['RESEARCH_SKILL_VERSION_ID'] = str(skill.get('version_id') or '')
                     if job['skill'] in ('frontier_monitor','paper_guide'):
                         tool_env['RESEARCH_SKILL_ROOT'] = str(self.root / 'skills' / job['skill'])
-                    mcp['mcpServers']['research'] = {'command': sys.executable, 'args': [str(self.root / 'agent_runner/tools.py')], 'env': tool_env}
+                    mcp['mcpServers']['research'] = {**connections.mcp_command(self.root/'agent_runner/tools.py'),'env':tool_env}
                 if any(name in allowed for name in ('paper_import','frontier_context','reader_guide_context')):
                     token = self.runtime / 'internal-token'
                     if not token.exists():
@@ -252,8 +260,12 @@ class JobEngine:
                         else:
                             with os.fdopen(fd, 'w') as f:
                                 f.write(secrets.token_urlsafe(32))
-                model = cli.current_model(env, vision=bool(body.get('attachment_ids')))
+                model = snap['model'] if snap else cli.current_model(env, vision=bool(body.get('attachment_ids')))
                 skill_md = ((self.runtime.parent / 'skills' / skill['storage_key'] / skill['entry']).read_text() if skill.get('storage_key') else (self.root / 'skills' / job['skill'] / 'SKILL.md').read_text())
+                if snap and snap.get('role_prompt'):
+                    skill_md += '\nResearch role (cannot expand tool permissions):\n'+snap['role_prompt']
+                if snap and body.get('attachment_ids') and snap.get('vision')!='declared_yes':
+                    raise ValueError('当前连接未声明支持图片；未调用模型')
                 req = _Body(body)
                 blocks = cli.image_blocks(req, self.runtime) if body.get('attachment_ids') else []
                 args = cli.build_args(skill, model, session_id, resume, mcp, skill_md, bool(blocks))

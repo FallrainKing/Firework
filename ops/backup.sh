@@ -63,10 +63,19 @@ else
 fi
 
 # Project-owned native transcripts are paired with DB session mappings.
-if [ -d "${DATA_DIR}/agent/claude-config" ] && [ -d "${DATA_DIR}/agent/sessions" ]; then
-    tar -czf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$DATA_DIR" \
-        agent/claude-config agent/sessions
+set --
+for folder in agent/claude-config agent/sessions agent/connections; do
+    if [ -d "${DATA_DIR}/$folder" ]; then set -- "$@" "$folder"; fi
+done
+if [ "$#" -gt 0 ]; then
+    tar -czf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$DATA_DIR" "$@"
     echo "backup.sh: native agent sessions archived"
+fi
+# Default administrator credential key is paired with the encrypted DB.
+# Account-specific keys are already included in accounts-*.tar.gz below.
+if [ -f "${DATA_DIR}/auth/runner-master.key" ]; then
+    tar -czf "${BACKUP_DIR}/runner-secrets-${DATE}.tar.gz" -C "$DATA_DIR" auth/runner-master.key
+    chmod 600 "${BACKUP_DIR}/runner-secrets-${DATE}.tar.gz"
 fi
 
 # Dynamic skills are irreplaceable runtime state: original immutable archives,
@@ -102,6 +111,7 @@ prune 'avatars-*.tar.gz'
 prune 'papers-*.tar.gz'
 prune 'imports-*.tar.gz'
 prune 'agent-sessions-*.tar.gz'
+prune 'runner-secrets-*.tar.gz'
 prune 'app-*.db'
 # Retain each account's vector collection independently. A global 14-file
 # limit would delete today's snapshots as soon as there are >14 collections.

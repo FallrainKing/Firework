@@ -154,3 +154,25 @@ def test_restore_checks_all_immutable_versions_before_replacing_data(tmp_path):
     second=subprocess.run(['sh',str(RESTORE_SH),str(backups),'20261119','--confirm'],env=env,capture_output=True,text=True)
     assert second.returncode==0,second.stderr
     assert (data/'papers/blob-old-revision.pdf').read_bytes()==b'%PDF historical bytes'
+
+
+def test_restore_requires_runner_key_and_preserves_connection_transcripts(tmp_path):
+    if not shutil.which('sqlite3'):pytest.skip('sqlite3 CLI unavailable')
+    data,backups=_make_bundle(tmp_path)
+    with sqlite3.connect(backups/'app-20261119.db') as db:
+        db.executescript('CREATE TABLE runner_connections(id TEXT);INSERT INTO runner_connections VALUES ("custom");')
+    env={**os.environ,'DATA_DIR':str(data),'RESTORE_QDRANT':'0'}
+    args=['sh',str(RESTORE_SH),str(backups),'20261119','--confirm']
+    failed=subprocess.run(args,env=env,capture_output=True,text=True)
+    assert failed.returncode!=0 and 'credential key missing' in failed.stderr
+    assert (data/'imports/old.txt').exists()
+    source=tmp_path/'source'
+    (source/'auth').mkdir(parents=True);(source/'auth/runner-master.key').write_bytes(b'k'*32)
+    transcript=source/'agent/connections/custom/claude-config/projects/session.jsonl'
+    transcript.parent.mkdir(parents=True);transcript.write_text('custom transcript')
+    with tarfile.open(backups/'runner-secrets-20261119.tar.gz','w:gz') as tar:tar.add(source/'auth/runner-master.key',arcname='auth/runner-master.key')
+    with tarfile.open(backups/'agent-sessions-20261119.tar.gz','w:gz') as tar:tar.add(source/'agent',arcname='agent')
+    ok=subprocess.run(args,env=env,capture_output=True,text=True)
+    assert ok.returncode==0,ok.stderr
+    assert (data/'auth/runner-master.key').read_bytes()==b'k'*32
+    assert (data/'agent/connections/custom/claude-config/projects/session.jsonl').read_text()=='custom transcript'

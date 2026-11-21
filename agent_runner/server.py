@@ -11,12 +11,13 @@ import os
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr
 
 from app.agent.catalog import SKILLS
 from app.agent.protocol import RUNNER_PROTOCOL_VERSION
 from . import cli, jobs
 from app.runner_config.budgets import BudgetSnapshot, KEYS
+from app.runner_config.connection_schemas import ConnectionSnapshot
 from app.core.workspaces import workspace_path,valid_workspace
 import sqlite3
 
@@ -47,6 +48,8 @@ app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, opena
 
 class RunRequest(BaseModel):
     budget_policy: BudgetSnapshot | None = None
+    connection_snapshot: ConnectionSnapshot | None = None
+    connection_secret: SecretStr | None = Field(None,exclude=True,repr=False)
     run_id: str = Field(pattern=r'^[a-f0-9]{32}$')
     skill: str
     skill_version_id: int | None = None
@@ -97,7 +100,11 @@ async def engine_for(request: Request):
 async def health(request: Request):
     current=await engine_for(request)
     queued, running = current.counts() if current else (0, 0)
-    return {'status': 'ok', 'protocol_version': RUNNER_PROTOCOL_VERSION, 'agent': 'claude_cli', 'model': current_model(load_environment()), 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
+    model=None
+    if request.headers.get('x-research-workspace','legacy')=='legacy':
+        try:model=current_model(load_environment())
+        except (OSError,ValueError):pass
+    return {'status': 'ok', 'protocol_version': RUNNER_PROTOCOL_VERSION, 'agent': 'claude_cli', 'model': model, 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}
 
 
 @app.post('/runs', status_code=202)
@@ -128,6 +135,10 @@ async def submit_run(body: RunRequest, request: Request):
         resolved=body.budget_policy.model_dump()
         policy.update({k:resolved[k] for k in KEYS})
         policy['budget_snapshot']=resolved
+    if body.connection_snapshot:
+        if body.connection_secret is None:raise HTTPException(422,'Connection credential required')
+        payload['_connection_secret']=body.connection_secret.get_secret_value()
+    elif key!='legacy':raise HTTPException(403,'Own API connection required')
     payload['skill_policy'] = policy
     payload['workspace_key'] = key
     try:

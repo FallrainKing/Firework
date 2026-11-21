@@ -248,3 +248,19 @@ def test_vector_retention_keeps_each_account_collection(tmp_path):
     assert result.returncode==0,result.stderr
     assert len(list(backups.glob('qdrant-chunks-*.snap')))==KEEP
     assert len(list(backups.glob('qdrant-chunks_'+('a'*32)+'-*.snap')))==KEEP
+
+
+def test_runner_key_and_custom_native_sessions_are_archived(tmp_path):
+    data=tmp_path/'data';backups=tmp_path/'backups'
+    (data/'auth').mkdir(parents=True)
+    (data/'auth/runner-master.key').write_bytes(b'k'*32)
+    path=data/'agent/connections/custom/claude-config/projects/session.jsonl'
+    path.parent.mkdir(parents=True);path.write_text('custom transcript')
+    result=run_backup(data,backups,'http://127.0.0.1:1')
+    assert result.returncode==0,result.stderr
+    archive=next(backups.glob('runner-secrets-*.tar.gz'))
+    assert archive.stat().st_mode&0o077==0
+    with tarfile.open(archive) as tar:
+        assert tar.extractfile('auth/runner-master.key').read()==b'k'*32
+    with tarfile.open(next(backups.glob('agent-sessions-*.tar.gz'))) as tar:
+        assert 'agent/connections/custom/claude-config/projects/session.jsonl' in tar.getnames()

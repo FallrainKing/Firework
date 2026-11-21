@@ -1,12 +1,12 @@
 # Firework 项目文档
 
-更新：2026-11-19。当前版本：Firework；业务迁移 0016、独立身份 schema 2、Runner 协议 5。
+更新：2026-11-21。当前版本：Firework；业务迁移 0018、独立身份 schema 2、Runner 协议 7。
 
 ## 当前维护文档
 
 | 文档 | 用途 |
 | --- | --- |
-| [Runner 配置与会话调试设计](RUNNER-CONFIGURATION.md) | 待实施：连接、模型能力、Skills/MCP、额度、会话与诊断 |
+| [Runner 配置与会话调试设计](RUNNER-CONFIGURATION.md) | 已交付额度与个人模型连接；其余 Skills/MCP、方案和会话诊断规划 |
 | [Hash 路由方案](HASH-ROUTING.md) | 地址格式、旧书签兼容、认证返回和验收 |
 | [认证与多账号](AUTHENTICATION.md) | 登录/注册限制、隔离、初始化和安全恢复 |
 | [使用指南](USER-GUIDE.md) | 添加论文、阅读、导读、会话、图片、追踪和技能管理 |

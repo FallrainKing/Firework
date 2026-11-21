@@ -1,6 +1,6 @@
 # 当前环境、部署与排障
 
-核对日期：2026-11-21（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 6。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+核对日期：2026-11-21（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 7。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
 
 ## 1. 当前实例
 
@@ -13,10 +13,10 @@
 | Claude Code CLI | 2.1.322，`/home/f/.local/bin/claude` |
 | 前端构建 | Docker Node 24，多阶段构建 Vue/Vite |
 | 生产分支 | `release/frontier-workbench-20261119` |
-| Runner | 用户级 `research-agent-runner`，协议 6，并发 2 |
+| Runner | 用户级 `research-agent-runner`，协议 7，并发 2 |
 | 实际模型快照 | 本次发布冒烟报告 `glm-5.3[1M]`，以运行时状态为准 |
 | 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
-| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0017_runner_budgets.sql` |
+| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0018_runner_connections.sql` |
 
 远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
 
@@ -186,3 +186,9 @@ Zotero 初版功能提交为 `b97000e`；当前 0.1.3 对应业务迁移 0016，
 Zotero 插件修复发布：0.1.4（`8a1d1d7`），更新清单及旧版本下载别名均已更新；XPI SHA-256 为 `c6446da41e2b8ad18bd54752bb40a7b95ba2305bd3f40c3ab180bd4505115786`。回退镜像 `research-assistant-app:before-zotero-014-20261120`。升级不改变设备授权范围，沿用当前配对；失败任务从网页重试后再次手动接收。
 
 客户端实测补充：已安装启用 0.1.4，完整退出/启动后插件管理器仍可见且启用；配对与恢复日志保留，实际再次接收通过。双向及重复验收使用专用合成资料，当前无待处理测试导出任务；用户曾报告的插件消失本次未复现。Attanger 会移动附件并变更附件 key，核对重复时需比较有效条目与内容哈希，不能只比较历史恢复日志里的 key。
+
+## 个人模型连接的运行配置
+
+Web 管理入口 `/#/settings/runner/connections`。自定义连接不修改宿主机 Claude 配置，独立账号无管理员凭据回退。工作区内 `auth/runner-master.key` 是 32 字节主密钥，需与加密数据库成套备份；可用 FIREWORK_RUNNER_MASTER_KEY_FILE 指向部署方挂载的现成密钥，外部文件需单独备份。Runner 本身不需要访问该文件。
+
+私有或 HTTP API 默认不执行，确有需要时由管理员在 Runner 环境配置 FIREWORK_RUNNER_ALLOW_PRIVATE_HOSTS（逗号分隔主机名），重启 Runner 后生效；Web 用户不能修改此允许列表。连接环境只注入所选凭据和模型；当前仍为宿主机进程，容器级隔离待实现。

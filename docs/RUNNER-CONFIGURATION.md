@@ -2,7 +2,7 @@
 
 日期：2026-11-21。基线：ad1053c、Runner 协议 5、已安装 Claude Code 2.1.322。
 修订：已补全第 4 章前端页面、路由、表单、交互和分批验收。
-状态：待实施设计。本文不表示配置中心、外部 MCP、额度续跑或容器 Runner 已上线。
+状态：额度管理与个人模型连接已实现，交付边界见第 13、14 节；独立执行方案、通用 MCP 管理、额度续跑与容器 Runner 尚未实现。
 目标：沿用 Claude Code 及现有研究工具，实现按用户配置、可复现执行、可解释触限、可检查会话，并与宿主机其他 Claude Code 使用场景隔离。
 
 ## 1. 引用与采用方式
@@ -838,7 +838,7 @@ data/
 
 需要界面显式选择而不能猜测的事项：真实能力验证费用、追加预算、向新服务商发送会话内容、外部写入工具授权、是否包含正文的调试包。其余常规实现可按本文方案推进，不要求用户逐项审批技术细节。
 
-本文包含完整目标设计；首批 P0-A 已实现，见下方交付记录。连接、模型密钥、角色 Profile、通用 MCP 配置及容器 Runner 仍未实现。协议 6 当前只传递经过校验的额度快照，完整 execution snapshot 协商属于后续协议演进，不能视为已具备。
+本文包含完整目标设计；首批 P0-A 额度管理和第二批个人模型连接已实现，见下方交付记录。角色/Profile 独立资源、通用 MCP 配置及容器 Runner 仍未实现。协议 7 传递额度与连接快照及临时凭据，完整 execution snapshot 协商属于后续协议演进，不能视为已具备。
 
 
 
@@ -854,3 +854,27 @@ data/
 - 诊断：Run 响应增加 `diagnostics`，包括结束原因、原始子类型、有效额度、预算快照及部分输出状态；CLI 额度/轮次中断和超时可解释，正常流中的预算中断保留最近文本，超时也保留已收到文本。前端提供重新编辑后手动发送；没有自动付费重试，也没有独立“追加额度继续”端点。
 - 不提供：服务商账单硬限额、累计 token/每次请求额度、可靠请求级账本、原始 stderr 调试包、连接密钥配置、模型能力检测、MCP 新增服务、容器执行。
 - 验证：前端 229 项、后端相关 104 项及生产构建通过。使用模拟 CLI 和隔离数据库，不调用真实模型。用户需自行选择新额度后发起正式任务；历史失败不会自动重放。
+
+
+## 14. 第二批：个人模型连接（2026-11-21）
+
+### 实际交付
+
+- 前端 `/#/settings/runner/connections`，用户菜单“模型连接”快捷入口，与额度页共用设置导航。创建/编辑/复制连接、启停、版本冲突、设为账号默认；复制不复制密钥，编辑留空保留密钥。更改目标地址或鉴权方式时要求重填 Key。
+- 每个连接暂包含一个模型：API Base URL、API Key、x-api-key/Bearer 鉴权、精确模型名称、图片理解声明、4096–1000000 上下文声明，以及研究角色补充要求。只接收 Anthropic Messages 兼容接口，不做 OpenAI 格式转换。能力状态为 not_tested；配置预检不访问模型，不验证服务可达性或计费。声明 1M 不会擅自修改模型名称、启用 beta 或保证有效上下文容量。
+- 账号内默认连接只影响新会话；阅读输入区可在尚无运行记录的会话中选择连接。首轮提交后固定连接快照和原生配置目录；更换连接、修订连接后使用新会话，不暗中转发旧会话历史。独立账号未配置连接时拒绝执行，不能继承宿主机凭据；原管理员 legacy 模式保留兼容，不自动导入原有密钥。
+- 数据迁移 0018：runner_connections、runner_connection_settings 和 conversations.runner_connection_json。Run 的 execution_policy_json 保存无密钥快照及用户选择；当前版本只存一份连接凭据，修订/停用会阻止旧版本排队任务继续执行。
+- API：GET/POST `/api/me/runner/connections`、PATCH `/api/me/runner/connections/{id}`、PUT `/api/me/runner/connections/default`、POST `/api/me/runner/connections/preflight`。RunCreate 增加可选 `connection: {id, revision}`；诊断中可看到绑定连接与版本。
+- AES-GCM 加密凭据，随机 nonce、工作区与连接 ID 作为附加认证数据；默认主密钥在工作区 `auth/runner-master.key`，创建权限 0600。可由部署方通过 FIREWORK_RUNNER_MASTER_KEY_FILE 指定现成的 32 字节外部密钥文件；缺失/错误密钥明确失败，不生成替代密钥冒充恢复。
+- 协议 7：Web 只在执行时解密，通过私有 Unix Socket 传递临时凭据，Runner 不读取加密主密钥。自定义任务从白名单环境构建，直接使用快照模型，不调用宿主 Claude 配置加载器；ANTHROPIC_API_KEY 与 ANTHROPIC_AUTH_TOKEN 仅取其一。原生会话路径为 `agent/connections/{id}-{revision}/claude-config`，不修改 ~/.claude。
+- 排队任务启动前校对当前连接仍启用、版本与快照一致。默认仅公网 HTTPS，执行时拒绝解析到私有/保留地址；内网服务需管理员在 Runner 环境显式设置 FIREWORK_RUNNER_ALLOW_PRIVATE_HOSTS。该检查不是容器级出口隔离，完整网络策略仍属后续容器工作。
+- 模型凭据从 MCP 工具子进程环境移除；已知当前 Key 在进度和最终结果持久化前替换为 REDACTED。凭据不放 argv、Run 快照、URL、本地浏览器存储、事件日志或结果文件；不收集原始 stderr。运行结束移除内存任务中的临时凭据。
+- 备份：新增受限权限的 runner-secrets 日期归档；独立账号密钥随账号归档，自定义原生会话目录纳入 agent-sessions 归档。恢复连接数据前要求对应 32 字节密钥存在；修复旧原生会话归档恢复时丢失一层目录的问题。外部挂载密钥由部署方另行备份，不自动归档。
+
+### 尚未交付
+
+模型目录自动发现、真实最小能力探测、独立角色/执行方案资源、连接分类与归档、凭据轮换服务、完整运行检查器、通用 MCP 服务管理和容器 Runner 仍待实现。当前静态上下文容量不是累计输入 token 的精确硬限制；角色提示不能扩大 Skill 工具权限。
+
+实现依据：[Claude Code 环境变量](https://code.claude.com/docs/en/env-vars)、[网关组织方式](https://code.claude.com/docs/en/llm-gateway)；加密库参考 [Cryptography](https://cryptography.io/en/latest/hazmat/primitives/aead/)。实际参数优先以当前固定 CLI 和测试结果为准。
+
+第二批验证：前端 232 项、后端相关 121 项通过；服务器因缺少 sqlite3 CLI 跳过的恢复场景，在本机独立环境补跑 6 项全部通过。生产构建通过。模拟 CLI 验证了所选模型/Key/角色注入、Key 不进入事件/结果与 MCP 子进程、连接修订拒绝、账号隔离及会话绑定；没有进行真实模型能力或计费验证。

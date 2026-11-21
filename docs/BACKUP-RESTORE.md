@@ -75,3 +75,9 @@ docker compose up -d app backup
 当前具备隔离备份/恢复测试，但未完成生产全量恢复演练。具体部署的备份位置和回退镜像见 [环境与部署](enviroment.md)。
 
 文件版本补充：papers 归档包含所有 `blob-{sha256}.pdf`，数据库包含文档、版本、默认指针和批注关联。恢复新增检查每个 file_objects.storage_key 对应原件是否存在，包含非默认版本和补充材料；缺失则在替换正式资源前失败。旧备份没有 file_objects 表时保持兼容。
+
+## Runner 连接密钥与原生会话
+
+启用个人连接后，管理员的默认主密钥随 runner-secrets-YYYYMMDD.tar.gz 归档，独立账号密钥随 accounts 归档。自定义连接的 agent/connections 目录随 agent-sessions 归档。归档权限为私有；连接数据库和密钥是成套恢复资源。
+
+恢复前检查有连接记录的工作区具备对应 32 字节主密钥；外部 FIREWORK_RUNNER_MASTER_KEY_FILE 不由脚本归档，必须另行恢复原文件。缺失主密钥时不要新建随机文件替代。恢复脚本只校验文件结构，重启后还需验证实际解密。不要将包含主密钥的备份公开或放入 Git。

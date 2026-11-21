@@ -152,7 +152,7 @@ def create_app(*, authentication: bool = True) -> FastAPI:
     register_error_handlers(app)
     @app.exception_handler(RequestValidationError)
     async def private_validation_errors(request,exc):
-        if request.url.path.startswith(('/api/auth/','/api/admin/','/api/zotero/')):
+        if request.url.path.startswith(('/api/auth/','/api/admin/','/api/zotero/','/api/me/runner/')):
             # FastAPI's default errors include raw input, which can be a password.
             errors=[{k:e[k] for k in ('loc','msg','type') if k in e} for e in exc.errors()]
             return JSONResponse({'detail':errors},status_code=422)

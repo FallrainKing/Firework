@@ -19,7 +19,7 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
     sed -n '2,15p' "$0"
     exit 0
 fi
-if [ "$#" -lt 2 ] || [ "$3" != "--confirm" ]; then
+if [ "$#" -lt 2 ] || [ "${3:-}" != "--confirm" ]; then
     echo "usage: $0 BACKUP_DIR YYYYMMDD --confirm" >&2
     exit 2
 fi
@@ -105,8 +105,23 @@ for folder in papers imports attachments; do
 done
 if [ -f "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" ]; then
     mkdir -p "$STAGE/agent"
-    tar -xzf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$STAGE/agent" --strip-components 2
+    tar -xzf "${BACKUP_DIR}/agent-sessions-${DATE}.tar.gz" -C "$STAGE/agent" --strip-components 1
 fi
+
+if [ -f "${BACKUP_DIR}/runner-secrets-${DATE}.tar.gz" ]; then
+    mkdir -p "$STAGE/auth"
+    tar -xzf "${BACKUP_DIR}/runner-secrets-${DATE}.tar.gz" -C "$STAGE/auth" --strip-components 1
+fi
+check_runner_key() {
+    if [ "$(sqlite3 "$1" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='runner_connections';")" = "1" ] && [ "$(sqlite3 "$1" 'SELECT count(*) FROM runner_connections;')" -gt 0 ]; then
+        runner_key="${FIREWORK_RUNNER_MASTER_KEY_FILE:-$2/auth/runner-master.key}"
+        if [ ! -f "$runner_key" ] || [ "$(wc -c < "$runner_key" | tr -d ' ')" != "32" ]; then
+            echo 'restore.sh: Runner credential key missing or invalid; refusing restore' >&2
+            exit 1
+        fi
+    fi
+}
+check_runner_key "$DB" "$STAGE"
 
 # Every immutable version must be present, including non-default and supplement PDFs.
 check_document_files() {
@@ -148,6 +163,7 @@ if [ -f "$IDENTITY_BACKUP" ]; then
         for pdf in $(sqlite3 "$tenant_db" "SELECT pdf_path FROM papers WHERE pdf_path<>'' AND pdf_path IS NOT NULL"); do
             [ -f "$STAGE/accounts/$workspace_id/papers/${pdf##*/}" ] || exit 1
         done
+        check_runner_key "$tenant_db" "$STAGE/accounts/$workspace_id"
         check_document_files "$tenant_db" "$STAGE/accounts/$workspace_id/papers"
         for image in $(sqlite3 "$tenant_db" 'SELECT id FROM image_attachments'); do
             [ -f "$STAGE/accounts/$workspace_id/attachments/$image" ] || exit 1

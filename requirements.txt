@@ -3,6 +3,7 @@
 fastapi>=0.115
 uvicorn[standard]>=0.32
 httpx>=0.28
+cryptography>=43
 pydantic>=2.9
 pymupdf>=1.24
 python-multipart>=0.0.20  # multipart uploads (POST /api/papers/upload)

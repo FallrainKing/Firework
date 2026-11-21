@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import {onMounted,ref} from 'vue'
+import RunnerSettingsNav from '@/components/RunnerSettingsNav.vue'
 import {runnerBudgets,type Budget,type BudgetList,type BudgetValues,type BudgetPreview} from '@/api/runnerBudgets'
 const data=ref<BudgetList|null>(null),error=ref(''),notice=ref(''),busy=ref(false),selected=ref(''),name=ref('我的研究额度'),editing=ref<Budget|null>(null),skill=ref('chat'),preview=ref<BudgetPreview|null>(null)
 const values=ref<BudgetValues>({max_turns:24,max_output_tokens:8192,max_calls:24,timeout_s:1800,cost_mode:'disabled',max_budget_usd:null})
@@ -13,8 +14,8 @@ onMounted(load)
 </script>
 <template>
  <main class="budget-page">
-  <RouterLink to="/">← 返回工作台</RouterLink><h1>Runner · 任务额度</h1>
-  <p>当前账号独立保存。此页配置任务额度；连接、模型密钥和 MCP 管理将在后续交付。</p>
+  <RunnerSettingsNav/><h1>Runner · 任务额度</h1>
+  <p>当前账号独立保存。此页配置任务额度；模型连接已提供独立入口，MCP 管理仍在后续交付。</p>
   <p role="alert" v-if="error" class="error">{{ error }} <button @click="load" :disabled="busy">重新载入</button></p><p role="status">{{ notice }}</p>
   <section v-if="data"><h2>账号默认额度</h2>
    <label>新任务使用 <select v-model="selected" :disabled="busy"><option value="">沿用各 Skill 原有额度</option><option v-for="b in data.budgets" :key="b.id" :value="b.id">{{ b.name }} · v{{ b.revision }}</option></select></label>

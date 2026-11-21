@@ -111,13 +111,14 @@ onMounted(refresh)
       <div>
         <p class="eyebrow">LOCAL SETTINGS</p>
         <h1 id="settings-title">设置</h1>
-        <p class="muted">当前账号的资料与设置独立保存；不保存模型密钥，也不会触发模型调用。</p>
+        <p class="muted">当前账号的资料与设置独立保存；连接密钥通过独立的模型连接页面加密管理；本页不触发模型调用。</p>
       </div>
     </div>
 
     <StateFeedback :loading="loading" :error="error || null" :empty="!loading && !error && !profile" empty-text="未提供用户资料。" @retry="refresh" />
 
     <p><RouterLink to="/settings/runner/budgets">Runner 任务额度：配置预设、默认额度与发送前校验 →</RouterLink></p>
+    <p><RouterLink to="/settings/runner/connections">模型连接：配置自己的 API、模型与研究角色 →</RouterLink></p>
     <AccountSecurity />
     <template v-if="profile">
       <div class="settings-grid">

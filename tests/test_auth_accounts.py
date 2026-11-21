@@ -226,6 +226,9 @@ def test_agent_submission_uses_authenticated_workspace_not_client_header(secured
     from app.agent import runner_client
     from app.agent.protocol import RUNNER_PROTOCOL_VERSION
     c,app=secured;member,account,admin=user(c,app)
+    configured=c.post('/api/me/runner/connections',headers=member,json={'name':'own-test','config':{'base_url':'https://api.example.com','model':'test'},'api_key':'test-only-key'})
+    assert configured.status_code==201,configured.text
+    assert c.put('/api/me/runner/connections/default',headers=member,json={'connection_id':configured.json()['id'],'expected_revision':1}).status_code==200
     captured=[]
     def handler(req):
         captured.append((req.method,req.url.path,req.headers.get('x-research-workspace')))

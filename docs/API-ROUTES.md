@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-更新：2026-11-20。业务迁移 0016，Runner 协议 5。由当前应用 OpenAPI 提取；浏览器私有接口需登录，写请求需 CSRF；Zotero 配对和限域设备凭据例外见接口说明。调用约定见 [接口说明](API.md) 和 [认证说明](AUTHENTICATION.md)。
+更新：2026-11-21。业务迁移 0018，Runner 协议 7。由当前应用 OpenAPI 提取；浏览器私有接口需登录，写请求需 CSRF；Zotero 配对和限域设备凭据例外见接口说明。调用约定见 [接口说明](API.md) 和 [认证说明](AUTHENTICATION.md)。
 
 | 方法 | 路径 |
 | --- | --- |
@@ -13,6 +13,16 @@
 | POST | `/api/admin/accounts` |
 | PATCH | `/api/admin/accounts/{ident}` |
 | POST | `/api/admin/accounts/{ident}/password` |
+| GET | `/api/me/runner/budgets` |
+| POST | `/api/me/runner/budgets` |
+| PATCH | `/api/me/runner/budgets/{ident}` |
+| PUT | `/api/me/runner/budgets/default` |
+| POST | `/api/me/runner/budgets/preflight` |
+| GET | `/api/me/runner/connections` |
+| POST | `/api/me/runner/connections` |
+| PATCH | `/api/me/runner/connections/{ident}` |
+| PUT | `/api/me/runner/connections/default` |
+| POST | `/api/me/runner/connections/preflight` |
 | GET | `/api/agent/status` |
 | GET | `/api/agent/runs` |
 | POST | `/api/agent/runs` |

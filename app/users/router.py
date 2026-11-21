@@ -63,3 +63,6 @@ async def patch_preferences(body: PreferenceUpdate, request: Request):
 
 from ..runner_config.router import router as budget_router
 router.include_router(budget_router)
+
+from ..runner_config.connections_router import router as connections_router
+router.include_router(connections_router)

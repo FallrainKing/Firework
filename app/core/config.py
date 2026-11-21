@@ -1,7 +1,8 @@
 """Application configuration loaded from environment variables (12-factor).
 
-Model credentials are NOT configured here: all LLM work goes through the host
-Claude Runner, which reads the host's existing Claude configuration.
+Model credentials are managed in account-scoped Runner connections, not this
+settings object. Only the administrator's legacy Runner mode reads host Claude
+configuration; custom connections use isolated per-run environments.
 """
 
 from __future__ import annotations

@@ -41,6 +41,23 @@ const templatesOpen = ref(false)
 const taskOpen = ref(false)
 const renameValue = ref('')
 const renaming = ref(false)
+const statusFilter = ref('all')
+const statusOptions = [
+  { id: 'all', label: '全部' }, { id: 'active', label: '进行中' },
+  { id: 'attention', label: '需检查' }, { id: 'succeeded', label: '已完成' },
+]
+function matchesStatus(s: Session, status: string) {
+  if (status === 'active') return ['queued', 'running'].includes(s.last_status)
+  if (status === 'attention') return ['failed', 'cancelled'].includes(s.last_status)
+  return status === 'all' || s.last_status === status
+}
+function sessionPriority(s: Session) {
+  if (['queued', 'running'].includes(s.last_status)) return 0
+  if (['failed', 'cancelled'].includes(s.last_status)) return 1
+  return s.pinned ? 2 : 3
+}
+const visibleSessions = computed(() => sessions.value.filter(s => matchesStatus(s, statusFilter.value)).slice().sort((a, b) =>
+  sessionPriority(a) - sessionPriority(b) || b.updated_at.localeCompare(a.updated_at)))
 
 const STATES: Record<string, string> = { draft: '待开始', queued: '排队中', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const polling = new Set<string>()
@@ -94,6 +111,9 @@ async function openSession(id: number) {
     const data = await sessionsApi.get(id)
     if (epoch !== openEpoch) return
     current.value = data.session
+    runs.value = []
+    hasMore.value = false
+    older.value = null
     papers.value = data.papers
     const pending = (() => { try { return JSON.parse(localStorage.getItem('research-pending-session-' + id) || 'null') } catch { return null } })()
     prompt.value = pending?.prompt || data.session.draft_prompt || ''
@@ -229,6 +249,8 @@ function renderMd(text: string): string { return renderMarkdown(text) }
 <template>
   <div class="sessions-manager">
     <div class="sessions-list-pane">
+      <header class="session-list-heading"><strong>研究会话</strong><button type="button" :disabled="sessionsLoading" @click="loadSessions">刷新</button></header>
+      <p class="session-list-hint muted">进行中的任务和需检查的结果优先展示</p>
       <div class="list-toolbar">
         <input v-model="q" type="search" placeholder="搜索会话…" aria-label="搜索会话" @input="loadSessions" />
         <select v-model="kindFilter" aria-label="任务类型" @change="loadSessions">
@@ -246,14 +268,20 @@ function renderMd(text: string): string { return renderMarkdown(text) }
         <button class="primary" @click="taskOpen = true">＋ 新建任务</button>
         <button @click="templatesOpen = true">模板管理</button>
       </div>
-      <button v-for="s in sessions" :key="s.id" class="session-item" :class="{ selected: current?.id === s.id }" @click="openSession(s.id)">
-        <span>{{ s.pinned ? '置顶 · ' : '' }}{{ s.title }}</span>
-        <small class="muted">{{ kinds[s.kind] || s.kind }} · {{ STATES[s.last_status] || s.last_status }}</small>
+      <nav class="status-filters" aria-label="会话状态筛选">
+        <button v-for="option in statusOptions" :key="option.id" type="button" :aria-pressed="statusFilter === option.id" @click="statusFilter = option.id">{{ option.label }} <span>{{ sessions.filter(s => matchesStatus(s, option.id)).length }}</span></button>
+      </nav>
+      <small class="muted">数量基于当前搜索与分类结果</small>
+      <button v-for="s in visibleSessions" :key="s.id" class="session-item" :class="{ selected: current?.id === s.id }" :aria-current="current?.id === s.id ? 'true' : undefined" @click="openSession(s.id)">
+        <span class="session-item-title"><i class="status-dot" :class="s.last_status" aria-hidden="true"></i>{{ s.pinned ? '置顶 · ' : '' }}{{ s.title }}</span>
+        <small class="muted">{{ kinds[s.kind] || s.kind }} · {{ STATES[s.last_status] || s.last_status }} · {{ s.run_count }} 轮</small>
+        <small v-if="s.preview" class="session-preview">{{ s.preview }}</small>
+        <small v-if="s.draft_prompt" class="draft-indicator">有未发送草稿</small>
       </button>
       <StateFeedback
         :loading="sessionsLoading && !sessions.length"
         :error="sessionsError"
-        :empty="!sessionsLoading && !sessionsError && !sessions.length"
+        :empty="!sessionsLoading && !sessionsError && !visibleSessions.length"
         empty-text="暂无匹配会话"
         :saving="actionSaving"
         :saved="saved"
@@ -302,9 +330,11 @@ function renderMd(text: string): string { return renderMarkdown(text) }
             <div class="user-prompt">{{ r.prompt }}</div>
             <div v-if="r.answer" class="answer markdown-content" v-html="renderMd(r.answer)"></div>
             <p v-if="r.error" class="tool-error">{{ r.error }}</p>
+            <details v-if="r.tool_calls.length" class="execution-group"><summary>执行过程 · {{ r.tool_calls.length }} 次工具调用</summary>
             <details v-for="(call, i) in r.tool_calls" :key="i" class="source">
               <summary>{{ call.ok ? '来源已读取' : '工具失败' }} · {{ call.tool }}{{ call.query ? ' · ' + call.query : '' }}</summary>
               <p v-if="call.error" class="tool-error">{{ call.error }}</p>
+            </details>
             </details>
             <p v-if="r.usage && 'input_tokens' in r.usage" class="usage muted">本轮输入 {{ r.usage.input_tokens }} / 输出 {{ r.usage.output_tokens }} tokens</p>
           </article>
@@ -332,6 +362,20 @@ function renderMd(text: string): string { return renderMarkdown(text) }
 </template>
 
 <style scoped>
+.session-list-heading { display:flex; align-items:center; justify-content:space-between; }
+.session-list-heading button { font-size:11px; }
+.session-list-hint { font-size:11px; margin:0; }
+.status-filters { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.status-filters button { font-size:11px; padding:6px; display:flex; justify-content:space-between; }
+.status-filters [aria-pressed="true"] { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
+.session-item-title { display:flex; align-items:baseline; gap:6px; }
+.status-dot { display:inline-block; width:7px; height:7px; flex-shrink:0; border-radius:50%; background:var(--text-muted); }
+.status-dot.running,.status-dot.queued,.status-dot.succeeded { background:var(--accent); }
+.status-dot.failed,.status-dot.cancelled { background:var(--danger); }
+.session-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.5; color:var(--text-muted); }
+.draft-indicator { font-size:10px; color:var(--accent); }
+.execution-group { font-size:12px; color:var(--text-muted); padding-top:8px; border-top:1px dashed var(--border); }
+.message { flex-shrink:0; }
 .sessions-manager { display: flex; height: 100%; min-height: 0; }
 .sessions-list-pane { flex:0 0 280px; min-width:0; width:280px; border-right: 1px solid var(--border); background: var(--surface); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); overflow-y: auto; }
 .list-toolbar { display: flex; flex-direction: column; gap: var(--space-1); }

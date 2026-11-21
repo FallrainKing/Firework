@@ -34,6 +34,7 @@ const templates = ref<Template[]>([])
 const associatedPapers = ref<Array<{ id: number; title: string }>>([])
 const sessionUsage = ref<SessionUsage | null>(null)
 const detailsOpen = ref(false)
+const resultsOnly = ref(false)
 const busy = ref(false)
 const uploading = ref(false)
 const loading = ref(true)
@@ -719,6 +720,11 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <button class="danger stop-run" type="button" :disabled="cancellingRun" @click="cancelActiveRun">{{ cancellingRun ? '取消中…' : '停止' }}</button>
       </template>
     </div>
+    <nav class="conversation-modes" aria-label="会话显示方式">
+      <button type="button" :aria-pressed="!resultsOnly" @click="resultsOnly = false">完整会话</button>
+      <button type="button" :aria-pressed="resultsOnly" @click="resultsOnly = true">阅读结果</button>
+      <button type="button" class="latest-message" @click="jumpToBottom">↓ 最新</button>
+    </nav>
     <div class="conversation-view">
     <div ref="chatBox" class="reader-chat" role="region" aria-label="智能体回答与会话记录" tabindex="0" @scroll.passive="handleScroll" @load.capture="followLatest()">
     <section v-if="detailsOpen" class="session-details" aria-label="会话详情">
@@ -761,6 +767,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       />
       <article v-for="run in runs" :key="run.id" class="chat-turn">
         <div class="turn-time muted">{{ STATES[run.status] }} · {{ run.created_at }}<template v-if="run.status === 'running' || run.status === 'queued'"> · 已用时 {{ elapsedText(run) }}</template></div>
+        <div class="turn-role">你</div>
         <div class="question">{{ run.prompt }}</div>
         <p v-if="run.status === 'running' && progressText(run)" class="muted">{{ progressText(run) }}</p>
         <img v-for="id in run.attachment_ids" :key="id" class="chat-image" :src="'/api/workbench/images/' + id" alt="本轮提问的图片" />
@@ -768,13 +775,14 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           <button @click="orchestrator?.jump(c)">{{ c.quote ? '原文' : '论文引用' }} · {{ resolvePaperTitle(c.paper_id) }} 第 {{ c.page }} 页</button>
           <div v-if="c.quote">{{ c.quote }}</div>
         </div>
+        <div v-if="run.answer" class="turn-role assistant-role">智能体 <span v-if="run.model">· {{ run.model }}</span></div>
         <div v-if="run.answer" class="answer markdown-content" v-html="renderMd(run.answer)"></div>
         <button v-if="run.answer" class="copy-answer" type="button" @click="copyAnswer(run)">复制回答</button>
         <p v-if="run.error" class="error">{{ run.diagnostics?.message || run.error }}</p>
         <p v-if="run.diagnostics?.partial_available" class="muted">以下为中断前的部分输出，尚未完成。调整额度后可重新编辑并手动发送。</p>
         <button v-if="run.status === 'failed' || run.status === 'cancelled'" class="reedit" @click="reedit(run)">重新编辑</button>
-        <details v-if="run.tool_calls.length" class="tool-group">
-          <summary>工具调用 {{ run.tool_calls.length }} 项（已折叠）</summary>
+        <details v-if="!resultsOnly && run.tool_calls.length" class="tool-group">
+          <summary>执行过程 · {{ run.tool_calls.length }} 次工具调用 · {{ elapsedText(run) }}</summary>
           <div v-for="(t, i) in run.tool_calls" :key="'t' + i" class="tool-call">
             <button v-if="(t.result as any)?.text_source === 'original_pdf_page'" type="button" @click="orchestrator?.jump({ paper_id: (t.result as any).paper_id, page: (t.result as any).page, file_version: '', quote: '', rects: [] })">
               核对原文：第 {{ (t.result as any).page }} 页
@@ -783,7 +791,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
             <pre>{{ JSON.stringify(t, null, 2) }}</pre>
           </div>
         </details>
-        <details class="execution-details">
+        <details v-if="!resultsOnly" class="execution-details">
           <summary>执行详情</summary>
           <dl>
             <div v-if="run.diagnostics"><dt>结束原因</dt><dd>{{ run.diagnostics.finish_reason }} · {{ run.diagnostics.subtype || '无原始子类型' }}</dd></div>
@@ -796,7 +804,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
             <div><dt>费用估算</dt><dd>{{ run.cli_estimated_cost_usd === null ? '未提供' : `$${run.cli_estimated_cost_usd.toFixed(4)}（CLI 估算，非实际账单）` }}</dd></div>
           </dl>
         </details>
-        <p v-if="run.usage && 'input_tokens' in run.usage" class="usage muted">本轮输入 {{ run.usage.input_tokens }} / 输出 {{ run.usage.output_tokens }} tokens{{ (run.metadata as any)?.session_mode === 'native_resume' ? ' · 原生续聊' : '' }}</p>
+        <p v-if="!resultsOnly && run.usage && 'input_tokens' in run.usage" class="usage muted">本轮输入 {{ run.usage.input_tokens }} / 输出 {{ run.usage.output_tokens }} tokens{{ (run.metadata as any)?.session_mode === 'native_resume' ? ' · 原生续聊' : '' }}</p>
       </article>
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
@@ -864,6 +872,13 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 </template>
 
 <style scoped>
+.conversation-modes { display:flex; gap:4px; padding:6px 12px; border-bottom:1px solid var(--border); flex-shrink:0; }
+.conversation-modes button { font-size:11px; padding:4px 8px; background:transparent; border-color:transparent; }
+.conversation-modes [aria-pressed="true"] { color:var(--accent); background:var(--accent-soft); border-color:var(--border); }
+.conversation-modes .latest-message { margin-left:auto; }
+.turn-role { font-size:10px; color:var(--text-muted); font-weight:600; letter-spacing:.04em; }
+.assistant-role { margin-top:12px; color:var(--accent); }
+.assistant-role span { font-weight:400; overflow-wrap:anywhere; }
 .chat-heading { padding:12px 16px; border-bottom:1px solid var(--border); }
 .session-summary { display:flex; align-items:center; gap:8px; min-width:0; }
 .session-title { display:flex; align-items:center; gap:8px; min-width:0; flex:1; }

@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import SettingsView from './SettingsView.vue'
 import { meApi } from '@/api/me'
+import { createPinia, setActivePinia } from 'pinia'
+import { useWorkbenchStore } from '@/stores/workbench'
 
 const profile = {
   display_name: '研究者',
@@ -13,12 +15,21 @@ const profile = {
 }
 
 beforeEach(() => {
+  setActivePinia(createPinia())
   vi.restoreAllMocks()
   vi.spyOn(meApi, 'profile').mockResolvedValue(profile)
   vi.spyOn(meApi, 'preferences').mockResolvedValue({ preferences: { theme: 'dark' }, revision: 4 })
 })
 
 describe('SettingsView', () => {
+  it('opens the skill library from the management hub and labels MCP as unavailable', async () => {
+    const wrapper = mount(SettingsView)
+    await flushPromises()
+    await wrapper.find('.agent-management button').trigger('click')
+    expect(useWorkbenchStore().view).toBe('skills')
+    expect(wrapper.find('.future-capability').text()).toContain('尚未交付')
+    wrapper.unmount()
+  })
   it('does not announce a save on initial load', async () => {
     const wrapper = mount(SettingsView)
     await flushPromises()

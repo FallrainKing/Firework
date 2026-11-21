@@ -27,6 +27,23 @@ async function mountManager() {
 }
 
 describe('SessionsManager', () => {
+  it('prioritizes active and failed sessions and filters locally without starting tasks', async () => {
+    vi.spyOn(sessionsApi, 'list').mockResolvedValue({ sessions: [
+      session, { ...session, id: 6, title: '失败会话', last_status: 'failed', preview: '需要调整额度' },
+      { ...session, id: 7, title: '执行会话', last_status: 'running', draft_prompt: '继续检查' },
+    ] } as never)
+    const create = vi.spyOn(agentApi, 'createRun')
+    const wrapper = await mountManager()
+    expect(wrapper.findAll('.session-item').map(x => x.text())).toEqual([
+      expect.stringContaining('执行会话'), expect.stringContaining('失败会话'), expect.stringContaining('阅读会话'),
+    ])
+    await wrapper.findAll('.status-filters button')[2].trigger('click')
+    expect(wrapper.findAll('.session-item')).toHaveLength(1)
+    expect(wrapper.find('.session-preview').text()).toBe('需要调整额度')
+    expect(sessionsApi.list).toHaveBeenCalledTimes(1)
+    expect(create).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
   it('lists sessions and opens conversation', async () => {
     const wrapper = await mountManager()
     expect(wrapper.text()).toContain('阅读会话')

@@ -40,6 +40,23 @@ async function mountPanel() {
 }
 
 describe('ChatPanel', () => {
+  it('focuses on reading results without hiding errors or losing the composer and restores execution details', async () => {
+    vi.spyOn(sessionsApi, 'runs').mockResolvedValue({ runs: [run({
+      status: 'failed', answer: '部分阅读结果', error: '额度已用尽', tool_calls: [{ tool: 'paper_page', ok: true }],
+    })], has_more: false, next_before: null })
+    const wrapper = await mountPanel()
+    expect(wrapper.find('.tool-group').exists()).toBe(true)
+    await wrapper.findAll('.conversation-modes button')[1].trigger('click')
+    expect(wrapper.find('.answer').text()).toBe('部分阅读结果')
+    expect(wrapper.find('.error').text()).toBe('额度已用尽')
+    expect(wrapper.find('.tool-group').exists()).toBe(false)
+    expect(wrapper.find('.execution-details').exists()).toBe(false)
+    expect(wrapper.find('textarea').exists()).toBe(true)
+    await wrapper.findAll('.conversation-modes button')[0].trigger('click')
+    expect(wrapper.find('.execution-details').exists()).toBe(true)
+    expect(wrapper.find('.tool-group').exists()).toBe(true)
+    wrapper.unmount()
+  })
   it('shows the paper title rather than the title resolver function', async () => {
     const wrapper = mount(ChatPanel, { props: { session, paperId: 1, paperTitle: '正确的论文标题' } })
     await flushPromises()
@@ -437,7 +454,7 @@ describe('ChatPanel long conversation', () => {
       next_before: null,
     })
     const wrapper = await mountPanel()
-    expect(wrapper.find('.tool-group summary').text()).toContain('工具调用 1 项（已折叠）')
+    expect(wrapper.find('.tool-group summary').text()).toContain('执行过程 · 1 次工具调用')
     await wrapper.find('.execution-details summary').trigger('click')
     expect(wrapper.find('.execution-details').text()).toContain('test-model')
     expect(wrapper.find('.execution-details').text()).toContain('CLI 估算，非实际账单')

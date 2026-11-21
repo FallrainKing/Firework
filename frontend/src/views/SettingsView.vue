@@ -3,6 +3,8 @@ import { computed, onMounted, ref } from 'vue'
 import { meApi, type Profile } from '@/api/me'
 import StateFeedback from '@/components/StateFeedback.vue'
 import AccountSecurity from '@/components/AccountSecurity.vue'
+import { useWorkbenchStore } from '@/stores/workbench'
+const wb = useWorkbenchStore()
 
 const profile = ref<Profile | null>(null)
 const displayName = ref('')
@@ -117,8 +119,12 @@ onMounted(refresh)
 
     <StateFeedback :loading="loading" :error="error || null" :empty="!loading && !error && !profile" empty-text="未提供用户资料。" @retry="refresh" />
 
-    <p><RouterLink to="/settings/runner/budgets">Runner 任务额度：配置预设、默认额度与发送前校验 →</RouterLink></p>
-    <p><RouterLink to="/settings/runner/connections">模型连接：配置自己的 API、模型与研究角色 →</RouterLink></p>
+    <nav class="agent-management" aria-label="智能体管理">
+      <RouterLink to="/settings/runner/connections"><strong>模型连接 →</strong><span>API、模型、视觉能力、上下文与研究角色</span></RouterLink>
+      <RouterLink to="/settings/runner/budgets"><strong>任务额度 →</strong><span>默认额度、预设与发送前校验</span></RouterLink>
+      <button type="button" @click="wb.setView('skills')"><strong>技能库 →</strong><span>导入 ZIP、分类、版本与启用状态</span></button>
+      <div class="future-capability"><strong>MCP 工具</strong><span>当前随 Runner 提供，独立管理页尚未交付</span></div>
+    </nav>
     <AccountSecurity />
     <template v-if="profile">
       <div class="settings-grid">
@@ -171,6 +177,11 @@ onMounted(refresh)
 </template>
 
 <style scoped>
+.agent-management { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:16px 0 24px; }
+.agent-management > * { display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; border:1px solid var(--border); border-radius:var(--radius); padding:16px; background:var(--surface); text-decoration:none; color:var(--text); }
+.agent-management span { color:var(--text-muted); font-size:12px; line-height:1.6; }
+.agent-management a:hover,.agent-management button:hover { border-color:var(--accent); }
+.agent-management .future-capability { background:var(--bg); }
 .settings-workspace { padding: var(--space-5); overflow-y: auto; }
 .module-heading { margin-bottom: var(--space-4); }
 .eyebrow { color: var(--accent); font-size: 11px; letter-spacing: .12em; margin: 0 0 var(--space-1); }

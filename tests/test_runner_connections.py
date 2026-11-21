@@ -115,3 +115,12 @@ def test_mcp_subprocess_receives_no_model_credentials(tmp_path):
     env={**os.environ,'ANTHROPIC_API_KEY':FAKE,'ANTHROPIC_AUTH_TOKEN':FAKE,'ANTHROPIC_CUSTOM_HEADERS':FAKE,'CLAUDE_CODE_OAUTH_TOKEN':FAKE,'RESEARCH_RUN_ID':'test'}
     out=subprocess.run([cmd['command'],*cmd['args']],env=env,capture_output=True,text=True,check=True)
     assert json.loads(out.stdout)=={'ANTHROPIC_API_KEY':False,'ANTHROPIC_AUTH_TOKEN':False,'ANTHROPIC_CUSTOM_HEADERS':False,'CLAUDE_CODE_OAUTH_TOKEN':False,'RESEARCH_RUN_ID':True}
+
+
+def test_custom_health_check_does_not_read_host_configuration(monkeypatch,tmp_path):
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(server,'RUNTIME',tmp_path/'agent')
+    monkeypatch.setattr(server,'load_environment',lambda:(_ for _ in ()).throw(AssertionError('host settings must not be read')))
+    with TestClient(server.app) as c:
+        result=c.get('/health',headers={'X-Research-Custom-Connection':'1'})
+        assert result.status_code==200 and result.json()['model'] is None

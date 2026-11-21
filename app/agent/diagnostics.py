@@ -2,7 +2,7 @@
 import json
 REASONS={
  'connection_unavailable':('connection_unavailable','连接已停用、修订或凭据不可用，本轮没有调用模型。'),
- 'runner_protocol_mismatch':('runner_protocol_mismatch','Runner 版本不支持当前额度配置；本轮没有调用模型，请升级运行服务。'),
+ 'runner_protocol_mismatch':('runner_protocol_mismatch','Runner 版本不支持当前执行配置；本轮没有调用模型，请升级运行服务。'),
  'error_max_budget_usd':('budget_usd','本轮达到 CLI 估价金额上限；不是服务商账单或余额不足。'),
  'error_max_turns':('max_turns','本轮达到推理轮次上限。'),
 }

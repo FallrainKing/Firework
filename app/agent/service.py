@@ -345,7 +345,7 @@ async def execute_run(run_id: str, state):
                 connection_snap=json.loads(row['execution_policy_json'] or '{}').get('connection_snapshot')
                 connection_secret=connections.materialize(db,state.settings,connection_snap)
                 if json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot') or (connection_snap and connection_snap.get('mode')=='custom'):
-                    health = await c.get('/health', timeout=5)
+                    health = await c.get('/health', timeout=5, headers={'X-Research-Custom-Connection':'1'} if connection_snap and connection_snap.get('mode')=='custom' else {})
                     health.raise_for_status()
                     if health.json().get('protocol_version') != RUNNER_PROTOCOL_VERSION:
                         raise ValueError('runner_protocol_mismatch')
@@ -382,7 +382,7 @@ async def execute_run(run_id: str, state):
         except ServiceError as exc:
             result={'status':'failed','error':exc.detail,'metadata':{'subtype':'connection_unavailable'}}
         except (httpx.HTTPError, ValueError) as exc:
-            result = {'status': 'failed', 'error': ('Runner 版本不支持当前额度配置；本轮没有调用模型，请升级运行服务。' if str(exc)=='runner_protocol_mismatch' else 'Agent connection failed or timed out; retry manually. No automatic retry was made.')}
+            result = {'status': 'failed', 'error': ('Runner 版本不支持当前执行配置；本轮没有调用模型，请升级运行服务。' if str(exc)=='runner_protocol_mismatch' else 'Agent connection failed or timed out; retry manually. No automatic retry was made.')}
             if str(exc)=='runner_protocol_mismatch': result['metadata']={'subtype':'runner_protocol_mismatch'}
         repo.finish_run(db, run_id, result['status'], str(result.get('answer') or ''), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
         if result['status'] == 'cancelled':

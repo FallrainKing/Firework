@@ -101,7 +101,7 @@ async def health(request: Request):
     current=await engine_for(request)
     queued, running = current.counts() if current else (0, 0)
     model=None
-    if request.headers.get('x-research-workspace','legacy')=='legacy':
+    if request.headers.get('x-research-workspace','legacy')=='legacy' and request.headers.get('x-research-custom-connection')!='1':
         try:model=current_model(load_environment())
         except (OSError,ValueError):pass
     return {'status': 'ok', 'protocol_version': RUNNER_PROTOCOL_VERSION, 'agent': 'claude_cli', 'model': model, 'concurrency': engine.concurrency if engine else 0, 'queued': queued, 'running': running, 'skills': [{'id': k, 'name': v['name'], 'version': '0.4.0'} for k, v in SKILLS.items()]}

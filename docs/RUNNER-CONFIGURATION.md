@@ -877,4 +877,4 @@ data/
 
 实现依据：[Claude Code 环境变量](https://code.claude.com/docs/en/env-vars)、[网关组织方式](https://code.claude.com/docs/en/llm-gateway)；加密库参考 [Cryptography](https://cryptography.io/en/latest/hazmat/primitives/aead/)。实际参数优先以当前固定 CLI 和测试结果为准。
 
-第二批验证：前端 232 项、后端相关 121 项通过；服务器因缺少 sqlite3 CLI 跳过的恢复场景，在本机独立环境补跑 6 项全部通过。生产构建通过。模拟 CLI 验证了所选模型/Key/角色注入、Key 不进入事件/结果与 MCP 子进程、连接修订拒绝、账号隔离及会话绑定；没有进行真实模型能力或计费验证。
+第二批验证：前端 232 项、后端相关 122 项通过；服务器因缺少 sqlite3 CLI 跳过的恢复场景，在本机独立环境补跑 6 项全部通过。生产构建通过。模拟 CLI 验证了所选模型/Key/角色注入、Key 不进入事件/结果与 MCP 子进程、连接修订拒绝、账号隔离及会话绑定；没有进行真实模型能力或计费验证。

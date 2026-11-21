@@ -87,7 +87,7 @@ function onOpenSession(sid: number) {
 
 <style scoped>
 .library-nav { background:var(--surface); }
-.library-nav button { background:transparent; border-color:transparent; font-size:13px; padding:6px 8px; }
+.library-nav button:not(.primary) { background:transparent; border-color:transparent; font-size:13px; padding:6px 8px; }
 .library-nav small { font-size:12px; }
 .library-nav .active { border-color:transparent; }
 .library-nav .branch-toggle,.library-nav .child-create { padding:3px; }

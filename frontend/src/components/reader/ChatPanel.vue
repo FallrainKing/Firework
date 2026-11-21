@@ -133,19 +133,35 @@ const visiblePapers = computed(() => {
 })
 
 function showToast(m: string) { toast.value = m; setTimeout(() => { toast.value = '' }, 5000) }
-function scroll() {
-  if (!chatBox.value) return
-  const el = chatBox.value
-  const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= 40
-  if (nearBottom) {
-    atBottom.value = true
-    newContent.value = false
-    el.scrollTop = el.scrollHeight
-  } else {
-    atBottom.value = false
-    newContent.value = true
-  }
+// Track intent before DOM growth: a long answer must not disable following.
+function followLatest(markNew = false) {
+  const sid = currentSession.value?.id
+  void nextTick(() => {
+    if (stopped || sid !== currentSession.value?.id || !chatBox.value) return
+    if (atBottom.value) jumpToBottom()
+    else if (markNew) newContent.value = true
+  })
 }
+function scroll() { followLatest(true) }
+let viewportObserver: ResizeObserver | null = null
+watch(chatBox, el => {
+  viewportObserver?.disconnect()
+  if (el && typeof ResizeObserver !== 'undefined') {
+    viewportObserver = new ResizeObserver(() => followLatest())
+    viewportObserver.observe(el)
+  }
+})
+onUnmounted(() => viewportObserver?.disconnect())
+watch(
+  () => JSON.stringify(runs.value.map(({ id, status, answer, progress }) => ({ id, status, answer, progress }))),
+  () => { if (!loadingOlder.value) scroll() },
+  { flush: 'post' },
+)
+watch(detailsOpen, open => {
+  if (open) void nextTick(() => {
+    if (chatBox.value) { chatBox.value.scrollTop = 0; handleScroll() }
+  })
+})
 
 function handleScroll() {
   if (!chatBox.value) return
@@ -696,6 +712,15 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <span>费用估算：{{ costText(sessionUsage?.cli_estimated_cost_usd ?? latestRun?.cli_estimated_cost_usd) }}</span>
       </div>
     </header>
+    <div class="agent-state muted">
+      <span>{{ agentState }}</span>
+      <template v-if="activeRun">
+        <span class="run-meta">{{ STATES[activeRun.status] }} · 已用时 {{ elapsedText(activeRun) }}</span>
+        <button class="danger stop-run" type="button" :disabled="cancellingRun" @click="cancelActiveRun">{{ cancellingRun ? '取消中…' : '停止' }}</button>
+      </template>
+    </div>
+    <div class="conversation-view">
+    <div ref="chatBox" class="reader-chat" role="region" aria-label="智能体回答与会话记录" tabindex="0" @scroll.passive="handleScroll" @load.capture="followLatest()">
     <section v-if="detailsOpen" class="session-details" aria-label="会话详情">
       <dl>
         <div><dt>平台会话 ID</dt><dd>{{ currentSession?.id ?? '未提供' }}</dd></div>
@@ -724,14 +749,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <span>附件：{{ run.attachment_ids.join('、') }}</span>
       </div>
     </section>
-    <div class="agent-state muted">
-      <span>{{ agentState }}</span>
-      <template v-if="activeRun">
-        <span class="run-meta">{{ STATES[activeRun.status] }} · 已用时 {{ elapsedText(activeRun) }}</span>
-        <button class="danger stop-run" type="button" :disabled="cancellingRun" @click="cancelActiveRun">{{ cancellingRun ? '取消中…' : '停止' }}</button>
-      </template>
-    </div>
-    <div ref="chatBox" class="reader-chat" @scroll.passive="handleScroll">
+
       <button v-if="hasMoreRuns" class="load-older" type="button" :disabled="loadingOlder" @click="loadOlder">{{ loadingOlder ? '正在载入历史…' : '载入更早消息' }}</button>
       <StateFeedback
         class="chat-state"
@@ -782,8 +800,13 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </article>
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
+    </div>
+    <div class="composer-extras" aria-label="阅读辅助与本轮设置">
+      <slot name="paper-actions" />
+      <details class="run-settings"><summary>模型与任务额度</summary>
     <RunConnectionControl v-model="selectedConnection" :disabled="busy || uploading" :bound="!!(runs.length || currentSession?.native_ready)" />
     <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading" />
+      </details>
     <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
       <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">
         <strong>{{ c.paper_id === paperId ? '当前论文' : '引用论文' }}</strong>
@@ -804,6 +827,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       :saved="draftSaved"
       :save-error="draftSaveError || exportError"
     />
+    </div>
     <form class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
       <div v-if="slashMenuOpen" class="command-menu" role="listbox" aria-label="提问模板">
         <button v-for="(t, i) in visibleTemplates" :key="t.id" type="button" role="option" :aria-selected="menuIndex === i" @click="chooseTemplate(t)" @mousedown.prevent>
@@ -817,7 +841,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         </button>
         <StateFeedback v-if="!visiblePapers.length" empty empty-text="当前会话没有匹配论文。" />
       </div>
-      <slot name="paper-actions" />
+      <div class="composer-fields">
       <div class="composer-tools">
         <button type="button" class="menu-toggle" @click="slashMenuOpen = !slashMenuOpen; mentionMenuOpen = false">/ 模板</button>
         <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
@@ -832,6 +856,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         @retry="retryUpload"
       />
       <div id="composer-help" class="composer-help muted">Enter 发送 · Shift+Enter 换行 · / 模板 · @ 论文</div>
+      </div>
       <div class="composer-footer"><span class="muted">{{ question.length }}/3000 · 图片 {{ attachments.length }}/3 · 引用 {{ contexts.length }}/3</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">{{ uploading ? '上传中…' : busy ? '处理中…' : '发送 ↑' }}</button></div>
     </form>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>
@@ -869,14 +894,27 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .chat-empty > span { display:block; color:var(--accent); font-size:32px; margin-bottom:12px; }
 .chat-empty strong { font-size:14px; font-weight:500; color:var(--text); }
 .chat-empty p { line-height:1.9; }
-.composer-footer { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.composer-footer { position:sticky; bottom:0; background:var(--surface); flex-shrink:0; display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .composer-footer span { font-size:10px; }
 .composer-footer button { padding:6px 14px; font-size:12px; }
-.reader-composer textarea { width:100%; resize:vertical; min-height:88px; max-height:220px; font-size:13px; }
-.chat-panel { position:relative; display: flex; flex-direction: column; height: 100%; min-height: 0; min-width:0; }
+.reader-composer textarea { width:100%; resize:vertical; min-height:88px; max-height:min(180px,20dvh); flex-shrink:0; font-size:13px; }
+.chat-panel { position:relative; display:flex; flex-direction:column; flex:1 1 0; height:0; min-height:0; min-width:0; overflow:hidden; container-type:size; }
+.chat-heading,.agent-state { flex-shrink:0; }
+.conversation-view { position:relative; display:flex; flex-direction:column; flex:1 1 0; min-height:80px; min-width:0; overflow:hidden; }
+.composer-extras { flex:0 1 auto; min-height:0; max-height:25%; overflow:auto; padding:6px 12px; border-top:1px solid var(--border); scrollbar-gutter:stable; }
+.run-settings { font-size:11px; margin-top:6px; }
+.run-settings summary { cursor:pointer; color:var(--text-muted); padding:4px 0; }
+.reader-chat,.composer-extras { overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--text-muted) var(--surface); }
+.reader-chat::-webkit-scrollbar,.composer-extras::-webkit-scrollbar { width:9px; }
+.reader-chat::-webkit-scrollbar-thumb,.composer-extras::-webkit-scrollbar-thumb { background:var(--text-muted); border:2px solid var(--surface); border-radius:8px; }
+.reader-chat:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
+.session-summary { flex-wrap:wrap; }
+.session-title { flex:1 1 100%; }
+.session-summary :deep(.session-controls) { flex:1 1 180px; }
+
 .agent-state { padding: var(--space-2) var(--space-3); font-size: 12px; border-bottom: 1px solid var(--border); }
-.reader-chat { flex: 1; min-height:0; overflow-wrap:anywhere; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
-.chat-turn { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); background: var(--bg); display: flex; flex-direction: column; gap: var(--space-2); }
+.reader-chat { flex:1 1 0; min-height:0; min-width:0; overflow-wrap:anywhere; overflow-y:scroll; scrollbar-gutter:stable; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-3); }
+.chat-turn { flex:0 0 auto; min-width:0; border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); background: var(--bg); display: flex; flex-direction: column; gap: var(--space-2); }
 .turn-time { font-size: 11px; }
 .question { font-weight: 600; }
 .chat-image { max-width: 160px; border-radius: var(--radius); }
@@ -894,21 +932,22 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .image-attachment { position: relative; }
 .image-attachment img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius); }
 .image-attachment button { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 50%; }
-.reader-composer { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); position:relative; }
+.reader-composer { flex:0 1 auto; min-height:190px; max-height:45%; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); position:relative; }
 .reader-composer.dragging::after { content:'松开以上传图片'; position:absolute; inset:4px; display:grid; place-items:center; border:1px dashed var(--accent); border-radius:var(--radius); background:rgb(255 255 255 / .82); color:var(--accent); font-size:12px; pointer-events:none; }
+.composer-fields { min-height:0; overflow:auto; display:flex; flex-direction:column; gap:var(--space-2); }
 .composer-help { font-size:10px; line-height:1.6; }
 .composer-tools { flex-wrap:wrap; display: flex; gap: var(--space-2); align-items: center; }
 .composer-tools select { flex: 1; min-width:0; font-size:11px; padding:6px; }
 .menu-toggle,.image-picker { font-size:11px; padding:6px 8px; }
 .image-picker { flex-shrink:0; }
-.command-menu { position:absolute; left:var(--space-3); right:var(--space-3); bottom:calc(100% - 8px); z-index:8; max-height:230px; overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:0 8px 24px rgb(0 0 0 / .12); }
+.command-menu { position:absolute; left:var(--space-3); right:var(--space-3); bottom:calc(100% - 8px); z-index:8; max-height:min(230px,30dvh); overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); box-shadow:0 8px 24px rgb(0 0 0 / .12); }
 .command-menu button { display:grid; gap:2px; width:100%; padding:7px; border:0; background:none; text-align:left; }
 .command-menu button:hover,.command-menu button[aria-selected="true"] { background:var(--accent-soft); }
 .command-menu strong { font-size:12px; }
 .command-menu span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:var(--text-muted); }
 .upload-error { display:flex; align-items:center; gap:6px; margin:0; font-size:11px; }
 .upload-error button { padding:2px 6px; font-size:10px; }
-.chat-toast { color: var(--danger); padding: 0 var(--space-3); font-size: 12px; }
+.chat-toast { position:absolute; bottom:0; left:12px; right:12px; z-index:10; background:var(--surface); color: var(--danger); padding: 0 var(--space-3); font-size: 12px; }
 .agent-state { display:flex; align-items:center; gap:8px; }
 .run-meta { margin-left:auto; }
 .stop-run { padding:3px 8px; font-size:10px; flex-shrink:0; }
@@ -922,8 +961,20 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .execution-details dt { color:var(--text-muted); }
 .execution-details dd { margin:0; min-width:0; overflow-wrap:anywhere; }
 .copy-answer { align-self:flex-start; font-size:10px; padding:3px 7px; }
-.new-content { position:absolute; right:var(--space-4); bottom:205px; z-index:7; padding:5px 10px; font-size:11px; border-color:var(--accent); color:var(--accent); background:var(--surface); box-shadow:0 5px 16px rgb(0 0 0 / .12); }
+.new-content { position:absolute; right:var(--space-4); bottom:12px; z-index:7; padding:5px 10px; font-size:11px; border-color:var(--accent); color:var(--accent); background:var(--surface); box-shadow:0 5px 16px rgb(0 0 0 / .12); }
 .answer :deep(table) { display:block; max-width:100%; overflow-x:auto; }
 .answer :deep(img) { max-width:100%; height:auto; }
 
+@container (max-height:520px) {
+  .chat-heading { padding:6px 10px; }
+  .chat-heading .usage-summary { display:none; }
+  .agent-state { padding:5px 10px; }
+  .reader-composer { min-height:148px; padding:8px; gap:4px; }
+  .reader-composer textarea { min-height:60px; }
+  .composer-fields { gap:4px; }
+  .composer-help { display:none; }
+  .composer-tools button { padding:3px 6px; }
+  .composer-footer button { padding:4px 10px; }
+  .composer-extras { max-height:18%; padding:4px 8px; }
+}
 </style>

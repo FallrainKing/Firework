@@ -341,6 +341,51 @@ describe('ChatPanel long conversation', () => {
     wrapper.unmount()
   })
 
+  it('follows a large new answer when previously at the bottom', async () => {
+    const wrapper = await mountPanel()
+    const el = wrapper.find('.reader-chat').element as HTMLElement
+    let height = 500
+    Object.defineProperty(el, 'scrollHeight', { get: () => height, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: 100, configurable: true })
+    el.scrollTop = 400
+    await wrapper.find('.reader-chat').trigger('scroll')
+    height = 5000
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue(run({ answer: '长回答'.repeat(500) }))
+    const bridge = (wrapper.vm as unknown as { bridge: { watch: (id: string) => void } }).bridge
+    bridge.watch('r1')
+    await flushPromises()
+    expect(el.scrollTop).toBe(5000)
+    expect(wrapper.find('.new-content').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('does not announce unchanged polling as new content while reading history', async () => {
+    const active = run({ status: 'running' })
+    vi.spyOn(sessionsApi, 'runs').mockResolvedValue({ runs: [active], has_more: false, next_before: null })
+    vi.spyOn(agentApi, 'getRun').mockResolvedValue({ ...active })
+    const wrapper = await mountPanel()
+    const el = wrapper.find('.reader-chat').element as HTMLElement
+    Object.defineProperty(el, 'scrollHeight', { value: 500, configurable: true })
+    Object.defineProperty(el, 'clientHeight', { value: 100, configurable: true })
+    el.scrollTop = 0
+    await wrapper.find('.reader-chat').trigger('scroll')
+    await vi.advanceTimersByTimeAsync(2100)
+    expect(wrapper.find('.new-content').exists()).toBe(false)
+    expect(el.scrollTop).toBe(0)
+    wrapper.unmount()
+  })
+
+  it('keeps expanded session details inside the conversation scroller', async () => {
+    const wrapper = await mountPanel()
+    await wrapper.find('.detail-toggle').trigger('click')
+    expect(wrapper.find('.reader-chat .session-details').exists()).toBe(true)
+    expect(wrapper.find('.conversation-view .reader-chat').attributes('tabindex')).toBe('0')
+    expect(wrapper.find('.composer-fields textarea').exists()).toBe(true)
+    expect(wrapper.find('.reader-composer .composer-extras').exists()).toBe(false)
+    expect(wrapper.find('.composer-extras .run-settings').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
   it('keeps a visible stop control and cancels the active run', async () => {
     vi.spyOn(sessionsApi, 'runs').mockResolvedValue({ runs: [run({ id: 'r-active', status: 'running' })], has_more: false, next_before: null })
     vi.spyOn(agentApi, 'getRun').mockResolvedValue(run({ id: 'r-active', status: 'running' }))

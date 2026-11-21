@@ -1,6 +1,6 @@
 # 接口与调用约定
 
-更新：2026-11-19，依据当前已注册 OpenAPI。交互文档 `/docs`，机器描述 `/openapi.json`，完整路径见 [路由清单](API-ROUTES.md)。字段的最终定义以各域 schemas.py 与 OpenAPI 为准。
+更新：2026-11-21，依据当前已注册 OpenAPI。交互文档 `/docs`，机器描述 `/openapi.json`，完整路径见 [路由清单](API-ROUTES.md)。字段的最终定义以各域 schemas.py 与 OpenAPI 为准。
 
 公网使用 HTTPS 与应用网页登录；旧 Basic Auth 已关闭。服务端登录会话绑定独立账号工作区。当前只允许原管理员登录，公开注册关闭；认证接口、Cookie、CSRF 和账号管理详见 [认证说明](AUTHENTICATION.md)。`/api/internal/*` 为 Runner 受限工具使用，前端不得获取其私有令牌。
 
@@ -11,6 +11,7 @@
 | 领域 | 主要路径 | 用途 |
 | --- | --- | --- |
 | 认证与账号 | `/api/auth/*`、`/api/admin/accounts` | 登录、退出、密码修改、关闭注册及管理员账号管理 |
+| Runner 配置 | `/api/me/runner/connections`、`/api/me/runner/budgets` | 账号私有连接、凭据、额度、默认和本地预检，见 [Runner 配置](RUNNER-CONFIGURATION.md) |
 | 健康与 Agent | `/health`、`/api/agent/status`、`/api/agent/runs` | 可用性、协议、执行、查询、取消和事件 |
 | 会话 | `/api/sessions`、`/api/sessions/templates`、`/api/sessions/categories` | 任务上下文、模板、分类与归档 |
 | 论文库 | `/api/library/papers`、`/api/library/collections` | 列表、卡片、分类、编辑与缩略图 |
@@ -110,7 +111,10 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 409 表示元数据冲突、失效租约或来源映射冲突，不触发模型和自动覆盖；附件缺失、只读库或配对失效应先排除原因，再人工重试。详细字段以 `app/integrations/zotero/schemas.py` 为准。
 
 
-0.1.2 契约补充：入站 `items.pdf_hash` 可选，采用正文 SHA-256 精确查重；不进入书目变更指纹。相同内容的不同附件键可关联同一文档版本。首次正文上传直接返回可阅读状态和 `fulltext_indexed`，不等待嵌入；文件列表也返回该标志。当前默认版本尚无索引时，使用既有 `POST .../document-versions/{vid}/default`、`expected_version_id=vid`、`confirmed=true` 明确补建，原文版本不改变。出站任务列表增加论文题名与租约到期信息；不同请求键可复用同一未完成任务，各自仍有持久幂等结果。领取任务时读取最新来源映射，材料内容仍保持排队时的快照。
+当前 Zotero 文件与幂等约定：入站 `items.pdf_hash` 可选，采用正文 SHA-256 精确查重；不进入书目变更指纹。相同内容的不同附件键可关联同一文档版本。首次正文上传直接返回可阅读状态和 `fulltext_indexed`，不等待嵌入；文件列表也返回该标志。当前默认版本尚无索引时，使用既有 `POST .../document-versions/{vid}/default`、`expected_version_id=vid`、`confirmed=true` 明确补建，原文版本不改变。出站任务列表增加论文题名与租约到期信息；不同请求键可复用同一未完成任务，各自仍有持久幂等结果。领取任务时读取最新来源映射，材料内容仍保持排队时的快照。
 
 
 分类创建 `POST /api/library/collections` 支持 `{name, parent_id}`；`parent_id` 可省略或为 null（顶层），正整数父级必须存在于当前账号工作区，缺失返回 404。同父级名称唯一，重复返回 409；不同父级允许同名。响应包含 ID、父 ID、完整路径和计数。使用既有 parent_id 结构，无新增数据库迁移。
+
+
+连接与额度通过 `id/revision` 引用参与 Run 创建和请求键幂等校验。已有会话绑定连接，修改账号默认不会切换它；连接修订/停用后需新会话。配置预检不调用模型，响应的能力声明不等于实测。Run 返回 `diagnostics`，用于结束原因、有效额度、连接与预算快照及部分输出；没有独立的追加预算续跑端点。

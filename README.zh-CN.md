@@ -2,34 +2,48 @@
 
 **通过现有智能体与 Skills 发现、阅读和管理研究资料的工作台。**
 
-[English](README.md) · [文档目录](docs/README.md) · [后续计划](docs/ROADMAP.md) · [反馈问题](https://github.com/FallrainKing/Firework/issues)
+[English](README.md) · [使用指南](docs/usage.md) · [系统架构](docs/架构.md) · [文档目录](docs/README.md) · [后续计划](docs/ROADMAP.md)
 
-Firework 将论文库、PDF 阅读与智能体会话放在同一工作区。平台管理资料、账号、会话、任务与证据；阅读、总结、审查、比较和前沿报告交给现有 Claude Code 智能体，通过可扩展 Skills 执行。
+Firework 将论文库、PDF 原文、批注与研究会话放在同一工作区。平台负责资料与任务管理，Claude Code 通过固定版本的 Skill 执行阅读、比较、导读和前沿发现。
 
-## 功能
+当前功能基线：业务迁移 **0018**、身份 schema **2**、Runner 协议 **7**、Zotero 插件 **0.1.4**。已实现范围与验证边界见 [当前状态](docs/STATUS.md)。
 
-- 阅读起始工作台：最近阅读、领域分类、任务模板、搜索与导入。
-- 多论文标签、可调三栏与阅读恢复：左侧辅助阅读，中间原文，右侧关联会话，保存位置、布局和草稿。
-- 多渠道论文库：PDF 上传、arXiv、DOI、公开 URL；分类、状态、图文卡片和全文补充。
-- PDF 文件与版本：不可变正文版本、补充材料、默认版本及按版本查看批注；下载原件、带标准批注 PDF 和批注 Markdown。
-- 可延续的任务会话：原生会话映射、执行进度、取消、用量与估算费用。
-- 明确触发的 Skill 导读与批注：用户确认后生成总结、重点和解释，核验原文证据后渲染。
-- 前沿追踪：领域、关键词、作者或团队，发现论文与开源项目，去重、时间线报告和批准入库。
-- 动态 Skills：上传 ZIP、预检、安装、分类、版本、启停与最小验证。
-- 讨论输入：模板、原文选区和图片；图片理解需要真实视觉能力。
-- 独立账号空间：数据库、文件、私有技能、向量与原生会话隔离；公开注册关闭，当前仅 primary admin 可登录。
+## 主要功能
 
-打开论文、切换标签、选择模板或预览图片不会自动运行研究模型。发送请求、确认生成或启用调度才会创建相应任务。
+- 阅读起始工作台，提供最近论文、领域分类和任务模板。
+- 多论文标签、可调整三栏：辅助阅读、PDF 原文、关联智能体会话；恢复页码、缩放、布局和草稿。
+- PDF/arXiv/DOI/公开链接导入、研究检索与分类树；卡片显示图片、题名、作者/单位及摘要。
+- 正文和补充材料的不可变版本，默认版本选择，以及原件、带批注 PDF、批注 Markdown 下载。
+- 持久会话、选区、模板、图片、Enter 发送、进度、取消和基础诊断。
+- 明确触发的结构化导读与批注，保存重点、解释、理由和可追溯引文；打开论文不会自动生成。
+- 前沿主题、多来源发现、去重、堆叠时间线报告与审批入库；间隔任务默认先暂停。
+- Skills ZIP 预检、分类、版本、启停和资源管理；安装不执行任意脚本。
+- 账号独立的模型连接、加密 Key、模型/能力声明、角色补充要求和可配置额度。
+- Zotero 10.0.6–10.x 插件手动双向书目、分类、标签和 PDF 交换，不调用研究模型。
+- 独立账号研究数据库、文件、向量集合和运行空间；当前公开注册关闭，默认仅原管理员登录。
 
-统一知识条目、跨任务长期记忆、OCR/图像导读及完整六站精读材料链仍未完成，详见 [当前状态](docs/STATUS.md) 与 [后续计划](docs/ROADMAP.md)。
+统一知识库、跨任务长期记忆、OCR/完整图像导读、通用 MCP 配置中心、执行方案和 Runner 容器化仍待实现。视觉、1M 和计费预检只是配置检查，不代表真实能力验证。
 
-## 架构
+## 使用顺序
 
-Vue 3 / TypeScript 前端连接 FastAPI。SQLite 保存业务与身份数据，Qdrant 配合 bge-m3 提供语义检索；宿主私有 Runner 对接现有 Claude Code 和已注册 Skills。当前 Runner 协议为 **7**。
+1. 登录后，在用户菜单 → **模型连接** 配置 Anthropic Messages 兼容 API；原管理员也可保留已有连接。
+2. 在 **任务额度** 选择默认预设。新预设可关闭 CLI 金额守卫，但仍保留轮次、输出、工具和时长限制。
+3. 导入一篇 PDF，从左侧论文进入阅读，先发送一个小问题，再按需启用导读、比较或追踪。
+4. 已有会话绑定连接；连接修订或更换服务商后新建会话，历史记录保留。
 
-## 自托管
+保存配置、查看论文和下载既有批注不调用研究模型；普通导入、发送任务、确认导读和启用调度可以产生模型用量。完整操作见 [usage.md](docs/usage.md)。
 
-需要 Docker/Compose、Python 3.12+、可用的 Claude Code CLI、嵌入模型缓存，以及用于生产登录的 HTTPS 入口。开发前端使用 Node 24，生产前端在 Docker 内构建。
+## 架构与安装
+
+```text
+浏览器工作台 → FastAPI / 认证与账号工作区
+                   ├─ SQLite / PDF / 附件 / Skills
+                   ├─ bge-m3 / Qdrant
+                   └─ 私有 Socket → 宿主 Runner → Claude Code / 模型 API
+                                                   └─ 受限 research MCP 工具
+```
+
+前端为 Vue 3/TypeScript，后端为 FastAPI/Python。Compose 提供 app、qdrant、backup，Runner 是单独的宿主用户服务；只启动容器不能运行智能体。当前为单 Web worker，尚非多副本或每账号容器架构。
 
 ```sh
 git clone https://github.com/FallrainKing/Firework.git
@@ -37,31 +51,19 @@ cd Firework
 cp .env.example .env
 ```
 
-启动前须完成：
-
-1. 配置实际 HTTPS Origin，保留生产 Secure Cookie。
-2. 修改 Compose 中原部署使用的 `100.64.0.7` 网卡绑定。
-3. 准备约 2.3 GB bge-m3 缓存；新机器首次下载需关闭离线模式。
-4. 配置宿主 Runner 的路径、模型和权限；仅启动容器不能使用智能体。
-5. 在准备好的虚拟环境交互初始化管理员，再启动服务。
-
-```sh
-.venv/bin/python -m app.auth.bootstrap init-admin
-docker compose up -d --build
-```
-
-完整步骤见 [环境与部署](docs/enviroment.md)、[认证](docs/AUTHENTICATION.md) 和 [开发指南](docs/DEVELOPMENT.md)。使用方法见 [用户指南](docs/USER-GUIDE.md)。公网统一使用应用网页登录，不再有旧 Basic Auth 密码弹窗。
+启动前需准备 Python 3.12+、Docker/Compose、Claude Code CLI、模型缓存及实际 HTTPS Origin；调整仓库中的固定端口/网卡、路径和服务模板，再交互初始化管理员。生产保留 Secure Cookie，Key 不放普通 `.env`。完整步骤见 [环境与部署](docs/enviroment.md) 和 [开发指南](docs/DEVELOPMENT.md)。
 
 ## 文档与贡献
 
-[文档目录](docs/README.md) 汇总当前架构、接口、Skills、备份恢复与开发说明。欢迎提交问题和范围明确的改进；代码变更附上对应验证和文档更新。
+| 文档 | 内容 |
+| --- | --- |
+| [使用指南](docs/usage.md) | 模型、额度、导入、阅读、追踪、Zotero 和下载 |
+| [系统架构](docs/架构.md) | 部署、模块、数据模型与执行边界 |
+| [Runner 配置](docs/RUNNER-CONFIGURATION.md) | 已实现参数、修订、凭据和接口 |
+| [认证](docs/AUTHENTICATION.md) · [备份恢复](docs/BACKUP-RESTORE.md) | 账号、安全与恢复 |
+| [接口](docs/API.md) · [路由清单](docs/API-ROUTES.md) · [Skills](docs/SKILLS.md) | 开发契约 |
+| [状态](docs/STATUS.md) · [后续计划](docs/ROADMAP.md) | 当前范围和未完成工作 |
 
-不要提交 `.env`、凭据、私钥、论文、运行数据或备份。部署目录和服务中仍保留 `research-assistant` 标识，用于兼容现有实例。
+欢迎通过 Issues 提交问题。变更需说明触发条件、实现范围、验证和未覆盖项，并更新对应文档。旧阶段记录通过 Git 历史查阅，不继续维护重复方案。
 
-项目尚未添加项目级许可证；仓库公开不表示已授予开源许可。第三方组件保留各自许可证。
-
-Zotero 手动交换已提供插件打包与配对、分类/标签/PDF 传输、队列和重试，使用步骤见 [使用指南](docs/USER-GUIDE.md#zotero-手动交换)。需在本地安装插件完成真实双向最小验证；原生批注同步和 Connector 自动采集尚未实现。
-
-## 个人模型连接与任务额度
-
-用户菜单 → 模型连接，可配置 Anthropic Messages 兼容 API、Key、模型名称、图片/上下文能力声明和研究角色补充要求。凭据加密保存、不回显；新会话绑定连接版本，自定义连接不继承宿主 Claude 密钥。能力预检仅检查配置，不调用模型。任务额度可在相邻设置页管理并在阅读讨论中按次选择。更换或修订连接请新建会话，原会话不会隐式切换服务商。
+不要提交 `.env`、凭据、私钥、研究数据、维护会话或备份。部署目录与服务仍保留部分 `research-assistant` 标识。项目尚未声明顶层许可证；公开仓库不等于已授予开源许可，第三方组件遵循各自许可证。

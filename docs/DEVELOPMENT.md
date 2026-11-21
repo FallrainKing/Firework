@@ -1,6 +1,6 @@
 # 开发与发布指南
 
-更新：2026-11-19，适用于当前 Firework 版本。目录结构见 [架构](架构.md)，服务器安装见 [环境与部署](enviroment.md)。
+更新：2026-11-21，适用于当前 Firework 版本。目录结构见 [架构](架构.md)，服务器安装见 [环境与部署](enviroment.md)。
 
 ## 1. 开发环境
 
@@ -24,7 +24,7 @@ npm --prefix frontend run dev
 - 页面与交互放 `frontend/src/`，沿用组件、store、API 封装，不重新引入旧静态页面或 iframe。
 - 业务接口按 `router → service → repository` 组织，Pydantic 校验请求，统一 ServiceError。
 - 智能内容通过 Skill 与 Runner 完成；业务层负责材料、校验、管理、事务与渲染。
-- 新增数据库字段用新的顺序迁移，不改已经应用的 0001–0013。升级前验证旧库数据仍可读。
+- 新增数据库字段用新的顺序迁移，不改已经应用的迁移。升级前验证旧库数据仍可读。
 - 修改工具或执行协议同时核对 app 与宿主 Runner；新工具须登记白名单，不能靠 Skill 文本绕过权限。
 - Markdown 统一使用 `frontend/src/shared/markdown.ts`；原始文本存储、渲染后清理，不将任意 HTML 当作可信内容。
 
@@ -42,7 +42,7 @@ npm --prefix frontend run build
 后端相关回归示例（使用隔离 fixtures；本组不调用真实 Agent 模型）：
 
 ```sh
-HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest   tests/test_auth_accounts.py tests/test_reader_guides.py tests/test_reader_imports.py   tests/test_workbench.py tests/test_runner_jobs.py tests/test_frontier.py   tests/test_agent_mvp.py tests/test_skills_registry.py tests/test_db_migrations.py   tests/test_task_sessions.py tests/test_release_smoke.py   tests/test_route_surface.py tests/test_app_health.py -q
+HF_HOME="$PWD/data/hf" HF_HUB_OFFLINE=1 .venv/bin/python -m pytest   tests/test_auth_accounts.py tests/test_reader_guides.py tests/test_reader_imports.py   tests/test_workbench.py tests/test_runner_jobs.py tests/test_frontier.py   tests/test_agent_mvp.py tests/test_skills_registry.py tests/test_runner_connections.py tests/test_runner_budgets.py tests/test_db_migrations.py   tests/test_task_sessions.py tests/test_release_smoke.py   tests/test_route_surface.py tests/test_app_health.py -q
 ```
 
 模型缓存类测试仍可能加载本地嵌入模型；缺缓存时先处理依赖，不能把未运行说成通过。变更范围涉及解析器/备份等时再选择对应测试，完整测试可用 `.venv/bin/python -m pytest -q`。

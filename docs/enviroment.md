@@ -1,118 +1,86 @@
-# 当前环境、部署与排障
+# 环境、部署与排障
 
-核对日期：2026-11-21（Asia/Shanghai）；适用于 Firework 当前部署，Runner 协议 7。文件名保留原约定。只记录配置位置与非敏感状态，不记录密钥、认证内容或完整配置转储。
+更新：2026-11-21。当前业务迁移 0018、身份 schema 2、Runner 协议 **7**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
 
-## 1. 当前实例
+## 1. 当前实例与部署边界
 
-| 项目 | 已核对信息 |
+| 项目 | 当前配置 |
 | --- | --- |
-| 服务器 / 项目 | `f@100.64.0.7` / `/home/f/research-assistant` |
-| 系统 | Ubuntu 24.04.5 LTS，x86_64 |
-| Python / 虚拟环境 | 3.12.3 / `.venv` |
-| Docker / Compose | 29.10.0 / v5.7.1 |
-| Claude Code CLI | 2.1.322，`/home/f/.local/bin/claude` |
-| 前端构建 | Docker Node 24，多阶段构建 Vue/Vite |
-| 生产分支 | `release/frontier-workbench-20261119` |
-| Runner | 用户级 `research-agent-runner`，协议 7，并发 2 |
-| 实际模型快照 | 本次发布冒烟报告 `glm-5.3[1M]`，以运行时状态为准 |
-| 应用入口 | `127.0.0.1:8600`、`100.64.0.7:8600`，公网 `https://paper.matchesai.vip` |
-| 数据 / 最新迁移 | `/home/f/research-assistant/data` / `0018_runner_connections.sql` |
+| 项目目录 | `/home/f/research-assistant`，部署账户 f |
+| 仓库 | `https://github.com/FallrainKing/Firework.git`，远程默认分支 main |
+| 部署分支 | release/frontier-workbench-20261119，跟踪 origin/main |
+| 应用 | Compose app，容器端口 8000，宿主端口 8600 |
+| 公网 | `https://paper.matchesai.vip/#/`，HTTPS 反向代理及应用网页登录 |
+| Runner | 用户级 research-agent-runner，私有 Unix Socket，当前协议 7、默认并发 2 |
+| 数据 | 项目 data/，主业务库 app.db，身份库 auth/accounts.db |
+| 向量与缓存 | Compose qdrant、data/qdrant、data/hf |
+| Zotero | 插件 0.1.4，声明兼容 10.0.6–10.x |
 
-远程仓库为 `https://github.com/FallrainKing/Firework.git`，默认分支为 `main`；当前服务器分支跟踪 `origin/main`。部署目录与服务名保留原标识。确认目标版本应使用当前 Git HEAD，不使用历史重写前的提交编号。
+2026-11-21 只读核对部署提交为 `f8adf96`、Runner 在线且协议 7。模型以所选连接或每个 Run 实际记录为准；legacy 最近状态为 glm-5.3[1M]，不能据此假定所有账号使用同一模型或已经实测 1M。
 
-SSH 使用调用端 `~/.ssh/id_ed25519_1026`，不复制到项目。公网网关位于 root@matchesai.vip，站点配置 /etc/nginx/conf.d/paper-matchesai.conf。旧 Basic Auth 已关闭，仅保留应用网页登录；HTTPS 与反向隧道链路不变。配置快照见 `ops/paper-matchesai.conf`，回退信息见本文第 7 节。
+当前 Compose 包含 `100.64.0.7:8600` 网卡绑定，服务模板包含固定项目路径和 legacy 模型覆盖。这些是现有部署参数，新机器必须修改；不是可原样复制的通用默认。
 
-## 2. 服务和目录
+## 2. 全新安装
 
-Compose：app 提供 API/SPA，qdrant 保存向量，backup 负责计划备份。app 容器内端口 8000，Qdrant 连接 `http://qdrant:6333`；宿主 Runner 通过 `data/agent/runner.sock` 与应用通信。
-
-```text
-data/
-  app.db                        管理员研究 SQLite（含导读、追踪与审批）
-  auth/accounts.db              身份、会话、节流与审计
-  accounts/{工作区ID}/            独立账号数据库、私有资源与原生会话
-  papers/ imports/ attachments/  原始 PDF、暂存、会话图片
-  skills/archives/              不可变 ZIP 原包
-  skills/packages/              已安装版本资源
-  avatars/                      用户头像
-  hf/                           bge-m3 模型缓存
-  qdrant/                       向量存储
-  agent/
-    runner.sock                 私有通信入口
-    internal-token              内部工具认证文件
-    claude-config/ sessions/    本项目原生会话及工作目录
-    runs/                       执行事件与工具记录
-```
-
-容器与 Runner 共用文件，需对齐宿主 UID/GID。上传目录和技能资源按宿主用户准备，不能用全目录放宽权限来解决读取失败。
-
-## 3. 配置来源
-
-| 配置 | 来源及规则 |
-| --- | --- |
-| DATA_DIR / QDRANT_URL | `app/core/config.py`；宿主默认 data / localhost:6333，Compose 内覆盖 |
-| HOST_UID / HOST_GID | Compose 默认 1000，新机器按运行用户对齐 |
-| HF_HUB_OFFLINE | Compose 默认 1，要求缓存已存在；首次下载用 0 |
-| HF_ENDPOINT | 镜像/测试使用 hf-mirror；模型缓存挂载到容器 HF 缓存目录 |
-| 模型凭据 | 现有宿主 `~/.claude/settings.json` 的 ANTHROPIC 配置，由 Runner 读取 |
-| 模型选择 | RESEARCH_AGENT_MODEL → Claude 配置的 ANTHROPIC_MODEL → 默认 Sonnet 配置 → 代码回退 |
-| 视觉覆盖 | RESEARCH_AGENT_VISION_MODEL；否则沿用当前模型，仍须真实支持视觉 |
-| Runner 并发 | RESEARCH_AGENT_CONCURRENCY 默认 2；队列和额度另受执行器约束 |
-
-仓库 `ops/research-agent-runner.service` 模板仍含旧的固定模型 `deepseek-latest`，不能不加核对覆盖当前运行服务。新装时删除该固定覆盖，或按明确需要设置模型；不从文档猜测供应商配置。
-
-## 4. 新机器部署
-
-以下是部署步骤，文档整理时没有对现有服务器重新安装或切换配置。
-
-1. 准备 Python 3.12+、Docker/Compose、可工作的 Claude CLI 和现有宿主配置；模型凭据不写入 app 的 `.env`。
-2. 在项目创建虚拟环境、先安装 CPU torch，再安装 requirements：
-
-   ```sh
-   python3.12 -m venv .venv
-   .venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
-   .venv/bin/pip install -r requirements.txt
-   cp .env.example .env
-   ```
-
-3. 核对 `.env` 中 UID/GID、项目路径；修改 Compose 内 `100.64.0.7` 绑定为本机实际网卡地址，或仅保留 loopback。当前地址不是通用安装默认。
-4. 新机器没有缓存时以 `HF_HUB_OFFLINE=0` 首次启动，等待 bge-m3 下载与初始化；下载时间取决于网络，不保证固定分钟数。缓存位于 data/hf；之后恢复离线启动。已有缓存部署不重复下载。
-5. 安装用户 Runner。服务模板默认项目在 `~/research-assistant`；其他路径须同步改 WorkingDirectory、ExecStart/ExecStartPre 和 Socket。先核对并调整模板中的模型覆盖，再安装：
-
-   ```sh
-   mkdir -p ~/.config/systemd/user
-   cp ops/research-agent-runner.service ~/.config/systemd/user/research-agent-runner.service
-   systemctl --user daemon-reload
-   systemctl --user enable --now research-agent-runner
-   ```
-
-6. 新实例交互初始化管理员，再启动容器：
-
-   ```sh
-   .venv/bin/python -m app.auth.bootstrap init-admin
-   docker compose up -d --build
-   ```
-
-启动后按 [认证说明](AUTHENTICATION.md) 执行带维护会话的零模型冒烟。首次部署 Runner/App 的启动时序可能短暂不就绪，待应用健康后再次检查协议。宿主 Runner 工具目前回调固定 `http://127.0.0.1:8600`；修改宿主端口还须修改/适配工具端，不能只改 Compose。
-
-需要退出登录后继续运行用户服务时，按主机运维策略配置用户 linger；本次未修改系统级设置。
-
-## 5. 现有实例升级
-
-在 `/home/f/research-assistant` 操作：
-
-1. 检查 Git 干净与目标提交；查询 `/api/agent/runs`，确认没有 queued/running 任务，并暂停会触发运行的相关调度。
-2. 保存旧提交、镜像标签，并按 [备份文档](BACKUP-RESTORE.md) 做迁移前成套备份。在线 SQLite 备份不能替代 PDF/技能包/原生会话/Qdrant 备份。
-3. 在独立工作区验证并构建候选镜像；评估增量迁移。不要通过 checkout 覆盖未提交工作。
-4. 同步应用与宿主 Runner 代码，必要时重启 Runner，再替换 app。协议必须兼容，本版为 5。
-5. 零模型冒烟通过后，再按需要做一次用户明确触发的小范围真实验证。页面刷新或重复测试不能额外创建收费任务。
-
-`ops/deploy.sh` 已有备份、构建、重启和冒烟流程；默认 `DOCKER='sudo docker'`，已有 Docker 权限可设 `DOCKER=docker`。脚本不会自动检查在途任务；实际迁移由 app/core/db.py 应用所有未执行 SQL。认证版会自动创建短期维护会话用于冒烟，结束后撤销并清理文件。使用前仍须执行上述检查。
-
-## 6. 状态与排障
+准备 Python 3.12+、Docker/Compose、Claude Code CLI 和模型缓存空间。前端本地开发使用 Node 24；生产由 Docker 构建。
 
 ```sh
-# 不需要模型调用
+python3.12 -m venv .venv
+.venv/bin/pip install torch --index-url https://download.pytorch.org/whl/cpu
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env
+```
+
+1. 设置实际 `RESEARCH_PUBLIC_ORIGIN`，生产保留 Secure Cookie；保持注册关闭和 `RESEARCH_AUTH_ADMIN_ONLY=1`，除非另有经过验证的开放方案。
+2. 调整 Compose 的网卡和端口绑定、HOST_UID/HOST_GID；确认 Qdrant 从 app 网络可达。
+3. 新机器没有 bge-m3 缓存时，首次有意设置 `HF_HUB_OFFLINE=0` 下载并初始化；完成后恢复离线启动，缓存保留在 data/hf。
+4. 修改 [Runner 服务模板](../ops/research-agent-runner.service) 的 WorkingDirectory、ExecStart/ExecStartPre 和 Socket。模板的 RESEARCH_AGENT_MODEL 只应作为 legacy 覆盖，自定义连接忽略它。
+5. 安装用户服务并交互初始化管理员：
+
+```sh
+mkdir -p ~/.config/systemd/user
+cp ops/research-agent-runner.service ~/.config/systemd/user/research-agent-runner.service
+systemctl --user daemon-reload
+systemctl --user enable --now research-agent-runner
+.venv/bin/python -m app.auth.bootstrap init-admin
+docker compose up -d --build
+```
+
+既有实例不要重复初始化。密码通过交互输入，不写入命令参数或 Git。仅启动 Compose 不会启动宿主 Runner；两者都就绪后再执行维护冒烟。
+
+管理员可保留已有 Claude 配置，也可在 Web 配置个人模型连接；独立账号必须配置自己的 API。仅在 legacy 模式使用 `~/.claude/settings.json`。不要将模型 Key 放入普通 `.env` 或用户偏好 JSON。
+
+当前研究工具的内部回调固定为宿主 `http://127.0.0.1:8600`；改端口需同步适配工具端。Qdrant 默认不向宿主发布 6333，宿主运行 API/恢复工具时要提供实际可达地址。
+
+## 3. 模型连接与主密钥
+
+用户菜单 → 模型连接，入口 `/#/settings/runner/connections`。参数、API、限制与运行隔离见 [Runner 配置](RUNNER-CONFIGURATION.md)。
+
+默认主密钥为各工作区 `auth/runner-master.key`，32 字节、创建权限 0600。可通过 Web 服务的 `FIREWORK_RUNNER_MASTER_KEY_FILE` 指定现成外部密钥文件；Runner 不需要读取这个文件。默认密钥纳入项目备份，外部挂载密钥需另行备份。
+
+自定义连接默认仅允许公网 HTTPS。需要内网或 HTTP API 时，由维护者在 **Runner 服务环境** 配置 `FIREWORK_RUNNER_ALLOW_PRIVATE_HOSTS`，逗号分隔主机名，并重启 Runner。Web 用户不能修改该允许列表。服务模板没有自动读取所有 app `.env` 参数，需显式设置 systemd 环境或受控 EnvironmentFile。
+
+连接修订或停用会阻止旧版本任务继续调用；缺失凭据不回退宿主 Key。角色是连接上的补充要求，不是独立角色库。上下文和视觉只是声明，不能以预检通过代替实际能力验证。
+
+## 4. 现有实例升级
+
+1. 核对目标提交与 Git 状态，保留无关未提交文件；确认队列无在途任务，并暂停相关调度。
+2. 保存旧镜像/提交，做身份、研究资源、主密钥、原生会话和向量的成套备份。
+3. 在隔离目录按范围验证并构建候选镜像；数据库只应用新的顺序迁移，不删除迁移记录。
+4. 同步 app 与宿主 Runner；协议变化时重启 Runner，再更新 app。运维脚本变化时同步构建 backup。
+5. 执行带短期维护会话的无模型冒烟、页面和文件检查；真实模型验证单独明确触发。
+
+```sh
+docker compose build app backup
+systemctl --user restart research-agent-runner
+docker compose up -d --no-deps app backup
+```
+
+以上命令应在完成检查与备份后执行。`ops/deploy.sh` 提供发布辅助流程，但不会替代人工在途任务检查；模板和脚本也需核对本机路径。仅更新文档不需要构建镜像或重启服务。
+
+## 5. 状态与排障
+
+```sh
 curl -fsS http://127.0.0.1:8600/health
 docker compose ps
 systemctl --user status research-agent-runner --no-pager
@@ -120,75 +88,28 @@ journalctl --user -u research-agent-runner -n 60 --no-pager
 docker compose logs --tail=80 app
 ```
 
-私有 `/api/agent/status` 需要有效登录，不能用匿名 curl 检查；协议与工作区检查使用 [认证说明](AUTHENTICATION.md) 的完整维护冒烟流程。查看日志时不要把认证内容、完整提示或未脱敏配置贴入公开问题。`/health` 只说明应用可响应；Runner 兼容性以 `/api/agent/status` 和五步冒烟为准。
+`/health` 只说明 app 可响应。私有 `/api/agent/status` 需有效会话，Runner 兼容性通过已登录页面或 [认证说明](AUTHENTICATION.md#6-部署与维护验证) 的短期维护冒烟检查。禁止把维护会话、Key、完整环境或研究提示贴入公开日志。
 
-| 症状 | 检查 |
+| 现象 | 优先核对 |
 | --- | --- |
-| app 启动后持续不可访问 | 模型缓存/离线配置、Qdrant 就绪、启动日志；RAG 初始化有有界重试 |
-| 页面可用但智能体离线 | 宿主用户服务、Socket 挂载与权限、CLI 配置 |
-| protocol 不匹配 | 应用和 Runner 是否同一代码版本、是否漏重启服务 |
-| 图片或技能资源无法读取 | DATA_DIR 属主与文件权限、资源是否与 DB 记录成套存在 |
-| 新页面看不到改动 | 检查实际构建镜像和 app 容器，再刷新浏览器；仅改源码不会改镜像内静态资源 |
-| 任务重启后失败 | 当前会终止受影响任务，不自动重复付费；核实后手动重试 |
+| app 长时间不可访问 | Qdrant、嵌入缓存、离线设置与初始化日志 |
+| 页面正常但 Agent 离线 | 用户服务、Socket 挂载/权限、CLI 路径及协议 |
+| 更新源码后页面未更新 | 镜像是否重建、容器是否更新；文档提交与前端部署不同 |
+| 自定义连接执行失败 | API 协议、目的地址、鉴权方式、模型名与当前修订 |
+| 凭据无法解密 | 原主密钥、工作区和备份是否成套；不要生成随机替代文件 |
+| 任务达到金额上限 | Run 实际额度快照；原 Skill 金额守卫仍可生效 |
+| 重启后任务失败 | 当前中断不会自动付费重跑；先核对结果再手动决定 |
+| 浏览器出现额外密码弹窗 | 网关是否残留 Basic Auth；当前仅应用网页登录 |
 
-## 7. 当前回退资料
+## 6. 插件与回退
 
-下列是当前实例保留的私有恢复资料，其他机器应记录自己的位置：
+```sh
+python3 scripts/build_zotero_plugin.py
+node --test plugins/zotero/tests/plugin.test.cjs
+```
 
-| 范围 | 位置或标签 |
-| --- | --- |
-| 完整认证改造前备份 | `backups/before-auth-complete-20261119-2248/` |
-| 认证发布后成套备份 | `backups/after-auth-20261119-2250/` |
-| 文件管理发布前成套备份 | `backups/before-documents-20261120/` |
-| 文件管理发布后成套备份 | `backups/after-documents-20261120/` |
-| Zotero 发布前成套备份 | `backups/before-zotero-20261120/` |
-| Zotero 发布后成套备份 | `backups/after-zotero-20261120/` |
-| Zotero 流程修复前备份 | `backups/before-zotero-flow-fix-20261120/` |
-| Zotero 流程修复后备份 | `backups/after-zotero-flow-fix-20261120/` |
-| Zotero 流程修复前应用镜像 | `research-assistant-app:before-zotero-flow-fix-20261120` |
-| Zotero 发布前应用镜像 | `research-assistant-app:before-zotero-20261120` |
-| 文件管理前应用镜像 | `research-assistant-app:before-documents-20261120` |
-| 改名前应用镜像 | `research-assistant-app:before-firework-20261119` |
-| 认证改造前 app/backup 镜像 | `research-assistant-app:before-auth-20261119`、`research-assistant-backup:before-auth-20261119` |
-| 网关单次登录修改前配置 | 网关 `/root/research-auth-gateway-backups/20261119-before-app-login-only.conf` |
+当前 XPI 为 `/downloads/firework-zotero-0.1.4.xpi`，更新清单由同一构建生成。安装包不含本地配置、配对令牌、恢复队列或研究资料。客户端安装、配对与实际传输由使用者确认，操作见 [usage](usage.md#9-zotero-手动双向交换)。
 
-切回旧应用必须同步对应 Runner，并核对迁移和身份库兼容性。不要混合不同日期的身份库与研究资源，也不要删除迁移记录或直接逆向修改数据库。恢复旧网关配置会重新启用双重登录，不能当作应用认证的替代。
+最近模型连接发布前的数据库快照为 `data/maintenance/before-runner-connections-20261121`，旧 app 镜像为 `firework-before-runner-connections:20261121`。这类数据库快照不等同于覆盖所有资源的完整备份，不能单独用于全量恢复。
 
-完整恢复先停止 app、Runner 与备份写入，恢复后撤销旧会话并重新验证，见 [备份恢复](BACKUP-RESTORE.md)。生产全量恢复演练尚未完成。
-
-## 8. 认证与隔离配置
-
-认证默认强制启用。RESEARCH_AUTH_ADMIN_ONLY=1、RESEARCH_AUTH_COOKIE_SECURE=1、RESEARCH_PUBLIC_ORIGIN=https://paper.matchesai.vip；未开放注册，普通账号仍不能登录。当前实例已初始化管理员；新机器使用交互初始化，详见 [认证说明](AUTHENTICATION.md)。
-
-新增 data/auth/accounts.db（身份、散列、会话、节流和审计）及 data/accounts/{随机ID}/（独立研究空间）；原管理员继续使用原 data/app.db、papers、agent 和 chunks 集合。新账号集合为 chunks_{工作区ID}。原资料不迁移、不复制到新账号。
-
-旧的匿名五步冒烟在认证版会收到 401；先按认证说明签发 5 分钟私有维护会话，再设置 AUTH_SESSION_FILE 执行。生产 Cookie 只通过 HTTPS，临时维护文件只在受信任宿主使用。HTTP 本地开发可显式配置 RESEARCH_AUTH_COOKIE_SECURE=0，同时配置匹配的 RESEARCH_PUBLIC_ORIGIN；使用单独的 research_session_dev Cookie，不用于公网。
-
-当前实例的完整备份和回退镜像见第 7 节。回退不能混合新身份库与其他日期研究库；恢复后旧浏览器会话必须撤销。
-
-
-## Zotero 插件构建
-
-本机核对版本为 Zotero 10.0.6（macOS），插件声明目标 10.0.6–10.x，实际客户端安装与配对未在发布脚本中执行。`python3 scripts/build_zotero_plugin.py` 生成 `app/web/downloads/firework-zotero-0.1.3.xpi`，Docker 构建时执行相同脚本，网站路径为 `/downloads/firework-zotero-0.1.3.xpi`。包仅包含本项目的 manifest、bootstrap 和插件实现；本地配置、凭据、队列、研究资料不进入包。
-
-设备授权存于 `data/auth/accounts.db`（schema 2），业务映射、分类树和队列存于各账号业务库（迁移 0016）。本地 Zotero 的凭据服务保存令牌，数据目录中的 `firework-sync.json` 保存任务恢复记录；插件只主动访问配置的 HTTPS Firework，不开放本地监听端口。
-
-Zotero 初版功能提交为 `b97000e`；当前 0.1.3 对应业务迁移 0016，身份 schema 保持 2。插件 SHA-256 为 `ca881b9b747d876a2f62eac51014d1565d720d6e12c19e5899ce84ad9e3e764c`。发布验证情况见 STATUS 与 CHANGELOG。
-
-当前流程修复功能提交 `58dcc70`，服务端与公开插件 0.1.3 已发布。2026-11-20 发布验证保留 18 篇论文、9 个分类、12 条批注和 15 个文件版本；本机仍运行 0.1.1，需通过插件管理更新，配对无需重建。
-
-子分类与目录树修复功能提交为 `ade154a`，无需新迁移；发布前备份 `backups/before-subcollections-20261120/`，回退镜像 `research-assistant-app:before-subcollections-20261120`。线上五步检查和 Chrome 目录操作核对通过。
-
-## Hash 路由发布（2026-11-20）
-
-功能版本 `194636b` 已构建并重启 app 容器；页面入口 `https://paper.matchesai.vip/#/`，登录入口 `/#/login`，配对入口 `/#/integrations/zotero`。旧路径兜底仍保留；API、PDF 和 XPI 地址不变。回退镜像 `research-assistant-app:before-hash-routing-20261120`，无新增数据库迁移。线上检查与 Chrome 刷新验证通过，Runner 协议仍为 5，未调用研究模型。
-
-Zotero 插件修复发布：0.1.4（`8a1d1d7`），更新清单及旧版本下载别名均已更新；XPI SHA-256 为 `c6446da41e2b8ad18bd54752bb40a7b95ba2305bd3f40c3ab180bd4505115786`。回退镜像 `research-assistant-app:before-zotero-014-20261120`。升级不改变设备授权范围，沿用当前配对；失败任务从网页重试后再次手动接收。
-
-客户端实测补充：已安装启用 0.1.4，完整退出/启动后插件管理器仍可见且启用；配对与恢复日志保留，实际再次接收通过。双向及重复验收使用专用合成资料，当前无待处理测试导出任务；用户曾报告的插件消失本次未复现。Attanger 会移动附件并变更附件 key，核对重复时需比较有效条目与内容哈希，不能只比较历史恢复日志里的 key。
-
-## 个人模型连接的运行配置
-
-Web 管理入口 `/#/settings/runner/connections`。自定义连接不修改宿主机 Claude 配置，独立账号无管理员凭据回退。工作区内 `auth/runner-master.key` 是 32 字节主密钥，需与加密数据库成套备份；可用 FIREWORK_RUNNER_MASTER_KEY_FILE 指向部署方挂载的现成密钥，外部文件需单独备份。Runner 本身不需要访问该文件。
-
-私有或 HTTP API 默认不执行，确有需要时由管理员在 Runner 环境配置 FIREWORK_RUNNER_ALLOW_PRIVATE_HOSTS（逗号分隔主机名），重启 Runner 后生效；Web 用户不能修改此允许列表。连接环境只注入所选凭据和模型；当前仍为宿主机进程，容器级隔离待实现。
+回退需匹配 app/Runner 协议并检查数据库兼容性；完整数据恢复按 [备份恢复](BACKUP-RESTORE.md) 停写、成套恢复和验证。过期发布路径与旧插件哈希不再作为当前操作说明；历史记录通过 Git 查询。生产全量恢复演练仍未完成。

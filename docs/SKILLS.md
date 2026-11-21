@@ -1,6 +1,6 @@
 # Skills 管理与扩展开发
 
-更新：2026-11-19。Skill 负责研究处理，平台提供受限工具、版本、会话和产物管理。上传 ZIP 可以扩展提示与资源组织，不能自动扩展服务端任意权限。
+更新：2026-11-21。Skill 负责研究处理，平台提供受限工具、版本、会话和产物管理。上传 ZIP 可以扩展提示与资源组织，不能自动扩展服务端任意权限。
 
 ## 1. 内置技能
 
@@ -13,7 +13,7 @@
 | paper_guide | 明确触发的结构化导读与原文批注 |
 | frontier_monitor | 背景前沿发现与结构化证据报告 |
 
-执行额度以 `app/agent/catalog.py` 为准，汇总见 [架构](架构.md)。内置资源在 `skills/{id}/`；上传资源在 data/skills 中按版本保存。
+Skill 原额度以 `app/agent/catalog.py` 和注册版本策略为准；实际 Run 可以使用账号默认或本次选择的额度，并固定快照，见 [Runner 配置](RUNNER-CONFIGURATION.md)。内置资源在 `skills/{id}/`；上传资源在 data/skills 中按版本保存。
 
 ## 2. ZIP 结构与限制
 
@@ -41,7 +41,7 @@ my-guide/
 }
 ```
 
-安装时选择名称、分类、标签和预算档位。预算 profile 以安装配置写入为准，不能靠 manifest 任意增大调用次数或权限；普通上传技能最多 4 次工具调用。short 为 1024 输出 token，read 为 8192，其他额度见执行策略。
+安装时选择名称、分类、标签和预算档位。预算 profile 以安装配置写入为准，不能靠 manifest 任意增大调用次数或权限；普通上传技能的原策略最多 4 次工具调用；运行时选用的额度可以改变次数，但不能增加工具白名单。short 为 1024 输出 token，read 为 8192，其他额度见执行策略。
 
 ## 3. 安装、版本与验证
 
@@ -63,7 +63,7 @@ skill_resource 只读取允许的资源范围，不启动包内命令。需要�
 
 ## 5. 自定义导读技能
 
-要出现在自动批注选择器，当前版本需 enabled、validated，并具有 reader_guide_context、reader_guide_material、reader_guide_submit，工具次数至少 3、输出额度至少 4096。普通上传技能需选择 read 档位才满足输出额度；这也意味着它与内置 paper_guide 的 $0.20 档位不同，界面会显示所选技能预算。
+要出现在自动批注选择器，当前版本需 enabled、validated，并具有 reader_guide_context、reader_guide_material、reader_guide_submit，工具次数至少 3、输出额度至少 4096。普通上传技能需选择 read 档位才满足输出额度；原档位与内置 paper_guide 不同；Run 还会应用账号默认/本次额度。导读选择器依然要求注册策略满足导读工具和输出条件，不能靠上传声明越权。
 
 执行步骤：读取 context 获取任务/文件/清单 → material 选择用户上限内真实页面 → submit 提交 `paper-guide/v1`。当前不传任意 paper_id、文件路径或矩形，不接受 asset 图表锚点；唯一匹配、覆盖核对、落库和绘制由平台处理。
 

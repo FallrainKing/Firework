@@ -1,8 +1,8 @@
 # 认证、多账号与数据隔离
 
-更新：2026-11-19。实现位于 `app/auth/`、`app/core/workspaces.py` 和宿主 Runner；业务数据库仍迁移至 0013，新增独立身份库 schema 1，Runner 协议升级到 **5**。
+更新：2026-11-21。实现位于 `app/auth/`、`app/core/workspaces.py` 和宿主 Runner；当前业务迁移 0018、独立身份库 schema 2、Runner 协议 **7**。
 
-## 1. 本次开放范围
+## 1. 当前开放范围
 
 - 沿用当前站点管理员账号及密码，初始化为唯一 primary admin。
 - 登录页 `/#/login`；注册页 `/#/register` 已建立，表单禁用，注册 API 始终返回 403。
@@ -31,7 +31,7 @@ WorkspaceManager 复用只读模型权重和 Qdrant 客户端，但创建不同 
 
 内部工具使用当前工作区的令牌、Run、材料/会话绑定；伪造其他账号工作区头但使用自己的令牌会被拒绝。普通账号不能访问管理员 API；管理员的研究接口同样只选择管理员自己的工作区。
 
-这是同一可信服务器进程内的应用和存储隔离，不是为每账号部署容器/操作系统沙箱。宿主机运维权限、公共模型供应商配置和备份由可信维护者统一管理。
+这是同一可信服务器进程内的应用和存储隔离，不是为每账号部署容器/操作系统沙箱。宿主机运维权限和备份由可信维护者管理。个人模型连接与凭据保存在各账号工作区，普通账号不能使用原管理员的 legacy Key；连接加密与运行边界见 [Runner 配置](RUNNER-CONFIGURATION.md)。
 
 ## 3. 登录与会话
 
@@ -82,7 +82,7 @@ WorkspaceManager 复用只读模型权重和 Qdrant 客户端，但创建不同 
 
 ## 6. 部署与维护验证
 
-应用与宿主 Runner 必须兼容协议 5。生产认证默认启用，环境变量不能切回匿名模式。`create_app(authentication=False)` 只用于显式构造隔离业务测试。
+应用与宿主 Runner 必须兼容协议 7。生产认证默认启用，环境变量不能切回匿名模式。`create_app(authentication=False)` 只用于显式构造隔离业务测试。
 
 保留 `RESEARCH_AUTH_ADMIN_ONLY=1`、`RESEARCH_AUTH_COOKIE_SECURE=1`，并将 `RESEARCH_PUBLIC_ORIGIN` 设为实际 HTTPS 站点。HTTP 登录页禁用密码提交，提供配置的 HTTPS 登录入口。仅在隔离的本地 HTTP 开发环境可设置 `RESEARCH_AUTH_COOKIE_SECURE=0`，同时配置匹配的开发 Origin，使用单独的 `research_session_dev` Cookie。
 

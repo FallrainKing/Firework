@@ -6,6 +6,14 @@
 
 Firework brings your paper library, PDF reader, and research conversations into one workspace. It connects to an existing Claude Code agent and extends its capabilities through Skills, while the application manages documents, sessions, tasks, evidence, and account isolation.
 
+## Start here
+
+- [Usage guide](docs/usage.md): configure a connection and budget, import a PDF, and start a reading session.
+- [System architecture](docs/架构.md): deployed components, data boundaries, and how the agent executes tasks.
+- [Implementation status](docs/STATUS.md): current scope and verification limits.
+
+The current baseline uses business migrations through **0018**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
+
 ## Features
 
 - **Reading workspace:** Start from recent papers, research categories, and reusable task templates.
@@ -17,7 +25,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - **Research frontier tracking:** Define topics, keywords, authors, or teams. Use the agent to discover papers and open-source projects, generate deduplicated timeline reports, and approve discoveries before adding them to your library.
 - **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, and enable or disable capabilities. Templates and structured outputs connect Skills to the interface.
 - **Richer agent input:** Combine editable templates, selected paper passages, and image attachments. Image interpretation requires a vision-capable agent or model.
-- **Manual Zotero exchange:** Pair a local Zotero 10 client, exchange selected papers, collection paths, tags, and immutable PDF files, and retry transfers without research-model calls. Imported PDFs become readable without waiting for embeddings; full-text indexing is an explicit action. Native annotation sync and automatic Connector ingestion are planned. See the [setup guide](docs/USER-GUIDE.md#zotero-手动交换).
+- **Manual Zotero exchange:** Pair a local Zotero 10 client, exchange selected papers, collection paths, tags, and immutable PDF files, and retry transfers without research-model calls. Imported PDFs become readable without waiting for embeddings; full-text indexing is an explicit action. Native annotation sync and automatic Connector ingestion are planned. See the [setup guide](docs/usage.md#9-zotero-手动双向交换).
 - **Personal model connections:** Configure an Anthropic Messages-compatible API, encrypted credentials, model name, declared vision/context capabilities, and a research role in the Web UI. Sessions bind a connection revision; custom runs do not inherit host Claude credentials. Per-account and per-run budgets are configurable. Capability checks are configuration-only and do not invoke a model.
 - **Account isolation:** Separate each account's research database, files, private Skills, vector collection, and agent workspace. Public registration is currently closed, and the default release permits only the primary administrator to log in.
 
@@ -90,7 +98,7 @@ docker compose up -d --build
 
 Starting Compose alone does not start the host Runner. Both components must be ready for agent tasks to work. The current application requires Runner protocol **7**.
 
-Open your configured HTTPS address and sign in with your administrator account. See the [user guide](docs/USER-GUIDE.md) for importing papers, reading, conversations, and Skills.
+Open your configured HTTPS address and sign in with your administrator account. See the [user guide](docs/usage.md) for importing papers, reading, conversations, and Skills.
 
 For upgrades, back up the identity database and research resources together, check for running tasks, and follow the [deployment](docs/enviroment.md) and [backup and recovery](docs/BACKUP-RESTORE.md) instructions.
 
@@ -125,16 +133,17 @@ Most detailed implementation and operations documents are currently in Chinese.
 
 | Document | Contents |
 | --- | --- |
-| [Documentation index](docs/README.md) | Current guides and historical records |
-| [User guide](docs/USER-GUIDE.md) | Paper import, reading, conversations, and tracking |
-| [Architecture](docs/架构.md) | Components, data models, and execution flow |
+| [Documentation index](docs/README.md) | Current usage, architecture, and maintenance references |
+| [User guide](docs/usage.md) | Paper import, reading, conversations, and tracking |
+| [Architecture](docs/架构.md) | Current deployment, account isolation, data models, and execution flow |
+| [Runner configuration](docs/RUNNER-CONFIGURATION.md) | Personal connections, encrypted credentials, budgets, and session binding |
 | [Authentication](docs/AUTHENTICATION.md) | Account isolation, login restrictions, and recovery |
 | [Deployment](docs/enviroment.md) | Environment setup, operations, and troubleshooting |
 | [Development](docs/DEVELOPMENT.md) | Local development, testing, and releases |
 | [API](docs/API.md) · [Route inventory](docs/API-ROUTES.md) | API contracts and endpoints |
 | [Skill development](docs/SKILLS.md) | ZIP packages, versions, tools, and output contracts |
 | [Backup and recovery](docs/BACKUP-RESTORE.md) | Backups and restoration |
-| [Status](docs/STATUS.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](docs/CHANGELOG.md) | Implemented scope and upcoming work |
+| [Status](docs/STATUS.md) · [Roadmap](docs/ROADMAP.md) | Implemented scope and upcoming work |
 
 ## Contributing
 

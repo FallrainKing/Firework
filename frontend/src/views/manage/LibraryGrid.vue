@@ -372,24 +372,24 @@ function onSaved() {
 .library-toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; margin-bottom: var(--space-3); }
 .library-toolbar form { display: flex; gap: var(--space-1); }
 .spacer { flex: 1; }
-.paper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); gap: var(--space-3); }
+.paper-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: var(--space-3); }
 .paper-grid.compact { grid-template-columns: 1fr; }
 .paper-grid.compact .paper-card { display:grid; grid-template-columns:84px minmax(0,1fr); }
 .paper-grid.compact .paper-visual { height:84px; }
 .paper-grid.compact .image-caption { display:none; }
 .paper-grid.compact .paper-summary { display:none; }
 .paper-grid.compact .paper-checkbox { position:absolute; top:4px; left:4px; }
-.paper-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
-.paper-visual { position: relative; min-width:0; background: var(--bg); height: 180px; flex: 0 0 180px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); }
+.paper-card { border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); overflow: hidden; display: flex; flex-direction: column; }
+.paper-visual { position: relative; min-width:0; background: var(--bg); height: 168px; flex: 0 0 168px; display: flex; align-items: center; justify-content: center; border-bottom: 1px solid var(--border); }
 .paper-visual img { width: 100%; height: 100%; object-fit: contain; }
 .image-caption { max-width:calc(100% - 16px); background:var(--bg); padding:0 4px; border-radius:4px; position: absolute; bottom: var(--space-1); left: var(--space-2); font-size: 11px; }
 .paper-checkbox { position: absolute; top: var(--space-1); right: var(--space-2); display: flex; gap: var(--space-1); align-items: center; font-size: 12px; background: var(--bg); padding: 2px var(--space-1); border-radius: var(--radius); }
 .paper-content { flex: 1; min-width: 0; overflow-wrap: anywhere; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
-.paper-title { font-size: 15px; margin: 0; }
+.paper-title { font-size: 15px; line-height:1.5; font-weight:600; margin: 0; }
 .paper-authors, .paper-units { font-size: 12px; margin: 0; color: var(--text-muted); }
 .paper-summary { font-size: 12px; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .badges { display: flex; gap: var(--space-1); flex-wrap: wrap; }
-.badge { font-size: 11px; background: var(--accent-soft); color: var(--accent); padding: 1px var(--space-2); border-radius: 10px; }
+.badge { font-size: 11px; background: var(--accent-soft); color: var(--accent); padding: 1px var(--space-2); border-radius: 4px; }
 .paper-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; margin-top: var(--space-2); }
 .paper-actions button { padding: var(--space-1) var(--space-2); font-size: 12px; }
 .more-papers { margin-top: var(--space-3); width: 100%; }
@@ -411,7 +411,7 @@ function onSaved() {
 .density-toggle { display:flex; gap:0; }
 .density-toggle button[aria-pressed='true'] { color:var(--accent); background:var(--accent-soft); }
 .card-more { position:relative; margin-left:auto; }
-.card-menu { position:fixed; z-index:70; width:min(240px,calc(100vw - 16px)); max-height:calc(100dvh - 16px); overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:0 8px 28px rgb(0 0 0 / .18); }
+.card-menu { position:fixed; z-index:70; width:min(240px,calc(100vw - 16px)); max-height:calc(100dvh - 16px); overflow-y:auto; padding:4px; border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:var(--shadow); }
 .card-menu button { display:block; width:100%; padding:7px 8px; text-align:left; }
 .card-menu .danger,.confirm-trash { color:var(--danger); }
 .trash-notice,.name-dialog p { font-size:12px; line-height:1.7; }

@@ -101,10 +101,10 @@ function tabLabel(tab: { paper_id: number }): string {
 </template>
 
 <style scoped>
-.paper-tab-row { position:relative; display:flex; align-items:stretch; gap:0; padding:8px 12px 0; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; min-height:46px; max-width:100%; min-width:0; }
+.paper-tab-row { position:relative; display:flex; align-items:stretch; gap:0; padding:6px 10px; border-bottom:1px solid var(--border); background:var(--surface); flex-shrink:0; min-height:42px; max-width:100%; min-width:0; }
 .paper-tabs { display:flex; gap:4px; overflow:hidden; flex:0 1 auto; min-width:0; }
-.paper-tab { display:flex; align-items:center; gap:8px; flex:0 1 180px; width:180px; max-width:180px; min-width:72px; padding:8px 8px 8px 10px; border:1px solid transparent; border-bottom:0; border-radius:8px 8px 0 0; background:none; cursor:pointer; white-space:nowrap; color:var(--text-muted); font-size:12px; }
-.paper-tab.active { border-color:var(--border); background:var(--bg); color:var(--text); box-shadow:inset 0 2px var(--accent); }
+.paper-tab { display:flex; align-items:center; gap:8px; flex:0 1 180px; width:180px; max-width:180px; min-width:72px; padding:5px 8px 5px 10px; border:1px solid transparent; border-radius:6px; background:none; cursor:pointer; white-space:nowrap; color:var(--text-muted); font-size:12px; }
+.paper-tab.active { border-color:var(--border); background:var(--bg); color:var(--text); box-shadow:none; }
 .tab-title { overflow:hidden; text-overflow:ellipsis; min-width:0; flex:1; }
 .status-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
 .status-dot.draft { background:var(--warning, #d97706); }
@@ -113,7 +113,7 @@ function tabLabel(tab: { paper_id: number }): string {
 @keyframes tab-pulse { 50% { opacity:.35; } }
 .tab-close { border:0; background:none; padding:0 4px; color:var(--text-muted); font-size:15px; margin-left:auto; flex-shrink:0; }
 .tab-close:hover { color:var(--danger); }
-.tab-add,.tab-home { padding:6px 10px; margin-bottom:4px; border:0; background:none; font-size:12px; white-space:nowrap; flex-shrink:0; }
+.tab-add,.tab-home { padding:6px 10px; margin-bottom:0; border:0; background:none; font-size:12px; white-space:nowrap; flex-shrink:0; }
 .tab-home { margin-right:8px; color:var(--text-muted); }.tab-home.active { color:var(--accent); background:var(--accent-soft); }
 .overflow-wrap { margin-left:auto; position:relative; display:flex; align-items:center; flex-shrink:0; }
 .tab-overflow { border:0; background:none; padding:6px 8px; color:var(--text-muted); }

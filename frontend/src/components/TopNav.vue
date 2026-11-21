@@ -87,24 +87,24 @@ onMounted(() => { void loadProfile() })
 </template>
 
 <style scoped>
-.work-top { display:flex; align-items:center; gap:24px; padding:0 24px; min-height:64px; border-bottom:1px solid var(--border); background:var(--bg); flex-shrink:0; }
-.work-brand { font-weight:750; font-size:21px; letter-spacing:.3px; color:var(--accent); text-decoration:none; white-space:nowrap; }
+.work-top { display:flex; align-items:center; gap:20px; padding:0 20px; min-height:56px; border-bottom:1px solid var(--border); background:var(--bg); flex-shrink:0; }
+.work-brand { font-weight:700; font-size:19px; letter-spacing:-.4px; color:var(--accent); text-decoration:none; white-space:nowrap; }
 .work-brand small { display:inline-block; color:var(--text-muted); font-size:11px; font-weight:400; letter-spacing:0; margin-left:10px; }
-nav { display:flex; gap:12px; flex:1; align-self:stretch; }
-nav button { border:0; border-bottom:2px solid transparent; border-radius:0; background:none; color:var(--text-muted); padding:0 14px; white-space:nowrap; }
-nav button.active { color:var(--accent); border-bottom-color:var(--accent); font-weight:650; }
+nav { display:flex; gap:4px; flex:1; align-items:center; min-width:0; }
+nav button { border:0; border-radius:6px; background:none; color:var(--text-muted); padding:7px 12px; font-size:13px; white-space:nowrap; }
+nav button.active { color:var(--accent); background:var(--accent-soft); font-weight:600; }
 .connection { color:var(--text-muted); font-size:11px; white-space:nowrap; }
 .theme-toggle,.side-toggle { padding:4px 8px; border-color:transparent; background:var(--surface); }
 .user-menu { position:relative; display:flex; align-items:center; gap:4px; }
-.user-button { display:flex; align-items:center; gap:7px; padding:4px 8px; border-color:transparent; background:var(--surface); color:var(--text); white-space:nowrap; }
+.user-button { display:flex; align-items:center; gap:7px; padding:4px 8px; border-color:transparent; background:transparent; color:var(--text); white-space:nowrap; }
 .user-avatar { width:22px; height:22px; border-radius:50%; object-fit:cover; }
-.user-avatar-fallback { display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#fff; font-size:12px; }
+.user-avatar-fallback { display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:var(--on-accent); font-size:12px; }
 .user-name { max-width:140px; overflow:hidden; text-overflow:ellipsis; }
-.user-popover { position:absolute; top:calc(100% + 8px); right:0; z-index:40; display:flex; flex-direction:column; min-width:190px; padding:var(--space-2); border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:0 12px 30px rgb(0 0 0 / 12%); }
+.user-popover { position:absolute; top:calc(100% + 8px); right:0; z-index:40; display:flex; flex-direction:column; min-width:190px; padding:var(--space-2); border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); box-shadow:var(--shadow); }
 .user-popover button { border:0; background:none; text-align:left; padding:8px; border-radius:6px; color:var(--text); }
 .user-popover button:hover { background:var(--surface); }
 .user-identity { display:flex; flex-direction:column; gap:2px; padding:8px; border-bottom:1px solid var(--border); margin-bottom:4px; }
 .user-identity span { color:var(--text-muted); font-size:11px; }
 @media(max-width:1050px) { .work-brand small,.connection { display:none; } .work-top { gap:12px; padding:0 12px; } nav { gap:0; } }
-@media(max-width:600px) { .work-top { min-height:54px; gap:6px; flex-wrap:wrap; padding:8px 12px 0; } .work-brand { font-size:18px; margin-right:auto; } nav { order:5; width:100%; flex:auto; height:42px; overflow-x:auto; } nav button { flex:1; padding:0 8px; font-size:12px; } .user-name { display:none; } }
+@media(max-width:600px) { .work-top { min-height:54px; gap:6px; flex-wrap:wrap; padding:8px 12px 0; } .work-brand { font-size:18px; margin-right:auto; } nav { order:5; width:100%; flex:auto; height:42px; overflow-x:auto; align-items:center; } nav button { flex:1; padding:0 8px; font-size:12px; } .user-name { display:none; } }
 </style>

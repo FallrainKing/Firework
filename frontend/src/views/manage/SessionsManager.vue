@@ -363,17 +363,17 @@ function renderMd(text: string): string { return renderMarkdown(text) }
 
 <style scoped>
 .session-list-heading { display:flex; align-items:center; justify-content:space-between; }
-.session-list-heading button { font-size:11px; }
-.session-list-hint { font-size:11px; margin:0; }
+.session-list-heading button { font-size:12px; }
+.session-list-hint { font-size:12px; margin:0; }
 .status-filters { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
-.status-filters button { font-size:11px; padding:6px; display:flex; justify-content:space-between; }
+.status-filters button { font-size:12px; padding:6px; display:flex; justify-content:space-between; }
 .status-filters [aria-pressed="true"] { color:var(--accent); border-color:var(--accent); background:var(--accent-soft); }
 .session-item-title { display:flex; align-items:baseline; gap:6px; }
 .status-dot { display:inline-block; width:7px; height:7px; flex-shrink:0; border-radius:50%; background:var(--text-muted); }
 .status-dot.running,.status-dot.queued,.status-dot.succeeded { background:var(--accent); }
 .status-dot.failed,.status-dot.cancelled { background:var(--danger); }
 .session-preview { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; line-height:1.5; color:var(--text-muted); }
-.draft-indicator { font-size:10px; color:var(--accent); }
+.draft-indicator { font-size:12px; color:var(--accent); }
 .execution-group { font-size:12px; color:var(--text-muted); padding-top:8px; border-top:1px dashed var(--border); }
 .message { flex-shrink:0; }
 .sessions-manager { display: flex; height: 100%; min-height: 0; }
@@ -382,12 +382,12 @@ function renderMd(text: string): string { return renderMarkdown(text) }
 .list-toolbar .checkbox { flex-direction: row; display: flex; gap: var(--space-1); align-items: center; font-size: 12px; }
 .list-actions { display: flex; gap: var(--space-1); }
 .session-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left; border: 1px solid transparent; background: none; padding: var(--space-2); }
-.session-item.selected { border-color: var(--accent); background: var(--accent-soft); }
+.session-item.selected { border-color:transparent; background:var(--accent-soft); }
 .conversation-pane { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: var(--space-3); gap: var(--space-2); }
 .conversation-header { display: flex; flex-direction: column; gap: var(--space-2); }
 .conversation-header h2 { margin: 0; font-size: 17px; }
 .badges { display: flex; gap: var(--space-1); }
-.badge { font-size: 11px; background: var(--accent-soft); color: var(--accent); padding: 1px var(--space-2); border-radius: 10px; }
+.badge { font-size: 12px; background: var(--accent-soft); color: var(--accent); padding: 1px var(--space-2); border-radius: 10px; }
 .session-actions { display: flex; gap: var(--space-1); flex-wrap: wrap; }
 .session-actions button, .session-actions select { padding: var(--space-1) var(--space-2); font-size: 12px; }
 .rename-row { display: flex; gap: var(--space-1); }
@@ -395,11 +395,11 @@ function renderMd(text: string): string { return renderMarkdown(text) }
 .paper-chip { font-size: 12px; padding: var(--space-1) var(--space-2); }
 .messages > :first-child { margin: 0; }
 .messages { flex: 1; min-height:0; overflow-wrap:anywhere; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); }
-.message { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-1); }
-.message-head { font-size: 11px; }
+.message { border:0; border-bottom:1px solid var(--border); padding:16px 4px 24px; display:flex; flex-direction:column; gap:var(--space-2); }
+.message-head { font-size: 12px; }
 .user-prompt { font-weight: 600; }
 .tool-error { color: var(--danger); }
-.usage { font-size: 11px; }
+.usage { font-size: 12px; }
 .composer { display: flex; gap: var(--space-2); align-items: flex-end; }
 .composer textarea { flex: 1; min-width:0; }
 .welcome { margin: auto; text-align: center; }

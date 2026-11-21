@@ -248,7 +248,7 @@ async function createDomain() {
 .workbench { display: flex; flex-direction: column; height: 100dvh; }
 .work-layout { position:relative; display: flex; flex: 1; min-height: 0; }
 .floating-activity { position:absolute; top:var(--space-3); left:var(--space-3); z-index:30; width:min(280px,calc(100vw - 24px)); }
-.work-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.work-main { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background:var(--surface); }
 .reading-workspace { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow:hidden; background:var(--surface); }
 .module-placeholder { padding: var(--space-6); }
 .dialog-overlay { position: fixed; inset: 0; background: rgb(0 0 0 / 0.25); display: flex; align-items: center; justify-content: center; z-index: 50; }

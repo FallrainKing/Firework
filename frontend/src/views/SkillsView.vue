@@ -464,16 +464,16 @@ watch(categoryFilter, () => undefined)
 <style scoped>
 .skills-workspace { display:flex; flex-direction:column; flex:1; min-height:0; padding:var(--space-5); overflow-y:auto; }
 .module-heading { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-4); margin-bottom:var(--space-4); }
-.eyebrow { color:var(--accent); font-size:11px; letter-spacing:.12em; margin:0 0 var(--space-1); }
+.eyebrow { color:var(--accent); font-size:12px; letter-spacing:.12em; margin:0 0 var(--space-1); }
 h1 { margin:0 0 var(--space-1); font-size:22px; }
 .heading-actions { display:flex; align-items:center; gap:var(--space-2); }
 .heading-actions input[type=file] { display:none; }
 .skills-toolbar { display:grid; grid-template-columns:minmax(180px,1fr) repeat(3,minmax(120px,160px)); gap:var(--space-2); margin-bottom:var(--space-3); }
 .skill-list { display:flex; flex-direction:column; gap:var(--space-3); }
-.skill-card { display:flex; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border:1px solid var(--border); border-radius:var(--radius); background:var(--surface); }
+.skill-card { display:flex; justify-content:space-between; gap:var(--space-3); padding:var(--space-3) var(--space-4); border:1px solid var(--border); border-radius:var(--radius); background:var(--bg); }
 .skill-main { min-width:0; display:flex; flex-direction:column; gap:var(--space-1); }
 .skill-title { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
-.badge { padding:2px 7px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted); font-size:11px; }
+.badge { padding:2px 7px; border-radius:999px; border:1px solid var(--border); color:var(--text-muted); font-size:12px; }
 .badge.enabled { color:var(--success); border-color:var(--success); }
 .badge.zip { color:var(--accent); }
 .skill-meta { display:flex; gap:var(--space-3); flex-wrap:wrap; color:var(--text-muted); font-size:12px; }
@@ -486,7 +486,7 @@ h1 { margin:0 0 var(--space-1); font-size:22px; }
 .version-row.default { border-color:var(--success); }
 .version-main { min-width:0; display:flex; flex-direction:column; gap:2px; }
 .version-title { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
-.version-meta { display:flex; gap:var(--space-3); flex-wrap:wrap; color:var(--text-muted); font-size:11px; word-break:break-all; }
+.version-meta { display:flex; gap:var(--space-3); flex-wrap:wrap; color:var(--text-muted); font-size:12px; word-break:break-all; }
 .resource-panel { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-2); border:1px solid var(--border); border-radius:var(--radius); }
 .resource-list { display:flex; flex-wrap:wrap; gap:var(--space-2); }
 .resource-preview { display:flex; flex-direction:column; gap:var(--space-1); }
@@ -494,7 +494,7 @@ h1 { margin:0 0 var(--space-1); font-size:22px; }
 .resource-preview pre { max-height:260px; overflow:auto; margin:0; padding:var(--space-2); border:1px solid var(--border); border-radius:var(--radius); white-space:pre-wrap; word-break:break-word; }
 .audit-panel { width:100%; display:flex; flex-direction:column; gap:var(--space-2); padding-top:var(--space-3); border-top:1px solid var(--border); }
 .audit-row { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; padding:var(--space-2) var(--space-3); border:1px solid var(--border); border-radius:var(--radius); font-size:12px; color:var(--text-muted); }
-.import-panel { display:flex; flex-direction:column; gap:var(--space-3); margin-bottom:var(--space-4); padding:var(--space-4); border:1px solid var(--accent); border-radius:var(--radius); background:var(--surface); }
+.import-panel { display:flex; flex-direction:column; gap:var(--space-3); margin-bottom:var(--space-4); padding:var(--space-4); border:1px solid var(--accent); border-radius:var(--radius); background:var(--bg); }
 .panel-copy { display:flex; flex-direction:column; gap:4px; }
 .panel-form { display:grid; grid-template-columns:repeat(2,minmax(160px,1fr)); gap:var(--space-2); align-items:end; }
 .panel-form label { display:flex; flex-direction:column; gap:4px; font-size:12px; color:var(--text-muted); }

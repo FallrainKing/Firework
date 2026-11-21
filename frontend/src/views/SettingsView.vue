@@ -178,22 +178,22 @@ onMounted(refresh)
 
 <style scoped>
 .agent-management { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:12px; margin:16px 0 24px; }
-.agent-management > * { display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; border:1px solid var(--border); border-radius:var(--radius); padding:16px; background:var(--surface); text-decoration:none; color:var(--text); }
+.agent-management > * { display:flex; flex-direction:column; align-items:flex-start; gap:8px; text-align:left; border:1px solid var(--border); border-radius:var(--radius-panel); padding:20px; background:var(--bg); text-decoration:none; color:var(--text); }
 .agent-management span { color:var(--text-muted); font-size:12px; line-height:1.6; }
 .agent-management a:hover,.agent-management button:hover { border-color:var(--accent); }
-.agent-management .future-capability { background:var(--bg); }
+.agent-management .future-capability { background:var(--surface); }
 .settings-workspace { padding: var(--space-5); overflow-y: auto; }
 .module-heading { margin-bottom: var(--space-4); }
 .eyebrow { color: var(--accent); font-size: 11px; letter-spacing: .12em; margin: 0 0 var(--space-1); }
 h1 { margin: 0 0 var(--space-1); font-size: 22px; }
 .settings-grid { display: grid; grid-template-columns: minmax(280px, 1fr) minmax(280px, 1fr); gap: var(--space-4); align-items: start; }
-.settings-card { padding: var(--space-4); border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.settings-card { padding:var(--space-5); border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--bg); }
 .settings-card:nth-child(3) { grid-column: 1 / -1; }
 h2 { margin: 0 0 var(--space-3); font-size: 16px; }
 .profile-row { display: flex; gap: var(--space-4); align-items: flex-start; }
 .profile-form { flex: 1; min-width: 0; display: grid; gap: var(--space-2); }
 .profile-form label { font-size: 12px; color: var(--text-muted); }
-.avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--accent); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-size: 20px; flex: 0 0 auto; }
+.avatar { width: 56px; height: 56px; border-radius: 50%; object-fit: cover; background: var(--accent); color:var(--on-accent); display: inline-flex; align-items: center; justify-content: center; font-size: 20px; flex: 0 0 auto; }
 .avatar-empty { background: var(--accent); }
 dl { display: grid; gap: var(--space-2); margin: 0; }
 dl div { display: grid; grid-template-columns: 110px 1fr; gap: var(--space-2); }

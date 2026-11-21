@@ -271,7 +271,7 @@ defineExpose({ flush, orchestrator: orch })
 <style scoped>
 .version-notice {padding:12px;background:var(--accent-soft);font-size:12px;z-index:3}.version-notice button{margin-left:8px}
 .reading-layout { display:flex; flex-direction:column; flex:1 1 0; height:0; min-height:0; min-width:0; overflow:hidden; }
-.reader-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); flex-wrap: wrap; min-height:50px; flex-shrink:0; }
+.reader-top { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-bottom: 1px solid var(--border); background:var(--bg); flex-wrap: wrap; min-height:46px; flex-shrink:0; }
 .session-controls { display:flex; gap:6px; min-width:0; }
 .reader-session { flex:1; min-width:0; max-width:100%; font-size:11px; padding:5px; }
 .new-session { flex-shrink:0; font-size:11px; padding:5px 8px; }
@@ -286,7 +286,7 @@ defineExpose({ flush, orchestrator: orch })
 .mobile-more { flex-shrink:0; }
 .reader-body { display: flex; flex: 1; min-height: 0; min-width:0; overflow:hidden; }
 .left-pane { width:min(var(--aux-width), 34%); min-width:140px; flex-shrink:0; overflow:hidden; border-right: 1px solid var(--border); background: var(--surface); }
-.chat-pane { display:flex; flex-direction:column; min-height:0; width:min(var(--chat-width), 52%); min-width:240px; flex-shrink:0; overflow:hidden; border-left: 1px solid var(--border); background: var(--surface); }
+.chat-pane { display:flex; flex-direction:column; min-height:0; width:min(var(--chat-width), 52%); min-width:240px; flex-shrink:0; overflow:hidden; border-left: 1px solid var(--border); background: var(--bg); }
 .hide-left .left-pane, .hide-left .resizer:first-of-type { display: none; }
 .hide-chat .chat-pane, .hide-chat .resizer:last-of-type { display: none; }
 .resizer { width: 6px; cursor: col-resize; touch-action:none; background:var(--surface); flex-shrink: 0; }

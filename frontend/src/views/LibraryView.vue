@@ -79,7 +79,20 @@ function onOpenSession(sid: number) {
 .manage-view { display: flex; height: 100%; min-height: 0; min-width: 0; overflow: hidden; }
 .manage-nav { flex: 0 0 auto; display: flex; gap: var(--space-1); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border); }
 .manage-nav button[aria-current='page'] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.manage-nav { background:var(--bg); padding:8px 16px; }
+.manage-nav button { border-color:transparent; background:transparent; }
+.manage-nav button[aria-current='page'] { border-color:transparent; }
 .manage-content { flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+</style>
+
+<style scoped>
+.library-nav { background:var(--surface); }
+.library-nav button { background:transparent; border-color:transparent; font-size:13px; padding:6px 8px; }
+.library-nav small { font-size:12px; }
+.library-nav .active { border-color:transparent; }
+.library-nav .branch-toggle,.library-nav .child-create { padding:3px; }
+.library-nav h2 { font-size:12px; font-weight:600; }
+.project-card { background:var(--bg); }
 </style>
 
 <style scoped>

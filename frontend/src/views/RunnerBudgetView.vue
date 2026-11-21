@@ -40,5 +40,5 @@ onMounted(load)
  </main>
 </template>
 <style scoped>
-.budget-page{max-width:1000px;margin:0 auto;padding:28px;overflow:auto;height:100%;box-sizing:border-box}.budget-page section{display:grid;gap:14px}.budget-page form{display:grid;gap:14px;max-width:620px}.budget-page label{display:grid;gap:6px}.budget-page input,.budget-page select{padding:9px;max-width:100%}.budget-page li{padding:9px 0}.budget-page button{padding:7px 12px;width:fit-content;margin-right:8px}.budget-page pre{white-space:pre-wrap}.error{color:#b33}.budget-page p{line-height:1.6}
+.budget-page{max-width:1000px;margin:0 auto;padding:28px;overflow:auto;height:100%;box-sizing:border-box}.budget-page section{display:grid;gap:14px}.budget-page form{display:grid;gap:14px;max-width:620px}.budget-page label{display:grid;gap:6px}.budget-page input,.budget-page select{padding:9px;max-width:100%}.budget-page li{padding:9px 0}.budget-page button{padding:7px 12px;width:fit-content;margin-right:8px}.budget-page pre{white-space:pre-wrap}.error{color:var(--danger)}.budget-page p{line-height:1.6}
 </style>

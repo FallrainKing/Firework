@@ -62,25 +62,25 @@ function submit() {
 </template>
 
 <style scoped>
-.work-welcome { width:100%; max-width:900px; padding:clamp(24px,4vh,40px) 48px 24px; margin:0 auto; overflow-y:auto; }
+.work-welcome { width:100%; max-width:920px; padding:clamp(32px,7vh,80px) 40px 32px; margin:0 auto; overflow-y:auto; }
 .welcome-mark { width:36px; height:36px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); border-radius:10px; font-size:21px; margin-bottom:12px; }
-.eyebrow { color:var(--accent); font-size:10px; letter-spacing:.16em; font-weight:600; margin:0 0 10px; }
-h1 { margin:0 0 10px; font-size:clamp(24px,2.6vw,32px); letter-spacing:-.04em; font-weight:650; }
+.eyebrow { color:var(--accent); font-size:12px; letter-spacing:.1em; font-weight:600; margin:0 0 10px; }
+h1 { margin:0 0 10px; font-size:clamp(26px,2.6vw,34px); letter-spacing:-.04em; font-weight:650; }
 .work-welcome > .muted { font-size:13px; line-height:1.9; }
-form { margin:20px 0 10px; padding:18px; border:1px solid var(--border); border-radius:16px; background:var(--bg); box-shadow:0 6px 24px rgb(26 58 44 / .04); }
+form { margin:20px 0 10px; padding:18px; border:1px solid var(--border); border-radius:var(--radius-panel); background:var(--bg); box-shadow:none; }
 form:focus-within { border-color:var(--accent); }
 textarea { width:100%; padding:4px; min-height:80px; border:0; outline:none!important; resize:vertical; line-height:1.8; font-size:14px; }
 .start-actions { display:flex; align-items:center; gap:8px; justify-content:space-between; margin-top:12px; }
 .start-actions button { font-size:12px; }
 .start-actions button:first-child { border:0; background:var(--surface); }
-.input-hint { font-size:11px; margin:0 4px 22px; }
+.input-hint { font-size:12px; margin:0 4px 22px; }
 .welcome-templates h2 { font-size:12px; font-weight:500; color:var(--text-muted); margin:0 0 14px; }
 .template-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
-.template-card { display:flex; flex-direction:column; gap:8px; align-items:flex-start; text-align:left; padding:14px; background:var(--bg); border-radius:12px; }
+.template-card { display:flex; flex-direction:column; gap:8px; align-items:flex-start; text-align:left; padding:14px; background:var(--bg); border-radius:var(--radius); }
 .template-card:hover { background:var(--accent-soft); }
 .template-symbol { color:var(--accent); font-size:18px; }
 .template-card strong { font-size:13px; font-weight:600; }
-.template-card .muted { font-size:11px; line-height:1.8; }
+.template-card .muted { font-size:12px; line-height:1.8; }
 .welcome-foot { display:flex; justify-content:center; gap:16px; margin-top:18px; }
 .welcome-foot button { font-size:12px; border:0; background:none; color:var(--text-muted); padding:4px 0; }
 @media(max-width:1000px) { .work-welcome { padding:32px 24px; } .template-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }

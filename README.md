@@ -13,7 +13,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - [Implementation status](docs/STATUS.md): current scope and verification limits.
 - [Project audit](docs/PROJECT-AUDIT.md) (Chinese): documentation map, requirement coverage, and unfinished architecture work.
 
-The current baseline uses business migrations through **0020**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
+The current baseline uses business migrations through **0021**, identity schema **3**, Runner protocol **8**, and Zotero plugin **0.1.4**.
 
 ## Features
 
@@ -155,3 +155,7 @@ Never commit credentials, `.env`, private keys, personal papers, runtime data, o
 ## License
 
 A project-level license has not yet been added. Do not assume an open-source license from the repository's public visibility; third-party components retain their respective licenses.
+
+## External agent integration
+
+Create scoped, expiring API authorization in Settings → External agent access. Download the portable paper-operation Skill to search your library, update metadata and manage PDF annotations from another compatible agent. This gateway does not invoke the server model. Execution profiles now combine versioned Skills, model connections, budgets, roles and narrowed built-in MCP tools. See the [integration design and API](docs/EXTERNAL-AGENT-API.md).

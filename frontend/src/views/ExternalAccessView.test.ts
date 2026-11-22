@@ -1,0 +1,5 @@
+import {mount,flushPromises} from '@vue/test-utils'
+import {it,expect,vi} from 'vitest'
+import View from './ExternalAccessView.vue'
+import * as client from '@/api/client'
+it('starts read-only, creates only on submit, displays secret once in memory',async()=>{const api=vi.spyOn(client,'api').mockImplementation(async(_p,o)=>o?.method==='POST'?{token:'fw_test_display_once'}:{tokens:[]});const w=mount(View,{global:{stubs:{RouterLink:true}}});await flushPromises();expect(api).toHaveBeenCalledTimes(1);await w.find('input').setValue('My agent');await w.find('form').trigger('submit');await flushPromises();expect(api).toHaveBeenCalledWith('/api/me/access-tokens',{method:'POST',body:{name:'My agent',scopes:['papers:read','annotations:read'],expires_days:7,paper_ids:null}});expect((w.find('textarea').element as HTMLTextAreaElement).value).toBe('fw_test_display_once');await w.findAll('button').find(b=>b.text().includes('隐藏'))!.trigger('click');expect(w.find('textarea').exists()).toBe(false);w.unmount();vi.restoreAllMocks()})

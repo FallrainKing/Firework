@@ -15,7 +15,7 @@ onMounted(load)
 <template>
  <main class="budget-page">
   <RunnerSettingsNav/><h1>Runner · 任务额度</h1>
-  <p>当前账号独立保存。此页配置任务额度；模型连接已提供独立入口，MCP 管理仍在后续交付。</p>
+  <p>当前账号独立保存。此页配置任务额度；模型连接已提供独立入口，执行方案与内置 MCP 权限已有独立管理页。</p>
   <p role="alert" v-if="error" class="error">{{ error }} <button @click="load" :disabled="busy">重新载入</button></p><p role="status">{{ notice }}</p>
   <section v-if="data"><h2>账号默认额度</h2>
    <label>新任务使用 <select v-model="selected" :disabled="busy"><option value="">沿用各 Skill 原有额度</option><option v-for="b in data.budgets" :key="b.id" :value="b.id">{{ b.name }} · v{{ b.revision }}</option></select></label>

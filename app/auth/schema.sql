@@ -30,3 +30,11 @@ CREATE TABLE IF NOT EXISTS zotero_devices(
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_zotero_account_instance ON zotero_devices(account_id,instance_id);
 UPDATE auth_meta SET value='2' WHERE key='schema_version';
+CREATE TABLE IF NOT EXISTS external_tokens(
+ id TEXT PRIMARY KEY,account_id TEXT NOT NULL REFERENCES accounts(id),name TEXT NOT NULL,
+ token_hash TEXT NOT NULL UNIQUE,prefix TEXT NOT NULL,scopes_json TEXT NOT NULL,
+ paper_ids_json TEXT,session_version INTEGER NOT NULL,created_at INTEGER NOT NULL,
+ expires_at INTEGER NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,last_seen INTEGER,
+ rate_window INTEGER NOT NULL DEFAULT 0,rate_count INTEGER NOT NULL DEFAULT 0
+);
+UPDATE auth_meta SET value='3' WHERE key='schema_version';

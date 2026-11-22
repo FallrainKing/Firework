@@ -126,3 +126,7 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 `GET /api/library/collections` 默认有效分类，`trashed=true` 查回收站。返回 revision、managed（Zotero 来源维护目录）、deletion_group 和 restore_root。`PATCH /api/library/collections/{id}` 请求 `{name,parent_id,expected_revision}`；`DELETE` 同路径携带 JSON `{expected_revision}`；`POST /api/library/collections/{id}/restore` 同样携带预期修订。成功返回有效 collections 列表。软删除保留成员关系，不删除论文/项目，恢复只允许批次根。循环/同名/陈旧修订/来源目录修改/活动导入/恢复冲突返回 409，未知 ID 返回 404；认证与 CSRF 仍适用。
 
 `GET /api/me` 对真实认证请求返回 auth 能力及 `login_policy:{admin_only,registration_open:false}`；无认证本机测试模式保持原有能力默认值。
+
+## 执行方案与外部数据接口
+
+执行方案、配置模型目录和内置 MCP 清单见 [Runner 配置](RUNNER-CONFIGURATION.md)。外部账号级 Bearer 接口、字段示例、权限、幂等与版本冲突见 [外部接入](EXTERNAL-AGENT-API.md)；它们与浏览器 Cookie、Zotero 设备及内部工具令牌互不替代。

@@ -36,3 +36,5 @@ ops/tunnel.sh
 /app/web/downloads/*.xpi
 
 /app/web/downloads/firework-zotero-updates.json
+
+/app/web/downloads/firework-paper-ops.zip

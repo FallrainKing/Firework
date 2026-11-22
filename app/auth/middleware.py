@@ -43,6 +43,32 @@ class AuthenticationMiddleware:
                 account=store.by_workspace(key)
                 if not store.login_allowed(account):
                     return await JSONResponse({'detail':'账号当前不可执行任务'},status_code=403)(scope,receive,send)
+            elif path.startswith('/api/external/'):
+                from ..external.auth import principal
+                from ..core.errors import ServiceError
+                header=request.headers.get('authorization','')
+                try:grant=principal(store,header[7:]) if header.startswith('Bearer ') else None
+                except ServiceError as e:return await JSONResponse({'detail':e.detail},status_code=e.status)(scope,receive,send)
+                if grant is None:return await JSONResponse({'detail':'外部授权无效、过期或已撤销'},status_code=401)(scope,receive,send)
+                if not same_origin(request,store):return await JSONResponse({'detail':'浏览器跨站请求不允许'},status_code=403)(scope,receive,send)
+                if not request.headers.get('content-length','0').isdigit() or int(request.headers.get('content-length','0'))>65536:return await JSONResponse({'detail':'外部请求最多 64 KiB'},status_code=413)(scope,receive,send)
+                # Bound streamed/chunked bodies as well as Content-Length, before parsing JSON.
+                chunks=[];size=0
+                async for chunk in request.stream():
+                    size+=len(chunk)
+                    if size>65536:return await JSONResponse({'detail':'外部请求最多 64 KiB'},status_code=413)(scope,receive,send)
+                    chunks.append(chunk)
+                original_receive=receive;replayed=False
+                async def replay_receive():
+                    nonlocal replayed
+                    if not replayed:
+                        replayed=True
+                        return {'type':'http.request','body':b''.join(chunks),'more_body':False}
+                    return await original_receive()
+                receive=replay_receive
+                user,grant=grant
+                scope.setdefault('state',{})['external_token']=grant
+                key=user['workspace_key']
             elif path.startswith('/api/zotero/device/'):
                 from ..integrations.zotero.auth import principal
                 header=request.headers.get('authorization','')
@@ -71,7 +97,7 @@ class AuthenticationMiddleware:
         async def guarded_send(message):
             if message['type']=='http.response.start':
                 headers=[(k,v) for k,v in message.get('headers',[]) if k.lower() not in (b'cache-control',b'vary')]
-                headers.extend([(b'cache-control',b'no-store'),(b'vary',b'Cookie'),(b'x-content-type-options',b'nosniff'),
+                headers.extend([(b'cache-control',b'no-store'),(b'vary',b'Cookie, Authorization'),(b'x-content-type-options',b'nosniff'),
                                 (b'referrer-policy',b'same-origin'),(b'x-frame-options',b'DENY'),
                                 (b'content-security-policy',b"frame-ancestors 'none'; object-src 'none'; base-uri 'self'")])
                 message={**message,'headers':headers}

@@ -15,6 +15,8 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
+from .external.router import router as external_router, management as external_management
+from .runner_config.profiles_router import router as profiles_router
 from .documents.router import router as documents_router
 from .integrations.zotero.router import router as zotero_router
 from .imports.router import router as imports_router, internal as imports_internal
@@ -158,6 +160,9 @@ def create_app(*, authentication: bool = True) -> FastAPI:
             return JSONResponse({'detail':errors},status_code=422)
         return await request_validation_exception_handler(request,exc)
     app.include_router(auth_router)
+    app.include_router(profiles_router)
+    app.include_router(external_router)
+    app.include_router(external_management)
 
     app.include_router(agent_router)
     app.include_router(skills_router)

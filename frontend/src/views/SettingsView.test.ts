@@ -32,12 +32,13 @@ describe('SettingsView', () => {
     expect(wrapper.text()).not.toContain('多用户认证未实现')
     wrapper.unmount()
   })
-  it('opens the skill library from the management hub and labels MCP as unavailable', async () => {
+  it('opens the skill library and exposes execution/MCP and external access management', async () => {
     const wrapper = mount(SettingsView)
     await flushPromises()
     await wrapper.find('.agent-management button').trigger('click')
     expect(useWorkbenchStore().view).toBe('skills')
-    expect(wrapper.find('.future-capability').text()).toContain('尚未交付')
+    expect(wrapper.find('.agent-management').text()).toContain('执行方案与 MCP')
+    expect(wrapper.find('.agent-management').text()).toContain('外部智能体接入')
     wrapper.unmount()
   })
   it('does not announce a save on initial load', async () => {

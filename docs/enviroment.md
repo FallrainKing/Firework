@@ -1,6 +1,6 @@
 # 环境、部署与排障
 
-更新：2026-11-22。当前业务迁移 0020、身份 schema 2、Runner 协议 **7**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
+更新：2026-11-22。当前业务迁移 0021、身份 schema 3、Runner 协议 **8**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
 
 ## 1. 当前实例与部署边界
 
@@ -11,12 +11,12 @@
 | 部署分支 | release/frontier-workbench-20261119，跟踪 origin/main |
 | 应用 | Compose app，容器端口 8000，宿主端口 8600 |
 | 公网 | `https://paper.matchesai.vip/#/`，HTTPS 反向代理及应用网页登录 |
-| Runner | 用户级 research-agent-runner，私有 Unix Socket，当前协议 7、默认并发 2 |
+| Runner | 用户级 research-agent-runner，私有 Unix Socket，当前协议 8、默认并发 2 |
 | 数据 | 项目 data/，主业务库 app.db，身份库 auth/accounts.db |
 | 向量与缓存 | Compose qdrant、data/qdrant、data/hf |
 | Zotero | 插件 0.1.4，声明兼容 10.0.6–10.x |
 
-2026-11-22 只读核对服务器仓库提交为 `4abeb36`，app/qdrant/backup 运行，qdrant healthy、Runner active；该检查不代替完整业务冒烟。当前代码要求 Runner 协议 7。模型以所选连接或每个 Run 实际记录为准；legacy 最近状态为 glm-5.3[1M]，不能据此假定所有账号使用同一模型或已经实测 1M。
+2026-11-22 只读核对服务器仓库提交为 `4abeb36`，app/qdrant/backup 运行，qdrant healthy、Runner active；该检查不代替完整业务冒烟。当前代码要求 Runner 协议 8。模型以所选连接或每个 Run 实际记录为准；legacy 最近状态为 glm-5.3[1M]，不能据此假定所有账号使用同一模型或已经实测 1M。
 
 2026-11-22 首批增量已部署到 `dc7ff6e`（迁移 0020）；发布前完成成套备份，保留旧镜像 `firework-before-collection-lifecycle:20261122`。新增分类/历史导读/策略接口及浏览器核验通过，无新研究模型任务。后续文档提交不需要重建镜像。
 

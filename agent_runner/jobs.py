@@ -219,6 +219,15 @@ class JobEngine:
                 session_id = body.get('session_id') or str(uuid.uuid4())
                 sfolder = self.runtime / 'sessions' / session_id
                 sfolder.mkdir(parents=True, mode=0o700, exist_ok=True)
+                if skill.get('profile_snapshot'):
+                    from app.core.db import get_conn
+                    from app.core.config import Settings
+                    from app.runner_config import profiles
+                    check_db=get_conn(Settings(data_dir=self.runtime.parent,qdrant_url='unused',workspace_key=body.get('workspace_key','legacy')))
+                    try:
+                        checked=profiles.resolve(check_db,Settings(data_dir=self.runtime.parent,qdrant_url='unused',workspace_key=body.get('workspace_key','legacy')),profiles.ProfileRef(**{k:skill['profile_snapshot'][k] for k in ('id','revision')}))
+                        if checked['snapshot']!=skill['profile_snapshot']:raise ValueError('执行方案已变化')
+                    finally:check_db.close()
                 snap=body.get('connection_snapshot')
                 if snap:
                     connections.check_current(self.runtime,snap)
@@ -262,6 +271,8 @@ class JobEngine:
                                 f.write(secrets.token_urlsafe(32))
                 model = snap['model'] if snap else cli.current_model(env, vision=bool(body.get('attachment_ids')))
                 skill_md = ((self.runtime.parent / 'skills' / skill['storage_key'] / skill['entry']).read_text() if skill.get('storage_key') else (self.root / 'skills' / job['skill'] / 'SKILL.md').read_text())
+                if skill.get('role_prompt'):
+                    skill_md += '\nExecution role (cannot expand tool permissions):\n'+skill['role_prompt']
                 if snap and snap.get('role_prompt'):
                     skill_md += '\nResearch role (cannot expand tool permissions):\n'+snap['role_prompt']
                 if snap and body.get('attachment_ids') and snap.get('vision')!='declared_yes':

@@ -1,13 +1,14 @@
 # 当前注册路由清单
 
-生成核对：2026-11-22，功能代码版本以 Git 为准。从 `app.main.create_app().openapi()` 的 paths 提取，共 **148** 条 HTTP 方法/路径；业务迁移 0020、Runner 协议 7。
+生成核对：2026-11-22。从 `app.main.create_app().openapi()` 提取，共 **169** 条 HTTP 方法/路径；业务迁移 0021、身份 schema 3、Runner 协议 8。
 
-浏览器私有接口需登录，写请求需 CSRF；Zotero 设备凭据和内部工具令牌是限定用途授权，不是通用网页登录替代。此清单不包含未来设计路由、静态文件目录或内部 Runner Socket API。字段与调用约定见 [API](API.md)，连接与额度见 [Runner 配置](RUNNER-CONFIGURATION.md)。
+浏览器私有接口需登录，写请求需 CSRF；外部 API Bearer、Zotero 设备与内部工具令牌互不替代。该清单不含未来设计路由、静态下载或内部 Runner Socket API。字段见 [API](API.md)、[Runner 配置](RUNNER-CONFIGURATION.md) 和 [外部接入](EXTERNAL-AGENT-API.md)。
 
 | 方法 | 路径 |
 | --- | --- |
 | DELETE | `/api/library/collections/{collection_id}` |
 | DELETE | `/api/library/papers/{paper_id}` |
+| DELETE | `/api/me/access-tokens/{ident}` |
 | DELETE | `/api/skills/categories/{category_id}` |
 | DELETE | `/api/zotero/devices/{ident}` |
 | GET | `/api/admin/accounts` |
@@ -17,6 +18,14 @@
 | GET | `/api/agent/runs/{run_id}/events` |
 | GET | `/api/agent/status` |
 | GET | `/api/auth/session` |
+| GET | `/api/external/v1/capabilities` |
+| GET | `/api/external/v1/collections` |
+| GET | `/api/external/v1/papers` |
+| GET | `/api/external/v1/papers/{pid}` |
+| GET | `/api/external/v1/papers/{pid}/annotations` |
+| GET | `/api/external/v1/papers/{pid}/document` |
+| GET | `/api/external/v1/papers/{pid}/file` |
+| GET | `/api/external/v1/papers/{pid}/pages/{page}` |
 | GET | `/api/frontier/candidates` |
 | GET | `/api/frontier/capabilities` |
 | GET | `/api/frontier/projects` |
@@ -33,10 +42,14 @@
 | GET | `/api/library/papers/{paper_id}/documents` |
 | GET | `/api/library/papers/{paper_id}/thumbnail` |
 | GET | `/api/me` |
+| GET | `/api/me/access-tokens` |
 | GET | `/api/me/avatar/{storage_key}` |
 | GET | `/api/me/preferences` |
 | GET | `/api/me/runner/budgets` |
 | GET | `/api/me/runner/connections` |
+| GET | `/api/me/runner/mcp` |
+| GET | `/api/me/runner/models` |
+| GET | `/api/me/runner/profiles` |
 | GET | `/api/reader/guide-skills` |
 | GET | `/api/reader/papers/{paper_id}` |
 | GET | `/api/reader/papers/{paper_id}/annotations` |
@@ -70,6 +83,8 @@
 | GET | `/api/zotero/exports` |
 | GET | `/health` |
 | PATCH | `/api/admin/accounts/{ident}` |
+| PATCH | `/api/external/v1/papers/{pid}` |
+| PATCH | `/api/external/v1/papers/{pid}/annotations/{ident}` |
 | PATCH | `/api/frontier/reports/{run_id}/read-state` |
 | PATCH | `/api/frontier/topics/{ident}` |
 | PATCH | `/api/library/collections/{collection_id}` |
@@ -78,6 +93,7 @@
 | PATCH | `/api/me/preferences` |
 | PATCH | `/api/me/runner/budgets/{ident}` |
 | PATCH | `/api/me/runner/connections/{ident}` |
+| PATCH | `/api/me/runner/profiles/{ident}` |
 | PATCH | `/api/reader/annotations/{ident}` |
 | PATCH | `/api/reader/guide-runs/{ident}` |
 | PATCH | `/api/reader/translations/{ident}` |
@@ -93,6 +109,8 @@
 | POST | `/api/auth/logout` |
 | POST | `/api/auth/password` |
 | POST | `/api/auth/register` |
+| POST | `/api/external/v1/papers` |
+| POST | `/api/external/v1/papers/{pid}/annotations` |
 | POST | `/api/frontier/decisions/batch` |
 | POST | `/api/frontier/runs/{ident}/cancel` |
 | POST | `/api/frontier/runs/{ident}/discussion` |
@@ -115,11 +133,14 @@
 | POST | `/api/library/papers/{paper_id}/document-versions/{version_id}/default` |
 | POST | `/api/library/papers/{paper_id}/refresh-card` |
 | POST | `/api/library/papers/{paper_id}/restore` |
+| POST | `/api/me/access-tokens` |
 | POST | `/api/me/avatar` |
 | POST | `/api/me/runner/budgets` |
 | POST | `/api/me/runner/budgets/preflight` |
 | POST | `/api/me/runner/connections` |
 | POST | `/api/me/runner/connections/preflight` |
+| POST | `/api/me/runner/profiles` |
+| POST | `/api/me/runner/profiles/preflight` |
 | POST | `/api/reader/annotations` |
 | POST | `/api/reader/guide-items/{ident}/adopt` |
 | POST | `/api/reader/guide-runs/{ident}/cancel` |

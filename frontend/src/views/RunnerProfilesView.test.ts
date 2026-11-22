@@ -1,0 +1,10 @@
+import {mount,flushPromises} from '@vue/test-utils'
+import {it,expect,vi,beforeEach} from 'vitest'
+import View from './RunnerProfilesView.vue'
+import {runnerProfiles} from '@/api/runnerProfiles'
+import {runnerConnections} from '@/api/runnerConnections'
+import {runnerBudgets} from '@/api/runnerBudgets'
+import {skillsApi,type Skill} from '@/api/skills'
+const skill={id:'chat',name:'聊天',status:'enabled',default_version:{id:1,version:'1',manifest:{requested_tools:[]}}} as unknown as Skill
+beforeEach(()=>{vi.restoreAllMocks();vi.spyOn(runnerProfiles,'list').mockResolvedValue({profiles:[]});vi.spyOn(runnerProfiles,'models').mockResolvedValue({models:[]});vi.spyOn(runnerProfiles,'tools').mockResolvedValue({servers:[{id:'research',transport:'private-stdio',tools:[{name:'paper_page',effect:'read',grant:'skill'}]}],external_servers_enabled:false});vi.spyOn(skillsApi,'list').mockResolvedValue({skills:[skill],registry_revision:1});vi.spyOn(runnerConnections,'list').mockResolvedValue({connections:[],default_connection_id:null,settings_revision:1,legacy_available:true});vi.spyOn(runnerBudgets,'list').mockResolvedValue({budgets:[{id:'standard',revision:1,name:'标准',builtin:true,values:{max_calls:24,max_turns:24,max_output_tokens:8192,timeout_s:1800,cost_mode:'disabled',max_budget_usd:null}}],default_budget_id:null,settings_revision:1})})
+it('loads inventory without saving; explicit submit freezes selected revisions',async()=>{const save=vi.spyOn(runnerProfiles,'save').mockResolvedValue({id:'a',revision:1,name:'My plan',enabled:true,config:{skill_id:'chat',skill_version_id:1,connection:null,budget:{id:'standard',revision:1},role_prompt:'',tools:[]}});const w=mount(View,{global:{stubs:{RouterLink:true}}});await flushPromises();expect(save).not.toHaveBeenCalled();expect(w.text()).toContain('任意外部 MCP 服务尚未开放');await w.find('input').setValue('My plan');await w.find('form').trigger('submit');await flushPromises();expect(save).toHaveBeenCalledWith({name:'My plan',enabled:true,config:{skill_id:'chat',skill_version_id:1,connection:null,budget:{id:'standard',revision:1},role_prompt:'',tools:[]}},undefined);w.unmount()})

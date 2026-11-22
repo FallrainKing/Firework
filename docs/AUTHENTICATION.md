@@ -1,6 +1,6 @@
 # 认证、多账号与数据隔离
 
-更新：2026-11-21。实现位于 `app/auth/`、`app/core/workspaces.py` 和宿主 Runner；当前业务迁移 0020、独立身份库 schema 2、Runner 协议 **7**。
+更新：2026-11-21。实现位于 `app/auth/`、`app/core/workspaces.py` 和宿主 Runner；当前业务迁移 0021、独立身份库 schema 3、Runner 协议 **8**。
 
 ## 1. 当前开放范围
 
@@ -82,7 +82,7 @@ WorkspaceManager 复用只读模型权重和 Qdrant 客户端，但创建不同 
 
 ## 6. 部署与维护验证
 
-应用与宿主 Runner 必须兼容协议 7。生产认证默认启用，环境变量不能切回匿名模式。`create_app(authentication=False)` 只用于显式构造隔离业务测试。
+应用与宿主 Runner 必须兼容协议 8。生产认证默认启用，环境变量不能切回匿名模式。`create_app(authentication=False)` 只用于显式构造隔离业务测试。
 
 保留 `RESEARCH_AUTH_ADMIN_ONLY=1`、`RESEARCH_AUTH_COOKIE_SECURE=1`，并将 `RESEARCH_PUBLIC_ORIGIN` 设为实际 HTTPS 站点。HTTP 登录页禁用密码提交，提供配置的 HTTPS 登录入口。仅在隔离的本地 HTTP 开发环境可设置 `RESEARCH_AUTH_COOKIE_SECURE=0`，同时配置匹配的开发 Origin，使用单独的 `research_session_dev` Cookie。
 
@@ -121,3 +121,7 @@ AUTH_SESSION_FILE="$maintenance_dir/session.json" \
 身份 schema 2 增加 10 分钟配对码和 30 天限域设备凭据。网页必须登录并通过 CSRF 核对和确认设备；插件凭一次性秘密领取令牌，服务端仅存哈希，本地使用 Zotero 的凭据服务保存。设备令牌仅适用于 `/api/zotero/device/*`，其他接口继续要求网页登录。重配同账号实例更换令牌并保留来源编号；改密、停用、撤销和到期使旧令牌失效。公开配对发起入口有持久节流，跨站来源拒绝；不暴露研究资料。
 
 备份身份库会保留设备哈希与撤销状态。恢复历史备份后应复核并撤销不再信任的设备，避免恢复旧授权状态。插件本地 `firework-sync.json` 位于 Zotero 数据目录，含书目信息与任务恢复记录，不含设备令牌；它也应随研究资料妥善备份。
+
+## 外部智能体授权
+
+身份 schema 3 新增账号级 external_tokens；每个令牌限定 scope、有效期和可选论文范围，可撤销，并继承账号启停与 session_version。外部 Bearer 仅能访问 `/api/external/v1`，不能替代 Cookie、Zotero 或内部工具令牌；浏览器签发与撤销仍需 CSRF。设计和边界见 [外部接入](EXTERNAL-AGENT-API.md)。

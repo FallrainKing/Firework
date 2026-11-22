@@ -115,7 +115,9 @@ export interface SelectionContext {
 }
 
 export interface Run {
-  diagnostics?: {connection_snapshot?:{mode:string;name?:string;model?:string;revision?:number};finish_reason:string;message:string;subtype:string|null;effective_budget:Record<string,number|null>;budget_snapshot:{name:string;revision:number}|null;partial_available:boolean}
+  diagnostics?: {profile_snapshot?: {id:string;revision:number;name:string} | null
+  effective_tools?: string[]
+  connection_snapshot?:{mode:string;name?:string;model?:string;revision?:number};finish_reason:string;message:string;subtype:string|null;effective_budget:Record<string,number|null>;budget_snapshot:{name:string;revision:number}|null;partial_available:boolean}
   id: string
   request_key: string
   conversation_id: number
@@ -140,6 +142,7 @@ export interface Run {
 }
 
 export interface RunCreate {
+  profile?: {id:string;revision:number} | null
   connection?: {id:string;revision:number} | null
   budget?: {id:string;revision:number} | null
   prompt: string

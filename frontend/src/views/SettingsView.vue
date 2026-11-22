@@ -124,7 +124,7 @@ onMounted(refresh)
       <RouterLink to="/settings/runner/connections"><strong>模型连接 →</strong><span>API、模型、视觉能力、上下文与研究角色</span></RouterLink>
       <RouterLink to="/settings/runner/budgets"><strong>任务额度 →</strong><span>默认额度、预设与发送前校验</span></RouterLink>
       <button type="button" @click="wb.setView('skills')"><strong>技能库 →</strong><span>导入 ZIP、分类、版本与启用状态</span></button>
-      <div class="future-capability"><strong>MCP 工具</strong><span>当前随 Runner 提供，独立管理页尚未交付</span></div>
+      <RouterLink to="/settings/runner/profiles"><strong>执行方案与 MCP →</strong><span>组合 Skill、模型、额度、角色与内置工具权限</span></RouterLink><RouterLink to="/settings/integrations"><strong>外部智能体接入 →</strong><span>论文操作 Skill、范围授权与撤销</span></RouterLink>
     </nav>
     <AccountSecurity />
     <template v-if="profile">

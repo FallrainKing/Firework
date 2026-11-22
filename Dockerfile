@@ -36,6 +36,9 @@ COPY app ./app
 COPY plugins/zotero ./plugins/zotero
 COPY scripts/build_zotero_plugin.py ./scripts/build_zotero_plugin.py
 RUN python scripts/build_zotero_plugin.py
+COPY plugins/agent-skill ./plugins/agent-skill
+COPY scripts/build_agent_skill.py ./scripts/build_agent_skill.py
+RUN python scripts/build_agent_skill.py
 # Vue 构建产物覆盖到 app/web（vendor/ 已在仓库中，dist 不含 vendor）。
 COPY --from=frontend /build/dist/ ./app/web/
 

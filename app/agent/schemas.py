@@ -4,11 +4,13 @@ import uuid
 from pydantic import BaseModel, Field
 
 from ..reader.schemas import Context
+from ..runner_config.profiles import ProfileRef
 from ..runner_config.budgets import BudgetRef
 from ..runner_config.connection_schemas import ConnectionRef
 
 
 class RunCreate(BaseModel):
+    profile: ProfileRef | None = None
     budget: BudgetRef | None = None
     connection: ConnectionRef | None = None
     prompt: str = Field(min_length=1, max_length=3000)

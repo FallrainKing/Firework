@@ -20,7 +20,7 @@ from ..skills import service as skills_service
 from . import repository as repo, runner_client
 from .catalog import SKILLS as CATALOG, TEMPLATES
 from .schemas import RunCreate
-from ..runner_config import budgets,connections
+from ..runner_config import budgets,connections,profiles
 from . import diagnostics
 from .protocol import RUNNER_PROTOCOL_VERSION
 
@@ -177,6 +177,7 @@ async def create_run(body: RunCreate, state) -> dict:
             raise ServiceError(409, str(e)) from e
         if (json.loads(prior['attachment_ids_json']) != body.attachment_ids
                 or json.loads(prior['context_json']) != prior_contexts
+                or json.loads(prior['execution_policy_json'] or '{}').get('profile_selection') != (body.profile.model_dump() if body.profile else None)
                 or prior['purpose'] != body.purpose
                 or json.loads(prior['execution_policy_json'] or '{}').get('connection_selection') != (body.connection.model_dump() if body.connection else None)
                 or json.loads(prior['execution_policy_json'] or '{}').get('budget_selection') != (body.budget.model_dump() if body.budget else None)
@@ -229,11 +230,29 @@ async def create_run(body: RunCreate, state) -> dict:
         policy = skills_service.execution_policy(db, skill, session_version_id)
     except ValueError as exc:
         raise ServiceError(409, str(exc)) from exc
-    policy = budgets.resolve(db, policy, body.budget)
-    binding = session['runner_connection_json'] if conv_id is not None else None
-    if conv_id is not None and not binding and (session['native_ready'] or db.execute('SELECT 1 FROM agent_runs WHERE conversation_id=? LIMIT 1',(conv_id,)).fetchone()):
-        binding = '{"mode":"legacy"}'
-    connection_snapshot = connections.snapshot(db,state.settings,body.connection,binding)
+    bound_profile = json.loads(session['runner_profile_json']) if conv_id is not None and session['runner_profile_json'] else None
+    selection = body.profile or (profiles.ProfileRef(id=bound_profile['id'],revision=bound_profile['revision']) if bound_profile else None)
+    if selection:
+        if body.connection or body.budget:raise ServiceError(422,'执行方案已包含连接和额度，不能同时覆盖')
+        plan=profiles.resolve(db,state.settings,selection)
+        if plan['policy']['id']!=skill or plan['policy']['version_id']!=policy['version_id']:
+            raise ServiceError(409,'方案 Skill 及版本必须与会话一致')
+        if bound_profile and bound_profile!=plan['snapshot']:raise ServiceError(409,'会话执行方案已固定，请新建会话')
+        if not bound_profile and conv_id is not None and (session['native_ready'] or repo.run_count(db,conv_id)):
+            raise ServiceError(409,'已有会话不能新增执行方案，请新建会话')
+        policy=plan['policy']
+        policy['profile_snapshot']=plan['snapshot']
+        connection_snapshot=plan['connection']
+        if conv_id is not None and session['runner_connection_json'] and json.loads(session['runner_connection_json']) != connection_snapshot:
+            raise ServiceError(409,'会话模型连接已固定，请新建会话')
+    else:
+        policy = budgets.resolve(db, policy, body.budget)
+        binding = session['runner_connection_json'] if conv_id is not None else None
+        if conv_id is not None and not binding and (session['native_ready'] or repo.run_count(db,conv_id)):
+            binding = '{"mode":"legacy"}'
+        connection_snapshot = connections.snapshot(db,state.settings,body.connection,binding)
+    policy['profile_selection']=body.profile.model_dump() if body.profile else None
+    policy['budget_selection']=body.budget.model_dump() if body.budget else None
     if body.attachment_ids and connection_snapshot.get('mode')=='custom' and connection_snapshot.get('vision')!='declared_yes':
         raise ServiceError(422,'当前连接尚未声明支持图片，请新建会话并选择视觉模型')
     if connection_snapshot.get('mode')=='custom' and policy['max_output_tokens']>connection_snapshot['context_window']:
@@ -273,6 +292,8 @@ async def create_run(body: RunCreate, state) -> dict:
             policy['version'],
         )
         db.execute('UPDATE conversations SET runner_connection_json=? WHERE id=? AND runner_connection_json IS NULL',(json.dumps(connection_snapshot,ensure_ascii=False),conv_id))
+        if selection:
+            db.execute('UPDATE conversations SET runner_profile_json=? WHERE id=? AND runner_profile_json IS NULL',(json.dumps(plan['snapshot'],ensure_ascii=False),conv_id))
         repo.clear_draft(db, conv_id)
         db.commit()
     except Exception:
@@ -344,14 +365,15 @@ async def execute_run(run_id: str, state):
             return
         try:
             async with runner_client.client() as c:
-                connection_snap=json.loads(row['execution_policy_json'] or '{}').get('connection_snapshot')
+                policy_snap=json.loads(row['execution_policy_json'] or '{}')
+                connection_snap=policy_snap.get('connection_snapshot')
                 connection_secret=connections.materialize(db,state.settings,connection_snap)
-                if json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot') or (connection_snap and connection_snap.get('mode')=='custom'):
+                if policy_snap.get('profile_snapshot') or policy_snap.get('budget_snapshot') or (connection_snap and connection_snap.get('mode')=='custom'):
                     health = await c.get('/health', timeout=5, headers={'X-Research-Custom-Connection':'1'} if connection_snap and connection_snap.get('mode')=='custom' else {})
                     health.raise_for_status()
                     if health.json().get('protocol_version') != RUNNER_PROTOCOL_VERSION:
                         raise ValueError('runner_protocol_mismatch')
-                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash'], 'budget_policy': json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot'), 'connection_snapshot':({k:v for k,v in connection_snap.items() if k!='mode'} if connection_snap and connection_snap.get('mode')=='custom' else None), 'connection_secret':connection_secret})
+                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash'], 'budget_policy': json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot'), 'connection_snapshot':({k:v for k,v in connection_snap.items() if k!='mode'} if connection_snap and connection_snap.get('mode')=='custom' else None), 'connection_secret':connection_secret,'profile_ref':({k:policy_snap['profile_snapshot'][k] for k in ('id','revision')} if policy_snap.get('profile_snapshot') else None)})
                 sub.raise_for_status()
                 if repo.find_run(db, run_id)['status'] not in ('queued', 'running'):
                     with contextlib.suppress(httpx.HTTPError):

@@ -15,6 +15,8 @@ export const router = createRouter({
     { path: '/accounts', name: 'accounts', component: () => import('@/views/AccountsView.vue') },
     { path: '/settings/runner/connections', component: () => import('@/views/RunnerConnectionsView.vue') },
     { path: '/settings/runner/budgets', component: () => import('@/views/RunnerBudgetView.vue') },
+    { path: '/settings/runner/profiles', component: () => import('@/views/RunnerProfilesView.vue') },
+    { path: '/settings/integrations', component: () => import('@/views/ExternalAccessView.vue') },
     { path: '/', name: 'workbench', component: () => import('@/views/WorkbenchView.vue') },
     { path: '/reader/:paperId', name: 'reader', component: () => import('@/views/WorkbenchView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },

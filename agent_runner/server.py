@@ -46,7 +46,10 @@ async def lifespan(app):
 
 app = FastAPI(title='Private Agent Runner', docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 
+from app.runner_config.profiles import ProfileRef
+
 class RunRequest(BaseModel):
+    profile_ref: ProfileRef | None = None
     budget_policy: BudgetSnapshot | None = None
     connection_snapshot: ConnectionSnapshot | None = None
     connection_secret: SecretStr | None = Field(None,exclude=True,repr=False)
@@ -135,6 +138,28 @@ async def submit_run(body: RunRequest, request: Request):
         resolved=body.budget_policy.model_dump()
         policy.update({k:resolved[k] for k in KEYS})
         policy['budget_snapshot']=resolved
+    if body.profile_ref:
+        from app.core.config import Settings
+        from app.core.db import get_conn
+        from app.runner_config import profiles
+        from app.core.errors import ServiceError
+        settings=Settings(data_dir=current.runtime.parent,qdrant_url='unused',workspace_key=key)
+        db=get_conn(settings)
+        try:
+            plan=profiles.resolve(db,settings,body.profile_ref)
+            run=db.execute('SELECT execution_policy_json FROM agent_runs WHERE id=?',(body.run_id,)).fetchone()
+            stored=json.loads(run[0]) if run else {}
+            if stored.get('profile_snapshot')!=plan['snapshot']:raise HTTPException(409,'Profile snapshot mismatch')
+            expected=plan['connection']
+            actual=body.connection_snapshot.model_dump()|{'mode':'custom'} if body.connection_snapshot else {'mode':'legacy'}
+            if actual!=expected:raise HTTPException(409,'Profile connection mismatch')
+            if body.skill!=plan['policy']['id'] or body.skill_version_id!=plan['policy']['version_id'] or body.skill_hash!=plan['policy']['skill_hash']:raise HTTPException(409,'Profile Skill mismatch')
+            if not body.budget_policy or body.budget_policy.model_dump()!=plan['policy']['budget_snapshot']:raise HTTPException(409,'Profile budget mismatch')
+            policy=plan['policy']
+            policy['profile_snapshot']=plan['snapshot']
+            policy['role_prompt']=plan['role_prompt']
+        except ServiceError as e:raise HTTPException(e.status,e.detail) from None
+        finally:db.close()
     if body.connection_snapshot:
         if body.connection_secret is None:raise HTTPException(422,'Connection credential required')
         payload['_connection_secret']=body.connection_secret.get_secret_value()

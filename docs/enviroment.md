@@ -121,3 +121,5 @@ node --test plugins/zotero/tests/plugin.test.cjs
 2026-11-22：代码 `7952e47` 已部署；app 镜像重新构建、宿主 Runner 同步重启至协议 8。业务迁移 0021、身份 schema 3；旧镜像保留为 `firework-before-external-api:20261122`，发布前成套备份日志为服务器 `/tmp/firework-external-api-backup.log`。核验配置 API、13 个内置 MCP 工具、Skill ZIP、外部匿名拒绝、外键完整性与浏览器页面；不创建真实外部令牌或模型任务。
 
 新增入口：`/#/settings/runner/profiles`、`/#/settings/integrations`；Skill 下载 `/downloads/firework-paper-ops.zip`。授权密钥与客户端环境在使用者本地配置，不写入本文档。
+
+2026-11-22：Skill 审查修复及本机前沿报告上传代码 `a8023b9` 已发布，业务迁移 0022，身份 schema 3 与 Runner 协议 8 不变。发布前备份日志 `/tmp/firework-local-reviews-backup.log`，旧镜像 `firework-before-local-reviews:20261122`。本次仅重建/切换 app，Runner 协议未变；无活动任务时发布。线上只读验证与新授权入口核验通过，未创建真实外部授权、报告或模型任务。

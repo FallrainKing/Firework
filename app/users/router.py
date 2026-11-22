@@ -21,6 +21,9 @@ def account_profile(result,request):
     if user:
         result.update(auth_mode="account",account_id=user["id"],username=user["username"],role=user["role"])
         result["capabilities"]["auth"]=True
+        store=getattr(request.app.state, "auth_store", None)
+        if store is not None:
+            result["login_policy"]={"admin_only":store.admin_only,"registration_open":False}
     return result
 
 

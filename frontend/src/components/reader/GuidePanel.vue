@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import GuideHistory from './GuideHistory.vue'
 import {computed,nextTick,ref,watch} from 'vue'
 import {guidesApi,type GuideItem} from '@/api/guides'
 import {readerApi} from '@/api/reader'
@@ -6,7 +7,8 @@ import {uid32} from '@/api/client'
 import {renderMarkdown} from '@/shared/markdown'
 import type {PaperGuideController} from '@/reader/usePaperGuide'
 import type {SelectionContext} from '@/api/types'
-const props=defineProps<{controller:PaperGuideController;paperId:number;jump:(ctx:SelectionContext)=>void;refreshAnnotations:()=>Promise<void>}>()
+const props=defineProps<{controller:PaperGuideController;paperId:number;fileVersion:string;jump:(ctx:SelectionContext)=>void;refreshAnnotations:()=>Promise<void>}>()
+const historyOpen=ref(false)
 const guide=computed(()=>props.controller.state.value.guide),busy=ref(false),message=ref(''),filter=ref('all')
 const labels:Record<string,string>={problem:'问题',contribution:'贡献',method:'方法',definition:'定义',formula:'公式',figure:'图表',experiment:'实验',limitation:'边界'}
 const priorities:Record<string,string>={essential:'必看',recommended:'建议看',optional:'按需阅读'}
@@ -22,6 +24,8 @@ function exportGuide(){if(!guide.value?.result)return;const g=guide.value;const 
 </script>
 <template>
 <section ref="panel" class="paper-guide-panel" aria-label="论文导读与智能批注">
+ <button type="button" @click="historyOpen=true">历史导读</button>
+ <GuideHistory v-if="historyOpen" :paper-id="paperId" :file-version="fileVersion" :jump="jump" @close="historyOpen=false" />
  <p v-if="!guide" class="muted">可在右侧输入框选择“自动批注”，确认后调用 Skill，生成总结、阅读路线和重点解释。打开论文不会自动生成。</p>
  <p v-if="controller.running.value" role="status">导读与批注生成中，可继续阅读原文。</p>
  <p v-if="controller.error.value" class="error">{{controller.error.value}}</p>

@@ -3,6 +3,7 @@ import { api } from './client'
 export interface Profile {
   display_name: string
   auth_mode: 'local' | 'account'
+  login_policy?: { admin_only: boolean; registration_open: boolean }
   account_id?: string
   username?: string
   role?: 'admin' | 'user'

@@ -7,6 +7,14 @@ class CollectionCreate(BaseModel):
     parent_id: int | None = Field(None, ge=1)
 
 
+class CollectionEdit(CollectionCreate):
+    expected_revision: int = Field(ge=1)
+
+
+class CollectionRevision(BaseModel):
+    expected_revision: int = Field(ge=1)
+
+
 class PaperPatch(BaseModel):
     title: str | None = Field(None, min_length=1, max_length=500)
     authors: list[str] | None = Field(None, max_length=100)

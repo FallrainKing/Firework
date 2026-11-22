@@ -13,7 +13,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - [Implementation status](docs/STATUS.md): current scope and verification limits.
 - [Project audit](docs/PROJECT-AUDIT.md) (Chinese): documentation map, requirement coverage, and unfinished architecture work.
 
-The current baseline uses business migrations through **0019**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
+The current baseline uses business migrations through **0020**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
 
 ## Features
 

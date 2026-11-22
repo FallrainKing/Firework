@@ -20,7 +20,7 @@ def linked(db,device,library,key,pid=None):
 
 def collection(db,parent,name):
     if not name.strip() or len(name)>80:raise ServiceError(422,'分类名称需为 1–80 个字符')
-    row=db.execute('SELECT id FROM paper_collections WHERE parent_id IS ? AND name=?',(parent,name)).fetchone()
+    row=db.execute('SELECT id FROM paper_collections WHERE parent_id IS ? AND name=? AND deleted_at IS NULL',(parent,name)).fetchone()
     if row:return row['id']
     return db.execute('INSERT INTO paper_collections(name,parent_id) VALUES (?,?)',(name,parent)).lastrowid
 
@@ -97,10 +97,10 @@ async def attachment(state,device,pid,library,item_key,attachment_key,data,label
 def collection_paths(db,pid):
     paths=[]
     origins=db.execute('SELECT device_id,library_key FROM zotero_links WHERE paper_id=?',(pid,)).fetchall()
-    for row in db.execute('SELECT collection_id FROM paper_collection_items WHERE paper_id=?',(pid,)):
+    for row in db.execute('SELECT x.collection_id FROM paper_collection_items x JOIN paper_collections c ON c.id=x.collection_id WHERE x.paper_id=? AND c.deleted_at IS NULL',(pid,)):
         chain=[];ident=row[0];seen=set()
         while ident and ident not in seen:
-            seen.add(ident);node=db.execute('SELECT * FROM paper_collections WHERE id=?',(ident,)).fetchone()
+            seen.add(ident);node=db.execute('SELECT * FROM paper_collections WHERE id=? AND deleted_at IS NULL',(ident,)).fetchone()
             if not node:break
             chain.append(node['name']);ident=node['parent_id']
         path=chain[::-1]

@@ -12,9 +12,9 @@ def paper_exists(db: sqlite3.Connection, ident: int):
     return db.execute('SELECT 1 FROM papers WHERE id=? AND deleted_at IS NULL', (ident,)).fetchone()
 
 
-def list_collections(db: sqlite3.Connection):
+def list_collections(db: sqlite3.Connection, trashed=False):
     return db.execute(
-        'SELECT c.*,(SELECT count(*) FROM paper_collection_items x WHERE x.collection_id=c.id) AS count FROM paper_collections c ORDER BY c.id'
+        'SELECT c.*,(SELECT count(*) FROM paper_collection_items x WHERE x.collection_id=c.id) AS count FROM paper_collections c WHERE c.deleted_at IS ' + ('NOT NULL' if trashed else 'NULL') + ' ORDER BY c.id'
     ).fetchall()
 
 
@@ -23,12 +23,12 @@ def insert_collection(db: sqlite3.Connection, name: str, parent_id: int | None =
 
 
 def collection_exists(db: sqlite3.Connection, ident: int):
-    return db.execute('SELECT 1 FROM paper_collections WHERE id=?', (ident,)).fetchone()
+    return db.execute('SELECT 1 FROM paper_collections WHERE id=? AND deleted_at IS NULL', (ident,)).fetchone()
 
 
 def paper_collections(db: sqlite3.Connection, pid: int):
     return db.execute(
-        'SELECT c.id,c.name FROM paper_collections c JOIN paper_collection_items x ON x.collection_id=c.id WHERE x.paper_id=? ORDER BY c.id',
+        'SELECT c.id,c.name FROM paper_collections c JOIN paper_collection_items x ON x.collection_id=c.id WHERE x.paper_id=? AND c.deleted_at IS NULL ORDER BY c.id',
         (pid,),
     ).fetchall()
 
@@ -44,9 +44,9 @@ def _search_where(q, collection_id, reading_status=None, trashed=False):
     where += ' AND p.deleted_at IS ' + ('NOT NULL' if trashed else 'NULL')
     if collection_id is not None:
         if collection_id == 0:
-            where += ' AND NOT EXISTS (SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id)'
+            where += ' AND NOT EXISTS (SELECT 1 FROM paper_collection_items x JOIN paper_collections c ON c.id=x.collection_id WHERE x.paper_id=p.id AND c.deleted_at IS NULL)'
         else:
-            where += ' AND EXISTS(SELECT 1 FROM paper_collection_items x WHERE x.paper_id=p.id AND x.collection_id IN (WITH RECURSIVE tree(id) AS (SELECT id FROM paper_collections WHERE id=? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id) SELECT id FROM tree))'
+            where += ' AND EXISTS(SELECT 1 FROM paper_collection_items x JOIN paper_collections c ON c.id=x.collection_id WHERE x.paper_id=p.id AND c.deleted_at IS NULL AND x.collection_id IN (WITH RECURSIVE tree(id) AS (SELECT id FROM paper_collections WHERE id=? AND deleted_at IS NULL UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id WHERE c.deleted_at IS NULL) SELECT id FROM tree))'
             args.append(collection_id)
     if reading_status is not None:
         where += " AND (CASE WHEN EXISTS(SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id JOIN agent_runs ar ON ar.conversation_id=c.id WHERE cp.paper_id=p.id AND c.skill='paper_read' AND ar.status='succeeded') THEN 'read' WHEN EXISTS(SELECT 1 FROM conversation_papers cp JOIN conversations c ON c.id=cp.conversation_id WHERE cp.paper_id=p.id AND c.skill='paper_read') THEN 'reading' ELSE 'unread' END)=?"
@@ -92,7 +92,7 @@ def bump_metadata_version(db: sqlite3.Connection, pid: int) -> None:
 
 
 def replace_collection_items(db: sqlite3.Connection, pid: int, ids) -> None:
-    db.execute('DELETE FROM paper_collection_items WHERE paper_id=?', (pid,))
+    db.execute('DELETE FROM paper_collection_items WHERE paper_id=? AND collection_id IN (SELECT id FROM paper_collections WHERE deleted_at IS NULL)', (pid,))
     db.executemany(
         'INSERT INTO paper_collection_items(collection_id,paper_id) VALUES (?,?)',
         [(i, pid) for i in set(ids)],

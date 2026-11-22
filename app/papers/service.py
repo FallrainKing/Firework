@@ -8,6 +8,7 @@ import sqlite3
 from ..core.errors import ServiceError
 from . import assets, repository as repo
 from .schemas import CollectionCreate, PaperPatch
+from . import collections as lifecycle
 
 
 def require_paper(db: sqlite3.Connection, paper_id: int):
@@ -57,24 +58,28 @@ def card(db: sqlite3.Connection, row) -> dict:
     return d
 
 
-def collections_view(db: sqlite3.Connection) -> dict:
-    rows=[dict(r) for r in repo.list_collections(db)]
-    nodes={r['id']:r for r in rows}
+def collections_view(db: sqlite3.Connection, trashed=False) -> dict:
+    rows=[dict(r) for r in repo.list_collections(db, trashed)]
+    nodes={r['id']:r for r in db.execute('SELECT * FROM paper_collections')}
     for r in rows:
         names=[r['name']];parent=r['parent_id'];seen={r['id']}
         while parent in nodes and parent not in seen:
             seen.add(parent);names.append(nodes[parent]['name']);parent=nodes[parent]['parent_id']
         r['path']=' / '.join(reversed(names))
-        r['count']=db.execute('WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id) SELECT count(DISTINCT x.paper_id) FROM paper_collection_items x JOIN papers p ON p.id=x.paper_id WHERE p.deleted_at IS NULL AND x.collection_id IN (SELECT id FROM tree)',(r['id'],)).fetchone()[0]
+        r['managed']=lifecycle.managed(db,r['id'])
+        r['restore_root']=r['deletion_group'] is not None and (r['parent_id'] not in nodes or nodes[r['parent_id']]['deletion_group'] != r['deletion_group'])
+        r['count']=db.execute('WITH RECURSIVE tree(id) AS (SELECT ? UNION SELECT c.id FROM paper_collections c JOIN tree t ON c.parent_id=t.id WHERE c.deleted_at IS NULL OR c.deletion_group=?) SELECT count(DISTINCT x.paper_id) FROM paper_collection_items x JOIN papers p ON p.id=x.paper_id WHERE p.deleted_at IS NULL AND x.collection_id IN (SELECT id FROM tree)',(r['id'],r['deletion_group'])).fetchone()[0]
     return {'collections':rows}
 
 
 def create_collection(db: sqlite3.Connection, body: CollectionCreate) -> dict:
     name = body.name.strip()
-    if not name:
-        raise ServiceError(400, '分类名称不能为空')
+    if not name or name.startswith('Zotero · '):
+        raise ServiceError(400, '分类名称不能为空，且不能使用保留的 Zotero 来源前缀')
     if body.parent_id is not None and not repo.collection_exists(db, body.parent_id):
         raise ServiceError(404, '父分类不存在')
+    if body.parent_id is not None:
+        lifecycle.parent_allowed(db, body.parent_id)
     try:
         cur = repo.insert_collection(db, name, body.parent_id)
         db.commit()

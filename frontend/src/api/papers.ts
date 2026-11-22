@@ -20,11 +20,20 @@ export const papersApi = {
   restore(id: number): Promise<Paper> {
     return api(`/api/library/papers/${id}/restore`, { method: 'POST', body: {} })
   },
-  collections(): Promise<{ collections: Collection[] }> {
-    return api('/api/library/collections')
+  collections(trashed = false): Promise<{ collections: Collection[] }> {
+    return api('/api/library/collections' + (trashed ? '?trashed=true' : ''))
   },
   createCollection(name: string, parentId: number | null = null): Promise<Collection> {
     return api('/api/library/collections', { body: { name, parent_id: parentId } })
+  },
+  editCollection(id: number, name: string, parentId: number | null, expectedRevision: number): Promise<{ collections: Collection[] }> {
+    return api(`/api/library/collections/${id}`, { method: 'PATCH', body: { name, parent_id: parentId, expected_revision: expectedRevision } })
+  },
+  trashCollection(id: number, expectedRevision: number): Promise<{ collections: Collection[] }> {
+    return api(`/api/library/collections/${id}`, { method: 'DELETE', body: { expected_revision: expectedRevision } })
+  },
+  restoreCollection(id: number, expectedRevision: number): Promise<{ collections: Collection[] }> {
+    return api(`/api/library/collections/${id}/restore`, { method: 'POST', body: { expected_revision: expectedRevision } })
   },
   refreshCard(id: number): Promise<Paper> {
     return api(`/api/library/papers/${id}/refresh-card`, { method: 'POST', body: {} })

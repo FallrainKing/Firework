@@ -120,3 +120,9 @@ RunCreate 允许最多 3 个 contexts 和 3 个 attachment_ids；上下文继承
 
 
 连接与额度通过 `id/revision` 引用参与 Run 创建和请求键幂等校验。已有会话绑定连接，修改账号默认不会切换它；连接修订/停用后需新会话。配置预检不调用模型，响应的能力声明不等于实测。Run 返回 `diagnostics`，用于结束原因、有效额度、连接与预算快照及部分输出；没有独立的追加预算续跑端点。
+
+## 分类生命周期增量
+
+`GET /api/library/collections` 默认有效分类，`trashed=true` 查回收站。返回 revision、managed（Zotero 来源维护目录）、deletion_group 和 restore_root。`PATCH /api/library/collections/{id}` 请求 `{name,parent_id,expected_revision}`；`DELETE` 同路径携带 JSON `{expected_revision}`；`POST /api/library/collections/{id}/restore` 同样携带预期修订。成功返回有效 collections 列表。软删除保留成员关系，不删除论文/项目，恢复只允许批次根。循环/同名/陈旧修订/来源目录修改/活动导入/恢复冲突返回 409，未知 ID 返回 404；认证与 CSRF 仍适用。
+
+`GET /api/me` 对真实认证请求返回 auth 能力及 `login_policy:{admin_only,registration_open:false}`；无认证本机测试模式保持原有能力默认值。

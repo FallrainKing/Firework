@@ -65,6 +65,11 @@ export interface Category {
 }
 
 export interface Collection {
+  revision?: number
+  managed?: boolean
+  deleted_at?: string | null
+  deletion_group?: string | null
+  restore_root?: boolean
   path?: string
   parent_id?: number | null
   id: number

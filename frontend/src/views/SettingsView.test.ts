@@ -22,6 +22,16 @@ beforeEach(() => {
 })
 
 describe('SettingsView', () => {
+  it('distinguishes authenticated account isolation from the admin-only login policy', async () => {
+    vi.mocked(meApi.profile).mockResolvedValue({ ...profile, auth_mode: 'account', capabilities: { ...profile.capabilities, auth: true }, login_policy: { admin_only: true, registration_open: false } })
+    const wrapper = mount(SettingsView)
+    await flushPromises()
+    expect(wrapper.text()).toContain('账号隔离已启用')
+    expect(wrapper.text()).toContain('仅主管理员可登录')
+    expect(wrapper.text()).toContain('公开注册关闭')
+    expect(wrapper.text()).not.toContain('多用户认证未实现')
+    wrapper.unmount()
+  })
   it('opens the skill library from the management hub and labels MCP as unavailable', async () => {
     const wrapper = mount(SettingsView)
     await flushPromises()
@@ -44,7 +54,7 @@ describe('SettingsView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('本机模式，无需登录')
-    expect(wrapper.text()).toContain('多用户认证未实现')
+    expect(wrapper.text()).toContain('多用户认证本机模式未启用登录')
     expect(wrapper.text()).toContain('没有认证能力时不提供退出登录按钮')
     expect(wrapper.findAll('button').some(button => button.text() === '退出登录')).toBe(false)
 

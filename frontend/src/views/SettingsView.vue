@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { meApi, type Profile } from '@/api/me'
 import StateFeedback from '@/components/StateFeedback.vue'
 import AccountSecurity from '@/components/AccountSecurity.vue'
+import { authState } from '@/auth/session'
 import { useWorkbenchStore } from '@/stores/workbench'
 const wb = useWorkbenchStore()
 
@@ -151,7 +152,8 @@ onMounted(refresh)
           <h2>身份与能力</h2>
           <dl>
             <div><dt>身份模式</dt><dd>{{ profile.capabilities.auth ? '账号隔离模式' : '本机模式，无需登录' }}</dd></div>
-            <div><dt>多用户认证</dt><dd>{{ profile.capabilities.auth ? '可用' : '未实现' }}</dd></div>
+            <div><dt>多用户认证</dt><dd>{{ profile.capabilities.auth ? '账号隔离已启用' : '本机模式未启用登录' }}</dd></div>
+            <div v-if="profile.capabilities.auth"><dt>登录开放范围</dt><dd>{{ (profile.login_policy?.admin_only ?? authState?.admin_only) === true ? '仅主管理员可登录' : (profile.login_policy?.admin_only ?? authState?.admin_only) === false ? '管理员创建并启用的账号可登录' : '请以登录策略为准' }} · 公开注册关闭</dd></div>
             <div><dt>头像上传</dt><dd>{{ profile.capabilities.avatar_upload ? '可用' : '未实现' }}</dd></div>
             <div><dt>偏好设置</dt><dd>{{ profile.capabilities.preferences ? '可用' : '未实现' }}</dd></div>
             <div><dt>技能库</dt><dd>{{ profile.capabilities.skills ? '可用' : '未实现' }}</dd></div>

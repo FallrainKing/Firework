@@ -22,7 +22,7 @@ def require(db,table,ident):
 
 def validate_collections(db,ids):
     for i in ids:
-        if not db.execute('SELECT 1 FROM paper_collections WHERE id=?',(i,)).fetchone():raise ServiceError(400,'分类不存在')
+        if not db.execute('SELECT 1 FROM paper_collections WHERE id=? AND deleted_at IS NULL',(i,)).fetchone():raise ServiceError(400,'分类不存在')
 
 
 def sync_existing_library(db):

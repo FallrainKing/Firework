@@ -1,6 +1,6 @@
 # 认证、多账号与数据隔离
 
-更新：2026-11-21。实现位于 `app/auth/`、`app/core/workspaces.py` 和宿主 Runner；当前业务迁移 0019、独立身份库 schema 2、Runner 协议 **7**。
+更新：2026-11-21。实现位于 `app/auth/`、`app/core/workspaces.py` 和宿主 Runner；当前业务迁移 0020、独立身份库 schema 2、Runner 协议 **7**。
 
 ## 1. 当前开放范围
 

@@ -1,11 +1,12 @@
 # 当前注册路由清单
 
-生成核对：2026-11-21，功能代码版本以 Git 为准。从 `app.main.create_app().openapi()` 的 paths 提取，共 **145** 条 HTTP 方法/路径；业务迁移 0019、Runner 协议 7。
+生成核对：2026-11-22，功能代码版本以 Git 为准。从 `app.main.create_app().openapi()` 的 paths 提取，共 **148** 条 HTTP 方法/路径；业务迁移 0020、Runner 协议 7。
 
 浏览器私有接口需登录，写请求需 CSRF；Zotero 设备凭据和内部工具令牌是限定用途授权，不是通用网页登录替代。此清单不包含未来设计路由、静态文件目录或内部 Runner Socket API。字段与调用约定见 [API](API.md)，连接与额度见 [Runner 配置](RUNNER-CONFIGURATION.md)。
 
 | 方法 | 路径 |
 | --- | --- |
+| DELETE | `/api/library/collections/{collection_id}` |
 | DELETE | `/api/library/papers/{paper_id}` |
 | DELETE | `/api/skills/categories/{category_id}` |
 | DELETE | `/api/zotero/devices/{ident}` |
@@ -71,6 +72,7 @@
 | PATCH | `/api/admin/accounts/{ident}` |
 | PATCH | `/api/frontier/reports/{run_id}/read-state` |
 | PATCH | `/api/frontier/topics/{ident}` |
+| PATCH | `/api/library/collections/{collection_id}` |
 | PATCH | `/api/library/papers/{paper_id}` |
 | PATCH | `/api/me` |
 | PATCH | `/api/me/preferences` |
@@ -108,6 +110,7 @@
 | POST | `/api/internal/reader-guide/material` |
 | POST | `/api/internal/reader-guide/submit` |
 | POST | `/api/library/collections` |
+| POST | `/api/library/collections/{collection_id}/restore` |
 | POST | `/api/library/papers/{paper_id}/document-versions` |
 | POST | `/api/library/papers/{paper_id}/document-versions/{version_id}/default` |
 | POST | `/api/library/papers/{paper_id}/refresh-card` |

@@ -4,20 +4,38 @@ import asyncio
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import FileResponse
 
-from . import assets, service
-from .schemas import CollectionCreate, PaperPatch
+from . import assets, service, collections as lifecycle
+from .schemas import CollectionCreate, CollectionEdit, CollectionRevision, PaperPatch
 
 router = APIRouter(prefix='/api/library', tags=['library'])
 
 
 @router.get('/collections')
-async def collections(request: Request):
-    return service.collections_view(request.app.state.db)
+async def collections(request: Request, trashed: bool = False):
+    return service.collections_view(request.app.state.db, trashed)
 
 
 @router.post('/collections', status_code=201)
 async def create_collection(body: CollectionCreate, request: Request):
     return service.create_collection(request.app.state.db, body)
+
+
+@router.patch('/collections/{collection_id}')
+async def edit_collection(collection_id: int, body: CollectionEdit, request: Request):
+    lifecycle.patch(request.app.state.db, collection_id, body)
+    return service.collections_view(request.app.state.db)
+
+
+@router.delete('/collections/{collection_id}')
+async def trash_collection(collection_id: int, body: CollectionRevision, request: Request):
+    lifecycle.trash(request.app.state.db, collection_id, body.expected_revision)
+    return service.collections_view(request.app.state.db)
+
+
+@router.post('/collections/{collection_id}/restore')
+async def restore_collection(collection_id: int, body: CollectionRevision, request: Request):
+    lifecycle.restore(request.app.state.db, collection_id, body.expected_revision)
+    return service.collections_view(request.app.state.db)
 
 
 @router.get('/papers')

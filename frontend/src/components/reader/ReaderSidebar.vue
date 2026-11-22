@@ -168,7 +168,7 @@ defineExpose({ focusNote, refresh, setTab })
     </div>
 
     <select v-if="tab==='notes'||tab==='highlights'" v-model="originFilter" aria-label="批注来源"><option value="all">全部批注</option><option value="user">我的批注</option><option value="ai">AI 导读批注</option></select>
-    <GuidePanel class="tab-pane" v-if="tab === 'guide' && guideController && doc && orch" :controller="guideController" :paper-id="doc.paper_id" :jump="orch.jump" :refresh-annotations="orch.refreshAnnotations" />
+    <GuidePanel class="tab-pane" v-if="tab === 'guide' && guideController && doc && orch" :controller="guideController" :paper-id="doc.paper_id" :file-version="doc.file_version" :jump="orch.jump" :refresh-annotations="orch.refreshAnnotations" />
     <div v-show="tab === 'outline'" class="tab-pane">
       <button v-for="(item, i) in doc?.outline ?? []" :key="i" class="outline-button" :style="{ paddingLeft: Math.min(item.level - 1, 3) * 10 + 'px' }" @click="locate({ page: item.page, file_version: doc!.file_version })">
         <span>{{ item.title }}</span><small class="muted">第 {{ item.page }} 页</small>

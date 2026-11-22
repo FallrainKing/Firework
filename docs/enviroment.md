@@ -115,3 +115,9 @@ node --test plugins/zotero/tests/plugin.test.cjs
 最近模型连接发布前的数据库快照为 `data/maintenance/before-runner-connections-20261121`，旧 app 镜像为 `firework-before-runner-connections:20261121`。这类数据库快照不等同于覆盖所有资源的完整备份，不能单独用于全量恢复。
 
 回退需匹配 app/Runner 协议并检查数据库兼容性；完整数据恢复按 [备份恢复](BACKUP-RESTORE.md) 停写、成套恢复和验证。过期发布路径与旧插件哈希不再作为当前操作说明；历史记录通过 Git 查询。生产全量恢复演练仍未完成。
+
+## 执行方案与外部 API 发布记录
+
+2026-11-22：代码 `7952e47` 已部署；app 镜像重新构建、宿主 Runner 同步重启至协议 8。业务迁移 0021、身份 schema 3；旧镜像保留为 `firework-before-external-api:20261122`，发布前成套备份日志为服务器 `/tmp/firework-external-api-backup.log`。核验配置 API、13 个内置 MCP 工具、Skill ZIP、外部匿名拒绝、外键完整性与浏览器页面；不创建真实外部令牌或模型任务。
+
+新增入口：`/#/settings/runner/profiles`、`/#/settings/integrations`；Skill 下载 `/downloads/firework-paper-ops.zip`。授权密钥与客户端环境在使用者本地配置，不写入本文档。

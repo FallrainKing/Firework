@@ -40,4 +40,29 @@ def test_archive_is_deterministic_and_contains_only_source(tmp_path):
     spec=importlib.util.spec_from_file_location('skill_build',ROOT/'scripts/build_agent_skill.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
     a=m.build(tmp_path/'a.zip');b=m.build(tmp_path/'b.zip');assert a.read_bytes()==b.read_bytes()
     import zipfile
-    with zipfile.ZipFile(a) as z:assert set(z.namelist())=={'firework-paper-ops/SKILL.md','firework-paper-ops/scripts/firework.py','firework-paper-ops/references/api.md'}
+    with zipfile.ZipFile(a) as z:assert set(z.namelist())=={'firework-paper-ops/SKILL.md','firework-paper-ops/scripts/firework.py','firework-paper-ops/references/api.md','firework-paper-ops/references/frontier.md'}
+
+
+def test_client_conflict_codes_are_safe_and_specific(monkeypatch):
+    import io
+    from urllib.error import HTTPError
+    class Opener:
+        def __init__(self,raw):self.raw=raw
+        def open(self,*args,**kwargs):raise HTTPError('https://example.invalid',409,'conflict',{},io.BytesIO(self.raw))
+    monkeypatch.setattr(fw,'configuration',lambda:('https://example.invalid','fw_fixture_secret_not_real_123'))
+    for code,expected in [('idempotency_conflict','Do not bypass'),('annotation_conflict','current ETag'),('metadata_conflict','current paper version'),('evidence_conflict','current document')]:
+        raw=json.dumps({'code':code,'detail':'fw_secret_must_not_be_echoed'}).encode()
+        monkeypatch.setattr(fw.request,'build_opener',lambda *args:Opener(raw))
+        with pytest.raises(fw.ClientError) as e:fw.call('GET','/capabilities')
+        assert expected in str(e.value) and 'fw_secret' not in str(e.value)
+
+
+def test_cli_frontier_and_recovery_routes(monkeypatch,tmp_path,capsys):
+    seen=[]
+    monkeypatch.setattr(fw,'call',lambda method,path,body=None,key=None:seen.append((method,path,body,key)) or {'ok':True})
+    for args,path in [(['annotations','--paper','1','--include-deleted'],'/papers/1/annotations?include_deleted=true'),(['note','--paper','1','--annotation','id1'],'/papers/1/annotations/id1'),(['frontier-topics'],'/frontier/topics'),(['frontier-reports','--topic','3'],'/frontier/reports?limit=20&topic_id=3'),(['frontier-report','--report','a'*32],'/frontier/reports/'+'a'*32)]:
+        assert fw.main(args)==0;assert seen[-1][0:2]==('GET',path)
+    report=tmp_path/'report.json';report.write_text('{"topic_revision":1}')
+    md=tmp_path/'review.md';md.write_text('# Local review',encoding='utf-8')
+    assert fw.main(['submit-frontier-report','--topic','3','--json-file',str(report),'--markdown-file',str(md),'--request-key','stable-key'])==0
+    assert seen[-1]==('POST','/frontier/topics/3/reports',{'topic_revision':1,'markdown':'# Local review'},'stable-key')

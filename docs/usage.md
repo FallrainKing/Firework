@@ -1,6 +1,6 @@
 # Firework 使用指南
 
-更新：2026-11-21。适用于业务迁移 0021、Runner 协议 8。系统职责与技术细节见 [架构](架构.md)，安装维护见 [环境与部署](enviroment.md)。
+更新：2026-11-21。适用于业务迁移 0022、Runner 协议 8。系统职责与技术细节见 [架构](架构.md)，安装维护见 [环境与部署](enviroment.md)。
 
 ## 1. 登录与首页
 
@@ -201,3 +201,7 @@ Zotero 来源分类显示 ↔，目录由同步维护；请在 Zotero 修改，�
 在设置 → 执行方案与 MCP 组合 Skill、连接、额度、角色与工具权限；新会话发送前选择方案。已有任务会话保持原绑定，切换需新建会话。配置预览不调用模型。
 
 在设置 → 外部智能体接入 下载论文操作 Skill，创建最小授权并保存到本地私有密钥文件，配置 FIREWORK_URL 与 FIREWORK_TOKEN_FILE。先 capabilities/search/show，再用版本与原文证据修改书目和批注。完整操作见 [外部接入](EXTERNAL-AGENT-API.md)。不要把授权密钥贴到智能体对话。
+
+### 本机审查结果保存到前沿时间线
+
+重新下载最新通用 Skill，在外部接入页签发包含 frontier:read/frontier:write 的独立授权（不能限定论文 ID）。先读取主题与历史报告，再由本机智能体研究或整理已有审查结果，使用 submit-frontier-report 以及 JSON 元数据、可选 --markdown-file 上传。网页标注外部来源；发现条目仍需用户批准入库。见 [具体示例](../plugins/agent-skill/firework-paper-ops/references/frontier.md)。

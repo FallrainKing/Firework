@@ -49,14 +49,14 @@ class Transaction:
 def mutate(request,body,key,operation):
     from ..core.db import get_conn
     token=request.state.external_token
-    db=get_conn(request.app.state.settings)
     if not key or len(key)>80:raise ServiceError(422,'写入需要 1–80 字符 Idempotency-Key')
+    db=get_conn(request.app.state.settings)
     digest=hashlib.sha256((request.method+request.url.path+body.model_dump_json()).encode()).hexdigest()
     try:
         db.execute('BEGIN IMMEDIATE')
         prior=db.execute('SELECT * FROM external_operations WHERE token_id=? AND request_key=?',(token['id'],key)).fetchone()
         if prior:
-            if prior['body_hash']!=digest:raise ServiceError(409,'幂等键已用于其他请求')
+            if prior['body_hash']!=digest:raise ServiceError(409,'幂等键已用于其他请求',code='idempotency_conflict')
             db.commit();return json.loads(prior['result_json'])
         result=operation(Transaction(db))
         db.execute('INSERT INTO external_operations(token_id,request_key,body_hash,result_json) VALUES (?,?,?,?)',(token['id'],key,digest,json.dumps(result,ensure_ascii=False)))
@@ -68,7 +68,7 @@ def mutate(request,body,key,operation):
 @router.get('/capabilities')
 def capabilities(request:Request):
     t=request.state.external_token
-    return {'version':'v1','scopes':json.loads(t['scopes_json']),'paper_ids':json.loads(t['paper_ids_json']) if t['paper_ids_json'] else None,'model_operations':False,'writes_require_idempotency':True,'pdf_upload':False,'permanent_delete':False}
+    return {'version':'v1','scopes':json.loads(t['scopes_json']),'paper_ids':json.loads(t['paper_ids_json']) if t['paper_ids_json'] else None,'model_operations':False,'writes_require_idempotency':True,'pdf_upload':False,'permanent_delete':False,'annotation_recovery':True,'external_frontier_reports':True}
 
 @router.get('/collections')
 def collections(request:Request):
@@ -101,7 +101,12 @@ def create(body:PaperCreate,request:Request,idempotency_key:str|None=Header(None
 @router.patch('/papers/{pid}')
 def edit(pid:int,body:ExternalPaperPatch,request:Request,idempotency_key:str|None=Header(None)):
     auth.require(request,'papers:write',pid)
-    return mutate(request,body,idempotency_key,lambda db:papers.edit_paper(db,pid,body))
+    def op(db):
+        try:return papers.edit_paper(db,pid,body)
+        except ServiceError as e:
+            if e.status==409:e.code='metadata_conflict'
+            raise
+    return mutate(request,body,idempotency_key,op)
 @router.get('/papers/{pid}/document')
 def document(pid:int,request:Request):
     auth.require(request,'papers:read',pid)
@@ -120,15 +125,19 @@ def file(pid:int,request:Request):
     except ValueError as e:raise ServiceError(409,str(e)) from None
     return FileResponse(path,media_type='application/pdf',filename=f'paper-{pid}.pdf')
 @router.get('/papers/{pid}/annotations')
-def notes(pid:int,request:Request):
+def notes(pid:int,request:Request,include_deleted:bool=False):
     auth.require(request,'annotations:read',pid);reader.paper(request.app.state.db,pid)
-    return {'annotations':[annotation(r) for r in reader_repo.list_annotations(request.app.state.db,pid)]}
+    rows=request.app.state.db.execute('SELECT * FROM reader_annotations WHERE paper_id=? ORDER BY page,created_at',(pid,)).fetchall() if include_deleted else reader_repo.list_annotations(request.app.state.db,pid)
+    return {'annotations':[annotation(r) for r in rows]}
 @router.post('/papers/{pid}/annotations',status_code=201)
 def add_note(pid:int,body:ExternalNote,request:Request,idempotency_key:str|None=Header(None)):
     auth.require(request,'annotations:write',pid)
     if body.paper_id!=pid:raise ServiceError(422,'正文与路径论文 ID 不一致')
     def op(db):
-        result=reader.annotate(db,request.app.state.settings,body)
+        try:result=reader.annotate(db,request.app.state.settings,body)
+        except ServiceError as e:
+            if e.status==409:e.code='evidence_conflict'
+            raise
         return annotation(reader_repo.find_annotation(db,result['id']))
     return mutate(request,body,idempotency_key,op)
 @router.patch('/papers/{pid}/annotations/{ident}')
@@ -137,7 +146,54 @@ def edit_note(pid:int,ident:str,body:ExternalPatch,request:Request,idempotency_k
     def op(db):
         row=reader_repo.find_annotation(db,ident)
         if row is None or row['paper_id']!=pid:raise ServiceError(404,'批注不存在')
-        if etag(row)!=body.expected_etag:raise ServiceError(409,'批注已变化，请刷新后重试')
+        if etag(row)!=body.expected_etag:raise ServiceError(409,'批注已变化，请刷新后重试',code='annotation_conflict')
         reader.edit_annotation(db,ident,AnnotationPatch(**body.model_dump(exclude={'expected_etag'},exclude_unset=True)))
         return annotation(reader_repo.find_annotation(db,ident))
     return mutate(request,body,idempotency_key,op)
+
+@router.get('/papers/{pid}/annotations/{ident}')
+def note(pid:int,ident:str,request:Request):
+    auth.require(request,'annotations:read',pid)
+    row=reader_repo.find_annotation(request.app.state.db,ident)
+    if row is None or row['paper_id']!=pid:raise ServiceError(404,'批注不存在')
+    return annotation(row)
+
+from .frontier import ExternalTopic,Submission
+from ..frontier import service as frontier
+
+def frontier_auth(request,scope):
+    grant=auth.require(request,scope)
+    # A paper whitelist cannot authorize a library-wide topic/report view.
+    return grant
+
+@router.get('/frontier/topics')
+def frontier_topics(request:Request):
+    frontier_auth(request,'frontier:read')
+    return {'topics':[frontier.topic_view(request.app.state.db,r) for r in request.app.state.db.execute('SELECT * FROM frontier_topics ORDER BY id DESC')]}
+
+@router.post('/frontier/topics',status_code=201)
+def create_frontier_topic(body:ExternalTopic,request:Request,idempotency_key:str|None=Header(None)):
+    frontier_auth(request,'frontier:write')
+    return mutate(request,body,idempotency_key,lambda db:frontier.save_topic(db,body))
+
+@router.get('/frontier/reports')
+def frontier_reports(request:Request,topic_id:int|None=None,before:int|None=None,limit:int=20):
+    frontier_auth(request,'frontier:read')
+    if not 1<=limit<=30:raise ServiceError(422,'分页范围无效')
+    db=request.app.state.db
+    rows=db.execute('SELECT p.id AS report_id,f.* FROM frontier_reports p JOIN frontier_runs f ON f.id=p.run_id WHERE (? IS NULL OR f.topic_id=?) AND (? IS NULL OR p.id<?) ORDER BY p.id DESC LIMIT ?', (topic_id,topic_id,before,before,limit+1)).fetchall()
+    result={'reports':[frontier.run_view(db,r) for r in rows[:limit]],'next_cursor':rows[limit-1]['report_id'] if len(rows)>limit else None}
+    db.commit();return result
+
+@router.get('/frontier/reports/{ident}')
+def frontier_report(ident:str,request:Request):
+    frontier_auth(request,'frontier:read')
+    db=request.app.state.db
+    if not db.execute('SELECT 1 FROM frontier_reports WHERE run_id=?',(ident,)).fetchone():raise ServiceError(404,'报告不存在')
+    result=frontier.run_view(db,frontier.require(db,'frontier_runs',ident));db.commit();return result
+
+@router.post('/frontier/topics/{topic_id}/reports',status_code=201)
+def submit_frontier_report(topic_id:int,body:Submission,request:Request,idempotency_key:str|None=Header(None)):
+    grant=frontier_auth(request,'frontier:write')
+    from .frontier import submit
+    return mutate(request,body,idempotency_key,lambda db:submit(db,topic_id,body,grant['id']))

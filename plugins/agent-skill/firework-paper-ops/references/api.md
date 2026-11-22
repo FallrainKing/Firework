@@ -46,3 +46,15 @@ The response provides the updated annotation and a new `etag`. Deleted annotatio
 ## Boundaries
 
 Capabilities are declarative API features, not model capabilities. This Skill does not require a particular model vendor or call the deployed Claude Code. The caller pays only for their own agent use; the gateway performs database/file operations. Skill host installation conventions vary (place this folder in that host's Skill directory). No dependency packages are needed beyond Python 3.
+
+## Recovering annotations and conflicts
+
+`GET /papers/{id}/annotations?include_deleted=true` returns deleted and retained AI annotations with current ETags. `GET /papers/{id}/annotations/{annotation_id}` fetches one retained record even when deleted. Both require annotations:read and the same paper authorization. CLI: `annotations --paper ID --include-deleted` or `note --paper ID --annotation ID`. Restore with `edit-note` and `{"expected_etag":"CURRENT_ETAG","deleted":false}`. Do not rely on an ETag saved before deletion.
+
+A timeout leaves the write outcome unknown: retain the exact method, path, JSON body and original key; retry that operation unchanged to retrieve its committed result. An explicit `409` has distinct machine codes:
+
+- `idempotency_conflict`: the key is already bound to another operation. Inspect the original operation; do not bypass with a fresh key.
+- `metadata_conflict`, `annotation_conflict`, `topic_conflict`: read current versions, reconcile intended changes, then submit the resulting **new** operation with a new key. Reusing a key from a committed older operation would return that older result.
+- `evidence_conflict`: fetch the actual current PDF and page; reconcile hash, quote and geometry first. Do not simply replace the hash on old geometry.
+
+Unknown conflict codes do not authorize overwriting or blind retries. The client prints only allowlisted codes/advice; arbitrary server error bodies remain hidden.

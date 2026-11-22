@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-生成核对：2026-11-22。从 `app.main.create_app().openapi()` 提取，共 **169** 条 HTTP 方法/路径；业务迁移 0021、身份 schema 3、Runner 协议 8。
+生成核对：2026-11-22。从 `app.main.create_app().openapi()` 提取，共 **175** 条 HTTP 方法/路径；业务迁移 0022、身份 schema 3、Runner 协议 8。
 
 浏览器私有接口需登录，写请求需 CSRF；外部 API Bearer、Zotero 设备与内部工具令牌互不替代。该清单不含未来设计路由、静态下载或内部 Runner Socket API。字段见 [API](API.md)、[Runner 配置](RUNNER-CONFIGURATION.md) 和 [外部接入](EXTERNAL-AGENT-API.md)。
 
@@ -20,9 +20,13 @@
 | GET | `/api/auth/session` |
 | GET | `/api/external/v1/capabilities` |
 | GET | `/api/external/v1/collections` |
+| GET | `/api/external/v1/frontier/reports` |
+| GET | `/api/external/v1/frontier/reports/{ident}` |
+| GET | `/api/external/v1/frontier/topics` |
 | GET | `/api/external/v1/papers` |
 | GET | `/api/external/v1/papers/{pid}` |
 | GET | `/api/external/v1/papers/{pid}/annotations` |
+| GET | `/api/external/v1/papers/{pid}/annotations/{ident}` |
 | GET | `/api/external/v1/papers/{pid}/document` |
 | GET | `/api/external/v1/papers/{pid}/file` |
 | GET | `/api/external/v1/papers/{pid}/pages/{page}` |
@@ -109,6 +113,8 @@
 | POST | `/api/auth/logout` |
 | POST | `/api/auth/password` |
 | POST | `/api/auth/register` |
+| POST | `/api/external/v1/frontier/topics` |
+| POST | `/api/external/v1/frontier/topics/{topic_id}/reports` |
 | POST | `/api/external/v1/papers` |
 | POST | `/api/external/v1/papers/{pid}/annotations` |
 | POST | `/api/frontier/decisions/batch` |

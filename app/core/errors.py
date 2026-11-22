@@ -12,8 +12,9 @@ from __future__ import annotations
 class ServiceError(Exception):
     """A business-rule failure carrying the HTTP status and detail to render."""
 
-    def __init__(self, status: int, detail: str):
+    def __init__(self, status: int, detail: str, *, code: str | None = None):
         super().__init__(detail)
+        self.code = code
         self.status = status
         self.detail = detail
 
@@ -23,4 +24,4 @@ def register_error_handlers(app) -> None:
 
     @app.exception_handler(ServiceError)
     async def _handle(request, exc):
-        return JSONResponse({"detail": exc.detail}, status_code=exc.status)
+        return JSONResponse({"detail": exc.detail, **({"code": exc.code} if exc.code else {})}, status_code=exc.status)

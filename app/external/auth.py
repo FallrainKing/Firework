@@ -5,11 +5,11 @@ import uuid
 from pydantic import BaseModel,ConfigDict,Field
 from ..auth.store import token_hash
 from ..core.errors import ServiceError
-SCOPES={'papers:read','papers:write','annotations:read','annotations:write','files:read'}
+SCOPES={'papers:read','papers:write','annotations:read','annotations:write','files:read','frontier:read','frontier:write'}
 class TokenCreate(BaseModel):
     model_config=ConfigDict(extra='forbid')
     name:str=Field(min_length=1,max_length=80)
-    scopes:list[str]=Field(min_length=1,max_length=5)
+    scopes:list[str]=Field(min_length=1,max_length=7)
     paper_ids:list[int]|None=Field(None,max_length=200)
     expires_days:int=Field(7,ge=1,le=90)
 
@@ -18,6 +18,7 @@ def listing(store,account):
 
 def create(store,account,db,body):
     if not body.name.strip() or not set(body.scopes)<=SCOPES:raise ServiceError(422,'名称或 scope 无效')
+    if body.paper_ids is not None and set(body.scopes)&{'frontier:read','frontier:write'}:raise ServiceError(422,'前沿权限需要不限定论文的独立授权')
     if body.paper_ids is not None:
         if not body.paper_ids or any(not db.execute('SELECT 1 FROM papers WHERE id=?',(pid,)).fetchone() for pid in body.paper_ids):raise ServiceError(422,'论文授权列表无效')
     ident=uuid.uuid4().hex;token='fw_'+secrets.token_urlsafe(32);now=int(time.time())

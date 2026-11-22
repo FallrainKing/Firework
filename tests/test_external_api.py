@@ -93,3 +93,26 @@ def test_request_size_and_no_secret_errors(secured):
     assert made['token'] not in r.text
     def chunks():yield b'x'*40000;yield b'x'*40000
     assert c.post('/api/external/v1/papers',headers=h,content=chunks()).status_code==413
+
+def test_deleted_annotation_can_be_found_and_restored(secured):
+    c,app=secured;a=login(c);paper(app.state);_,h=token(c,a)
+    base='/api/external/v1/papers/1';version=c.get(base+'/document',headers=h).json()['file_version']
+    n=c.post(base+'/annotations',headers={**h,'Idempotency-Key':'make'},json={'paper_id':1,'page':1,'file_version':version,'kind':'note','content':'Restore me'}).json()
+    url=base+'/annotations/'+n['id']
+    deleted=c.patch(url,headers={**h,'Idempotency-Key':'remove'},json={'expected_etag':n['etag'],'deleted':True});assert deleted.status_code==200
+    assert c.get(base+'/annotations',headers=h).json()['annotations']==[]
+    current=c.get(url,headers=h);assert current.status_code==200 and current.json()['deleted']
+    assert c.get(base+'/annotations?include_deleted=true',headers=h).json()['annotations'][0]['etag']==current.json()['etag']
+    stale=c.patch(url,headers={**h,'Idempotency-Key':'stale'},json={'expected_etag':n['etag'],'deleted':False})
+    assert stale.status_code==409 and stale.json()['code']=='annotation_conflict'
+    restored=c.patch(url,headers={**h,'Idempotency-Key':'restore'},json={'expected_etag':current.json()['etag'],'deleted':False});assert restored.status_code==200 and not restored.json()['deleted']
+    _,limited=token(c,a,['annotations:read'],[1])
+    assert c.get('/api/external/v1/papers/2/annotations/'+n['id'],headers=limited).status_code==404
+
+def test_explicit_conflicts_are_machine_readable(secured):
+    c,app=secured;a=login(c);paper(app.state);_,h=token(c,a)
+    url='/api/external/v1/papers/1'
+    b={'title':'Changed','metadata_version':1}
+    assert c.patch(url,headers={**h,'Idempotency-Key':'op'},json=b).status_code==200
+    r=c.patch(url,headers={**h,'Idempotency-Key':'op'},json={**b,'title':'Other'});assert r.json()['code']=='idempotency_conflict'
+    r=c.patch(url,headers={**h,'Idempotency-Key':'new-op'},json=b);assert r.json()['code']=='metadata_conflict'

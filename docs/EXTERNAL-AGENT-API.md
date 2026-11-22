@@ -1,6 +1,6 @@
 # 外部智能体论文接口与通用 Skill
 
-更新：2026-11-22。本文区分当前交付与后续设计。实现依赖业务迁移 0021、身份 schema 3；模型执行方案另见 [Runner 配置](RUNNER-CONFIGURATION.md)。
+更新：2026-11-22。本文区分当前交付与后续设计。实现依赖业务迁移 0022、身份 schema 3；模型执行方案另见 [Runner 配置](RUNNER-CONFIGURATION.md)。
 
 ## 1. 目标与职责
 
@@ -93,3 +93,32 @@ Web：`/#/settings/integrations`。当前账号可创建带用途名称、操作
 | D | 外部智能体或 MCP 适配器 | REST 为稳定底层；协议适配不能扩大账号/scope/论文范围；工具发现不等于授权 |
 
 首批不为多样化接入重建模型执行器。外部智能体直接使用数据 API；部署内研究任务继续走现有 Runner。两者共享论文事实和版本约束，分别授权、计量和排查。
+
+## 8. Skill 审查修复与本机前沿报告（2026-11-22）
+
+### 审查修复
+
+- `GET /papers/{pid}/annotations?include_deleted=true` 允许查询已删除记录；`GET /papers/{pid}/annotations/{ident}` 可按 ID 读取含当前 ETag 的保留记录。沿用 annotations:read 与论文白名单，不需要保存上次删除响应才能恢复。恢复仍用 PATCH、当前 expected_etag 与 deleted:false。
+- 外部 409 增加安全机器码：idempotency_conflict、metadata_conflict、annotation_conflict、evidence_conflict、topic_conflict。客户端只显示白名单建议，隐藏任意错误正文。
+- 结果未知的网络重试保持同键同请求；已确认版本冲突先重新读取、合并，再以新键提交新操作。幂等键冲突不能换键绕过。
+- 无效请求键在打开独立数据库连接前拒绝，避免连接泄漏。
+
+### 本机研究，服务端管理
+
+新增 `frontier:read` 与 `frontier:write`，在授权页面按需选择；既有令牌不自动获得新权限。前沿主题与报告是账号级对象，因此拒绝将前沿 scope 与论文白名单混合授权。普通 papers/annotations 权限不能调用这些端点。
+
+| 接口（外部 v1 前缀） | 权限 | 作用 |
+| --- | --- | --- |
+| GET /frontier/topics | frontier:read | 读取主题、来源、当前修订和结果限额 |
+| POST /frontier/topics | frontier:write | 创建主题与暂停的调度，不调用模型 |
+| GET /frontier/reports | frontier:read | topic_id/before/limit 分页读取报告 |
+| GET /frontier/reports/{run_id} | frontier:read | 读取已发布报告与证据，含外部来源标识 |
+| POST /frontier/topics/{topic_id}/reports | frontier:write | 上传本机结构化审查报告，固定主题修订 |
+
+本机智能体检索和审查后，提交 producer、带时区窗口、Markdown、searches、citations 和 reasons。每条搜索声明来源、真实查询、覆盖状态及元数据；每条发现使用唯一 ref，论文需 DOI/arXiv，项目需 GitHub 仓库地址。服务端将本地 ref 映射为实际证据 ID，并改写 `[证据:ref]`。来源与条数受主题配置及 64 KiB 体积限制。
+
+复用现有 frontier.ingest / save_report / run_view 和身份去重，不复制候选模型。提交在一笔独立事务中生成 Run、候选、证据、报告、幂等结果及审计；任一步失败全部回滚。同键重试返回原结果；新修订报告以新操作进入后续时间线。已有 DOI/arXiv/GitHub 身份复用，冲突不能靠改题名强制新建。
+
+迁移 0022 增加 frontier_runs.origin 和 external_provenance_json，保留提交者用途、授权 ID、调用方提供的验证等级。Web 时间线明确显示“外部智能体提交，服务器未验证检索或调用模型”。报告成功表示保存完整及调用方声明覆盖完整，**不表示服务器独立完成真实性验证**。该路径不更新服务器检索游标、不创建 agent_runs、不启用调度、不自动批准候选入库。原有前沿页面负责批准、忽略及后续讨论。
+
+CLI 增加 frontier-topics/create-frontier-topic/frontier-reports/frontier-report/submit-frontier-report；上传可同时提供 JSON 元数据与 `--markdown-file review.md`，直接保存已有本机审查文本。完整示例见 [前沿 Skill 参考](../plugins/agent-skill/firework-paper-ops/references/frontier.md)。上传授权来自当前任务范围；Skill 不自行安装其他研究工具，不修改本机或部署服务器的模型配置。

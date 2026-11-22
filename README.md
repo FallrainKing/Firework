@@ -11,6 +11,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - [Usage guide](docs/usage.md): configure a connection and budget, import a PDF, and start a reading session.
 - [System architecture](docs/架构.md): deployed components, data boundaries, and how the agent executes tasks.
 - [Implementation status](docs/STATUS.md): current scope and verification limits.
+- [Project audit](docs/PROJECT-AUDIT.md) (Chinese): documentation map, requirement coverage, and unfinished architecture work.
 
 The current baseline uses business migrations through **0019**, identity schema **2**, Runner protocol **7**, and Zotero plugin **0.1.4**.
 

@@ -130,3 +130,16 @@ describe('reader orchestrator', () => {
 })
 
 it('creates a fresh reading session when the restored session references an old PDF',async()=>{vi.mocked(sessionsApi.list).mockResolvedValue({sessions:[{...session,stale_paper_ids:[1]}]} as never);const {orch}=setup();await orch.boot(session.id);expect(sessionsApi.create).toHaveBeenCalledWith(expect.objectContaining({paper_ids:[1],template_id:'read'}))})
+
+
+it('restores explicit deep-link page and panel before loading the saved reader position',async()=>{
+ const engine=fakeEngine(),orch=useReaderOrchestrator({paperId:1,engine:engine as never,toast:vi.fn(),initialReading:{page:3,tab:'notes'}})
+ await orch.boot(5)
+ expect(engine.load).toHaveBeenCalledWith(doc,expect.objectContaining({page:3,tab:'notes'}))
+ expect(orch.sidebarTab.value).toBe('notes');expect(engine.currentPage).toBe(3)
+ await orch.activate(5,true)
+ expect(orch.sidebarTab.value).toBe('outline');expect(engine.currentPage).toBe(2)
+})
+it('does not silently replace an unavailable explicit session with another session',async()=>{
+ const orch=useReaderOrchestrator({paperId:1,engine:fakeEngine() as never,toast:vi.fn(),requireSession:true});await orch.boot(999);expect(orch.loadError.value).toContain('会话不可用');expect(orch.session.value).toBe(null);expect(sessionsApi.create).not.toHaveBeenCalled()
+})

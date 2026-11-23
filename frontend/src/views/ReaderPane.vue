@@ -43,14 +43,18 @@ const mobileToolsOpen = ref(false)
 const color = ref('#f5d76e')
 const mode = ref('select')
 
+let readingReady=false
+const initialQuery={...route.query}
 let pageRouteTimer:ReturnType<typeof setTimeout>|null=null
-function publishReading(){if(Number(route.params.paperId)!==props.paperId||!orch.doc.value)return;const doc=orch.doc.value;window.dispatchEvent(new CustomEvent('firework-reader-context',{detail:{paper_id:props.paperId,file_hash:doc.file_version,document_version_id:doc.document_version_id||undefined,session_id:orch.session.value?.id,page:pageInput.value,panel:orch.sidebarTab.value}}));if(pageRouteTimer)clearTimeout(pageRouteTimer);pageRouteTimer=setTimeout(()=>{if(Number(route.params.paperId)===props.paperId)void router.replace({query:{...route.query,page:String(pageInput.value),panel:orch.sidebarTab.value}})},350)}
+function publishReading(){if(!readingReady||Number(route.params.paperId)!==props.paperId||!orch.doc.value)return;const doc=orch.doc.value;window.dispatchEvent(new CustomEvent('firework-reader-context',{detail:{paper_id:props.paperId,file_hash:doc.file_version,document_version_id:doc.document_version_id||undefined,session_id:orch.session.value?.id,page:pageInput.value,panel:orch.sidebarTab.value}}));if(pageRouteTimer)clearTimeout(pageRouteTimer);pageRouteTimer=setTimeout(()=>{if(Number(route.params.paperId)===props.paperId)void router.replace({query:{...route.query,page:String(pageInput.value),panel:orch.sidebarTab.value}})},350)}
 async function shareCurrentSelection(){if(!selected.value)return;try{const r=await shareSelection({paper_id:props.paperId,file_version:selected.value.file_version,page:selected.value.page,quote:selected.value.quote,rects:selected.value.rects});toast('选区已共享5分钟：'+r.id.slice(0,8))}catch(e){toast(String(e))}}
 let engine: PDFReader | null = null
 const layout = useReaderLayout()
 const orch = useReaderOrchestrator({
   paperId: props.paperId,
   documentVersion:props.versionId,
+  requireSession:!!initialQuery.session||!!initialQuery.session_id,
+  initialReading:{...(Number(initialQuery.page)>0?{page:Number(initialQuery.page)}:{}),...(['guide','outline','notes','highlights','translations','info'].includes(String(initialQuery.panel))?{tab:String(initialQuery.panel) as never}:{})},
   engine: {
     load: (info, pos) => engine!.load(info, pos),
     layout: () => engine!.layout(),
@@ -147,14 +151,14 @@ onMounted(async () => {
   const bridge = (chatRef.value as unknown as { bridge?: Parameters<typeof orch.registerChat>[0] })?.bridge
   if (bridge) orch.registerChat(bridge)
   await orch.boot(props.sessionId ?? null)
-  if(route.query.page)engine.jump(Number(route.query.page))
-  if(route.query.panel&&['guide','outline','notes','highlights','translations','info'].includes(String(route.query.panel)))orch.setTab(String(route.query.panel) as never)
+  readingReady=true
   pageInput.value = engine.currentPage
   publishReading()
   await refreshSessions(orch.session.value?.id)
 })
 
-watch(()=>route.query.page,value=>{if(engine&&Number(route.params.paperId)===props.paperId&&value&&Number(value)!==engine.currentPage)engine.jump(Number(value))})
+watch(()=>route.query.page,value=>{if(readingReady&&engine&&Number(route.params.paperId)===props.paperId&&value&&Number(value)!==engine.currentPage)engine.jump(Number(value))})
+watch(()=>route.query.panel,value=>{if(readingReady&&Number(route.params.paperId)===props.paperId&&['guide','outline','notes','highlights','translations','info'].includes(String(value))&&value!==orch.sidebarTab.value)orch.setTab(String(value) as never)})
 watch(() => props.sessionId, sid => { if (sid && sid !== orch.session.value?.id) void orch.activate(sid) })
 
 onActivated(() => { if (engine?.pdf) { void nextTick(() => engine?.layout()) } })

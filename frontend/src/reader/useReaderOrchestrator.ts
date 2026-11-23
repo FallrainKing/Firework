@@ -27,6 +27,8 @@ export interface EngineLike {
 }
 
 interface Deps {
+  requireSession?:boolean
+  initialReading?:{page?:number;tab?:Position['tab']}
   documentVersion?:string
   paperId: number
   engine: EngineLike
@@ -49,6 +51,7 @@ export function useReaderOrchestrator(deps: Deps) {
   const sidebarTab = ref<Position['tab']>('outline')
   const annotationsVersion = ref(0)
 
+  let initialReading=deps.initialReading
   let chat: ChatBridge | null = null
   let activation = 0
   let restoring = false
@@ -102,8 +105,10 @@ export function useReaderOrchestrator(deps: Deps) {
       if (epoch !== activation) return
       if (!next.paper_ids.includes(paperId)) throw new Error('所选会话未关联当前论文')
       session.value = next
-      const position = await readerApi.getState(paperId, id,deps.documentVersion?doc.value?.file_version:undefined)
+      const savedPosition = await readerApi.getState(paperId, id,deps.documentVersion?doc.value?.file_version:undefined)
       if (epoch !== activation) return
+      const position={...savedPosition,...initialReading}
+      if(position.page<1||position.page>(doc.value?.page_count??0))throw new Error('链接中的原文页码无效')
       sidebarTab.value = position.tab
       engine.zoom = position.zoom
       engine.currentPage = position.page
@@ -120,6 +125,7 @@ export function useReaderOrchestrator(deps: Deps) {
       if (epoch !== activation) return
       await chat?.load(next)
       if (epoch !== activation) return
+      initialReading=undefined
       deps.onSessionBound?.(next.id)
     } catch (e) {
       toast(e instanceof Error ? e.message : '会话切换失败')
@@ -145,7 +151,8 @@ export function useReaderOrchestrator(deps: Deps) {
         return
       }
       const { sessions } = await sessionsApi.list({ paper_id: paperId, limit: 100 })
-      const usable = sessions.filter(s => !s.stale_paper_ids?.includes(paperId))
+      const usable = sessions.filter(s => deps.documentVersion||!s.stale_paper_ids?.includes(paperId))
+      if(deps.requireSession&&sessionId&&!usable.some(s=>s.id===sessionId))throw new Error('链接中的会话不可用，请检查关联论文及PDF版本')
       const existing = usable.filter(s => ['paper_read', 'paper_review'].includes(s.skill))
       let sid = (sessionId && usable.some(s=>s.id===sessionId) ? sessionId : null) || existing[0]?.id || null
       if (!sid) {

@@ -53,7 +53,14 @@ def visible(row,sid):
     texts=[];tools=[];images=0
     for block in content if isinstance(content,list) else []:
         if not isinstance(block,dict):continue
-        if block.get('type')=='text' and isinstance(block.get('text'),str):texts.append(block['text'][:48000])
+        if block.get('type')=='text' and isinstance(block.get('text'),str):
+            text=block['text']
+            if role=='user':
+                try:envelope=json.loads(text)
+                except ValueError:envelope=None
+                fields={'history','associated_paper_ids','selected_contexts','import_request_id','current_user_message'}
+                if isinstance(envelope,dict) and set(envelope)==fields and isinstance(envelope['current_user_message'],str):text=envelope['current_user_message']
+            texts.append(text[:48000])
         elif block.get('type')=='tool_use':tools.append(str(block.get('name',''))[:160])
         elif block.get('type')=='image':images+=1
     if not texts and not tools and not images:return None

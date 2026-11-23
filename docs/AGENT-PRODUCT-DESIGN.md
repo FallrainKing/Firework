@@ -255,3 +255,5 @@ Corral 终端画面通过 WebSocket 实时传递；结构化聊天视图使用 A
 运行环境检测仅调用实际托管Claude可执行程序的--version和--help，缓存60秒；显示安装、版本和真实参数支持。不读取登录状态，不进行模型推理，不把“已安装”当成鉴权成功。接口 GET /api/agent/providers；原生记录 GET /api/sessions/{session_id}/native?offset=0&limit=50，后续请求携带返回的source与next_offset。
 
 原生PTY终端、原生权限答复、任意宿主进程/会话发现、本机Bridge仍未实现；本批交互继续复用现有托管会话输入、取消、流式和Run诊断，未解除共享宿主的工具限制。
+
+第二批上线核对：Claude Code 2.1.322、Runner协议10、真实历史分页与Chrome继续输入聚焦验证通过，未发起模型调用。托管用户消息仅识别严格匹配的内部封装并显示current_user_message；用户自己输入的其他JSON保持原样。最终8项原生边界测试通过。

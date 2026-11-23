@@ -138,3 +138,13 @@ def test_long_text_is_explicitly_marked_truncated():
     event=visible(record(sid,message={'content':[{'type':'text','text':'x'*50000}]}),sid)
     assert len(event['text'])==48000 and event['truncated']
     assert visible(record(sid,message='malformed'),sid) is None
+
+
+def test_managed_user_envelope_displays_the_actual_question():
+    from agent_runner.native import visible
+    sid=str(uuid.uuid4())
+    text=json.dumps({'history':[],'associated_paper_ids':[27],'selected_contexts':[],'import_request_id':None,'current_user_message':'继续解释方法'})
+    event=visible(record(sid,'user',message={'content':text}),sid)
+    assert event['text']=='继续解释方法'
+    ordinary=json.dumps({'current_user_message':'This is user JSON','extra':True})
+    assert visible(record(sid,'user',message={'content':ordinary}),sid)['text']==ordinary

@@ -33,6 +33,7 @@ RUN pip install --no-cache-dir \
 
 COPY --chmod=755 docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 COPY app ./app
+COPY skills ./skills
 COPY plugins/zotero ./plugins/zotero
 COPY scripts/build_zotero_plugin.py ./scripts/build_zotero_plugin.py
 RUN python scripts/build_zotero_plugin.py

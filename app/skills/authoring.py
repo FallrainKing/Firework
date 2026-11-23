@@ -104,6 +104,7 @@ def draft(db,settings,sid):
             content=resource['content']
             if f['is_entry']:instructions=content
             elif f['path'].startswith(('references/','templates/')):resources[f['path']]=content
+    if v and not instructions.strip():raise ServiceError(409,'技能入口资源未部署或不可读，请检查安装包')
     return {'skill_id':sid,'revision':0,'published_revision':None,'body':{'name':skill['name'],'description':skill['description'],'instructions':instructions,'resources':resources,'tools':tools,'surfaces':placements(db,sid)['surfaces'],'version':('draft-'+uuid.uuid4().hex[:8])}}
 
 def save(db,body,sid=None):

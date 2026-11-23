@@ -57,3 +57,12 @@ def test_structured_task_skill_cannot_run_as_general_chat(secured):
     r=c.post('/api/sessions',headers=a,json={'template_id':'chat','skill_id':'frontier_monitor','entry_context':'research_chat'})
     assert r.status_code==409
     assert c.post('/api/sessions',headers=a,json={'template_id':'chat','entry_context':'frontier'}).status_code==422
+
+
+def test_builtin_instructions_are_loaded_for_an_editable_copy(secured):
+    c,app=secured;a=login(c)
+    c.get('/api/skills',headers=a)
+    for sid in ('paper_read','frontier_monitor','paper_guide'):
+        r=c.get('/api/skills/'+sid+'/draft',headers=a)
+        assert r.status_code==200,r.text
+        assert len(r.json()['body']['instructions'])>100

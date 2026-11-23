@@ -75,3 +75,8 @@ ResearchSubmission包含schema_version、client_job_id、artifact、annotations�
 导读查询可带file_version，产物查询可带paper_id和reader_file_version；未新增HTTP路径或数据库迁移。辅助区和导读请求按论文ID+PDF哈希隔离，忽略迟到响应/错误，重新激活缓存标签时刷新。
 
 验证：前端273通过及生产构建通过；隔离后端相关24项通过，涵盖旧分类、材料版本、导读、知识与本机回传。
+
+
+发布：代码 `4533192` 已推送main并部署，仅重建app，Runner协议12和迁移0026不变。当前论文27中误分类的翻译与导读执行回执共2条自动产物已归档；原始Run、译文、结构化导读与批注保留。独立恢复副本位于宿主 `data/maintenance-backups/before-guide-cache-20261123-121140.db`，同目录保存归档记录JSON；整套备份日志 `/tmp/firework-guide-cache-backup.log`，回退镜像 `firework-before-guide-cache-fix:20261123`。
+
+线上确认当前结构化导读版本匹配、3份有效阅读结果独立选择、无效版本404、无新增模型任务和外键异常。Chrome刷新后默认只显示结构化导读及路线，旧问答、翻译和执行回执不再堆叠在其下。

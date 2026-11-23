@@ -1,3 +1,4 @@
+import {skillAuthoring} from '@/api/skillAuthoring'
 import type { Attachment } from '@/api/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
@@ -23,7 +24,8 @@ beforeEach(() => {
   setActivePinia(createPinia())
   vi.useFakeTimers()
   vi.spyOn(sessionsApi, 'runs').mockResolvedValue({ runs: [], has_more: false, next_before: null })
-  vi.spyOn(sessionsApi, 'templates').mockResolvedValue({ templates: [], kinds: {}, skills: [] })
+  vi.spyOn(skillAuthoring,'available').mockResolvedValue({skills:[]})
+  vi.spyOn(sessionsApi, 'templates').mockResolvedValue({ templates: [{id:'overview',builtin:0,name:'我的概览',description:'',kind:'reading',skill:'paper_read',prompt:'请概述当前论文'},{id:'method',builtin:0,name:'方法',description:'',kind:'reading',skill:'paper_read',prompt:'逐步解释核心方法'}], kinds: {}, skills: [] })
   vi.spyOn(sessionsApi, 'get').mockResolvedValue({ session, papers: [], usage: { input_tokens: 0, output_tokens: 0, total_tokens: 0, runs_with_usage: 0, runs_with_input_tokens: 0, runs_with_output_tokens: 0, runs_with_total_tokens: 0, cli_estimated_cost_usd: null } })
   vi.spyOn(workbenchApi, 'getDraft').mockResolvedValue({ prompt: '', context: null, attachment_ids: [], attachments: [] })
   vi.spyOn(workbenchApi, 'saveDraft').mockResolvedValue({ saved: true })
@@ -175,8 +177,8 @@ describe('ChatPanel research composer', () => {
     await toggle.trigger('click')
     expect(toggle.attributes('aria-expanded')).toBe('true')
     expect(wrapper.find('.task-template-panel').text()).toContain('阅读任务')
-    expect(wrapper.find('.task-template-panel').text()).toContain('填入后发送')
-    expect(wrapper.find('.task-template-panel').text()).toContain('快速概览')
+    expect(wrapper.find('.task-template-panel').text()).toContain('选择 Skill')
+    expect(wrapper.find('.task-template-panel').text()).not.toContain('快速概览')
     expect(wrapper.find('[aria-label="提问模板"]').text()).not.toContain('重复的起始模板')
     expect(wrapper.find('[aria-label="提问模板"]').text()).toContain('我的研究提问')
     await toggle.trigger('click')
@@ -190,7 +192,7 @@ describe('ChatPanel research composer', () => {
     const wrapper = await mountPanel()
     await wrapper.find('textarea').setValue('请/')
     await wrapper.find('textarea').trigger('input')
-    expect(wrapper.find('[aria-label="提问模板"]').text()).toContain('快速概览')
+    expect(wrapper.find('[aria-label="提问模板"]').text()).toContain('我的概览')
     await wrapper.find('[aria-label="提问模板"] button').trigger('click')
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toContain('请\n\n请概述当前论文')
     expect(agentApi.createRun).not.toHaveBeenCalled()
@@ -525,4 +527,39 @@ describe('minimized agent composer', () => {
     expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('重新编辑此问题')
     wrapper.unmount()
   })
+})
+
+
+it('selects a real registered Skill without running until send',async()=>{
+  vi.mocked(skillAuthoring.available).mockResolvedValue({skills:[{id:'custom:choice',name:'我的阅读技能',description:'Actual registered skill',source:'zip',status:'enabled',default_version_id:42,default_version:{id:42,version:'1'},selectable:true,blocked_reason:null} as never]})
+  const create=vi.spyOn(agentApi,'createRun').mockResolvedValue(run())
+  vi.spyOn(agentApi,'getRun').mockResolvedValue(run())
+  const wrapper=await mountPanel();await wrapper.find('.composer-tools button').trigger('click');await flushPromises()
+  const choice=wrapper.findAll('.template-options button').find(b=>b.text().includes('我的阅读技能'))!;await choice.trigger('click');await flushPromises()
+  expect(create).not.toHaveBeenCalled();await wrapper.find('textarea').setValue('解释重点');await wrapper.find('form').trigger('submit');await flushPromises()
+  expect(create).toHaveBeenCalledWith(expect.objectContaining({skill:'custom:choice',skill_version_id:42,prompt:'解释重点'}));wrapper.unmount()
+})
+
+
+it('replaces streamed answer snapshots without submitting another task and closes on navigation',async()=>{
+  const sources: Array<{onmessage:((e:{data:string})=>void)|null;onerror:(()=>void)|null;close:ReturnType<typeof vi.fn>}> = []
+  class FakeEventSource {
+    onmessage:((e:{data:string})=>void)|null=null
+    onerror:(()=>void)|null=null
+    close=vi.fn()
+    constructor(_url:string){sources.push(this)}
+  }
+  vi.stubGlobal('EventSource',FakeEventSource)
+  vi.spyOn(sessionsApi,'runs').mockResolvedValue({runs:[run({status:'running',answer:''})],has_more:false,next_before:null})
+  vi.spyOn(agentApi,'getRun').mockResolvedValue(run({status:'running',answer:''}))
+  const create=vi.spyOn(agentApi,'createRun')
+  const w=await mountPanel();await flushPromises()
+  expect(sources.length).toBe(1)
+  sources[0].onmessage?.({data:JSON.stringify({id:'r1',status:'running',answer:'第一段',progress:{}})})
+  await flushPromises();expect(w.find('.answer').text()).toBe('第一段')
+  sources[0].onmessage?.({data:JSON.stringify({id:'r1',status:'running',answer:'第一段 第二段',progress:{}})})
+  await flushPromises();expect(w.find('.answer').text()).toBe('第一段 第二段')
+  expect(create).not.toHaveBeenCalled()
+  w.unmount();expect(sources[0].close).toHaveBeenCalled()
+  vi.unstubAllGlobals()
 })

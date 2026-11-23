@@ -26,6 +26,10 @@ def policy(db,skill_id,version_id=None):
     return p
 
 async def create(db,state,pid,body:GuideCreate):
+    from ...skills.authoring import placements
+    from ...skills.service import ensure_builtin_skills
+    ensure_builtin_skills(db)
+    if 'guide' not in placements(db,body.skill_id)['surfaces']:raise ServiceError(409,'技能未开放到导读批注')
     paper=reader_service.paper(db,pid)
     try:info=pages.document_info(state.settings,paper)
     except (ValueError,OSError) as e:raise ServiceError(400,str(e)) from e

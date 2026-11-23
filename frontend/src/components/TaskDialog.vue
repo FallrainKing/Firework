@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
+import {skillAuthoring} from '@/api/skillAuthoring'
+import type {Skill} from '@/api/skills'
 import PaperPicker from './PaperPicker.vue'
 import { useSessionsStore } from '@/stores/sessions'
 import { sessionsApi } from '@/api/sessions'
@@ -26,6 +28,9 @@ const templateId = ref(props.templateId || (props.mode === 'compare' ? 'compare'
 const categoryId = ref<number | null>(null)
 const prompt = ref(props.question)
 const paperIds = ref<number[]>([...props.paperIds])
+const skillChoices = ref<(Skill & {selectable:boolean})[]>([])
+const skillId = ref('')
+const surface = props.mode==='compare'?'compare':props.mode==='review'?'review':props.mode==='chat'?'research_chat':'reader_chat'
 const creating = ref(false)
 const error = ref('')
 
@@ -54,6 +59,7 @@ watch(templateId, id => {
 
 onMounted(async () => {
   await store.load()
+  try { skillChoices.value=(await skillAuthoring.available(surface)).skills } catch { error.value='技能列表加载失败' }
   const t = store.templates.find(x => x.id === templateId.value)
   if (t && !prompt.value) prompt.value = t.prompt
   const { sessions } = await sessionsApi.list({ archived: false, limit: 100 })
@@ -96,6 +102,7 @@ async function create() {
       starting_prompt: prompt.value,
       category_id: categoryId.value,
       paper_ids: paperIds.value,
+      ...(skillId.value?{skill_id:skillId.value,skill_version_id:skillChoices.value.find(s=>s.id===skillId.value)?.default_version_id??undefined,entry_context:surface}:{}),
     })
     emit('created', result.session, result.starting_prompt)
   } catch (e) {
@@ -139,6 +146,12 @@ function openExisting() {
         <input v-model="title" data-field="title" maxlength="160" placeholder="留空则使用模板名称" />
       </label>
 
+      <label>执行技能
+        <select v-model="skillId" aria-label="执行技能">
+          <option value="">使用任务模板关联技能</option>
+          <option v-for="s in skillChoices" :key="s.id" :value="s.id" :disabled="!s.selectable">{{ s.name }}</option>
+        </select>
+      </label>
       <label>任务模板
         <div class="inline-row">
           <select v-model="templateId" data-field="template">

@@ -15,8 +15,8 @@ async function confirm(){if(choice.value==='read'){emit('read',goal.value.trim()
  <div v-if="choice" class="guide-confirm">
   <strong>{{choice==='annotate'?'生成导读与原文批注':'开始论文阅读'}}</strong>
   <label>阅读要求<textarea v-model="goal" rows="2" maxlength="500" aria-label="Skill 阅读要求"></textarea></label>
-  <template v-if="choice==='annotate'"><label>使用 Skill<select v-model="skillId" aria-label="自动批注技能"><option v-for="s in controller.skills.value" :key="s.id" :value="s.id">{{s.name}}</option></select></label><div class="guide-limits"><label>重点数量<input v-model.number="maxItems" type="number" min="1" max="10"></label><label>最多材料页<input v-model.number="maxPages" type="number" min="1" :max="Math.min(6,pageCount)"></label></div><p>本次调用现有智能体，预算上限 {{selected?'$'+selected.max_budget_usd.toFixed(2):'待选择技能'}}。部分材料会如实标注，当前不看图、不读代码。相同结果优先复用。</p></template>
-  <p v-else>确认后在新的阅读会话调用现有阅读 Skill；仅打开此提示不会执行任务。</p>
+  <template v-if="choice==='annotate'"><label>使用 Skill<select v-model="skillId" aria-label="自动批注技能"><option v-for="s in controller.skills.value" :key="s.id" :value="s.id">{{s.name}}</option></select></label><div class="guide-limits"><label>重点数量<input v-model.number="maxItems" type="number" min="1" max="10"></label><label>最多材料页<input v-model.number="maxPages" type="number" min="1" :max="Math.min(6,pageCount)"></label></div></template>
+
   <div class="guide-buttons"><button type="button" @click="choice=null">取消</button><button type="button" class="primary" :disabled="controller.busy.value||readingBusy||(choice==='annotate'&&!selected)" @click="confirm">{{choice==='annotate'?'确认生成批注':'确认开始阅读'}}</button></div>
  </div>
  <p v-if="controller.error.value" class="error" role="alert">{{controller.error.value}}</p>

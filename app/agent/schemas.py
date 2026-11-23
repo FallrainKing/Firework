@@ -10,6 +10,7 @@ from ..runner_config.connection_schemas import ConnectionRef
 
 
 class RunCreate(BaseModel):
+    skill_version_id: int | None = Field(None,ge=1)
     profile: ProfileRef | None = None
     budget: BudgetRef | None = None
     connection: ConnectionRef | None = None

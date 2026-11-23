@@ -15,6 +15,8 @@ async def skills(request:Request):
     db=request.app.state.db;out=[]
     for skill in registry_view(db)['skills']:
         if skill['status']!='enabled':continue
+        from ...skills.authoring import placements
+        if 'guide' not in placements(db,skill['id'])['surfaces']:continue
         try:p=s.policy(db,skill['id'])
         except ServiceError:continue
         out.append({'id':skill['id'],'name':skill['name'],'version_id':p['version_id'],'max_budget_usd':p['max_budget_usd'],'max_output_tokens':p['max_output_tokens']})

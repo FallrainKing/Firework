@@ -62,6 +62,12 @@ def save_topic(db,body,ident=None):
     from ..sessions.service import create_session
     from ..sessions.schemas import SessionCreate
     ensure_builtin_skills(db)
+    from ..skills import authoring
+    selected=body.config.skill_id
+    if 'frontier' not in authoring.placements(db,selected)['surfaces']:raise ServiceError(409,'所选技能未开放到前沿追踪')
+    try:p=authoring.compatible(db,selected,body.config.skill_version_id,'frontier')
+    except ValueError as e:raise ServiceError(409,str(e)) from None
+    body.config.skill_version_id=p['version_id']
     config=dump(body.config.model_dump())
     if ident is None:
         # Seed template is shared with normal session machinery.
@@ -103,7 +109,13 @@ async def trigger(db,state,topic_id,key):
     if active:raise ServiceError(409,'该主题正在执行')
     from ..sessions.service import create_session
     from ..sessions.schemas import SessionCreate
+    from ..skills import authoring
+    chosen=cfg.get('skill_id','frontier_monitor');version=cfg.get('skill_version_id')
+    if 'frontier' not in authoring.placements(db,chosen)['surfaces']:raise ServiceError(409,'技能已从前沿追踪移除')
+    try:policy=authoring.compatible(db,chosen,version,'frontier')
+    except ValueError as e:raise ServiceError(409,str(e)) from None
     sid=create_session(db,SessionCreate(template_id='frontier',title=t['title']+' · '+now()))['session']['id']
+    db.execute("UPDATE conversations SET skill=?,skill_version_id=?,entry_context='frontier' WHERE id=?",(chosen,policy['version_id'],sid));db.commit()
     ident=uuid.uuid4().hex
     start=(datetime.now(timezone.utc)-timedelta(days=cfg['lookback_days'])).strftime('%Y-%m-%d %H:%M:%S')
     db.execute('INSERT INTO frontier_runs(id,topic_id,revision,config_json,request_key,conversation_id,window_start,window_end) VALUES (?,?,?,?,?,?,?,?)',(ident,topic_id,t['revision'],t['config_json'],key,sid,start,now()));db.commit()

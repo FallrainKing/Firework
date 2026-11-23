@@ -10,6 +10,7 @@ export interface SessionUsage {
 }
 
 export interface Session {
+  entry_context?: string | null
   id: number
   title: string
   kind: string
@@ -32,6 +33,9 @@ export interface Session {
 }
 
 export interface SessionCreate {
+  skill_id?: string
+  skill_version_id?: number
+  entry_context?: string
   title?: string
   template_id: string
   starting_prompt?: string | null
@@ -142,6 +146,7 @@ export interface Run {
 }
 
 export interface RunCreate {
+  skill_version_id?: number | null
   profile?: {id:string;revision:number} | null
   connection?: {id:string;revision:number} | null
   budget?: {id:string;revision:number} | null

@@ -23,7 +23,7 @@ def require_session(db: sqlite3.Connection, session_id: int):
 def session_view(db: sqlite3.Connection, row) -> dict:
     from ..agent import service as agent_service  # late import: agent.service imports this module
 
-    out = {k: row[k] for k in ('id', 'title', 'kind', 'skill', 'skill_version_id', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
+    out = {k: row[k] for k in ('id', 'title', 'kind', 'entry_context', 'skill', 'skill_version_id', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
     out['paper_ids'] = repo.paper_ids(db, row['id'])
     out['stale_paper_ids'] = [r[0] for r in db.execute('SELECT cp.paper_id FROM conversation_papers cp JOIN papers p ON p.id=cp.paper_id JOIN document_versions v ON v.id=p.default_version_id WHERE cp.conversation_id=? AND cp.file_version IS NOT NULL AND cp.file_version<>v.file_hash', (row['id'],))]
     out['run_count'] = agent_service.run_count(db, row['id'])
@@ -85,6 +85,7 @@ def list_sessions(db, *, q='', kind=None, paper_id=None, category_id=None, archi
 
 
 def create_session(db: sqlite3.Connection, body: SessionCreate) -> dict:
+    skills_service.ensure_builtin_skills(db)
     template = repo.find_template(db, body.template_id)
     if template is None:
         raise ServiceError(400, '模板不存在')
@@ -98,6 +99,22 @@ def create_session(db: sqlite3.Connection, body: SessionCreate) -> dict:
     for ident in ids:
         if not paper_exists(db, ident):
             raise ServiceError(400, '关联论文不存在')
+    selected=dict(template)
+    surface=body.entry_context or ('compare' if template['skill']=='paper_compare' else 'review' if template['skill']=='paper_review' else 'reader_chat' if ids else 'research_chat')
+    if body.entry_context and surface not in ('reader_chat','research_chat','review','compare'):
+        raise ServiceError(422, '请使用专用任务入口')
+    if body.skill_version_id and not body.skill_id:
+        raise ServiceError(422, '版本需要指定技能')
+    if body.skill_id:
+        from ..skills import authoring
+        if surface in ('reader_chat','review') and not ids:raise ServiceError(422,'该功能需要论文')
+        if surface=='compare' and len(ids)<2:raise ServiceError(422,'比较需要至少两篇论文')
+        if surface not in ('reader_chat','research_chat','review','compare'):raise ServiceError(422,'请使用专用任务入口')
+        if surface not in authoring.placements(db,body.skill_id)['surfaces']:raise ServiceError(409,'所选技能未开放到此功能')
+        try:p=authoring.compatible(db,body.skill_id,body.skill_version_id,surface)
+        except ValueError as e:raise ServiceError(409,str(e)) from None
+        selected.update(skill=body.skill_id,skill_version_id=p['version_id'])
+    template=selected
     starting_prompt = body.starting_prompt if body.starting_prompt is not None else template['prompt']
     try:
         cur = repo.insert_session(
@@ -112,6 +129,7 @@ def create_session(db: sqlite3.Connection, body: SessionCreate) -> dict:
             skill_version_id=template['skill_version_id'],
         )
         ident = cur.lastrowid
+        db.execute('UPDATE conversations SET entry_context=? WHERE id=?',(surface,ident))
         repo.link_papers(db, ident, ids)
         db.commit()
     except Exception:

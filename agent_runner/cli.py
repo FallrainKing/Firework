@@ -69,7 +69,7 @@ def image_blocks(body, runtime: Path):
 
 
 def build_args(skill, model, session_id, resume, mcp, skill_md, has_images):
-    args = [str(Path.home() / '.local/bin/claude'), '--bare', '--restricted', '--print', '--output-format', 'stream-json', '--verbose', '--model', model, '--tools', '', '--strict-mcp-config', '--mcp-config', json.dumps(mcp), '--max-turns', str(skill['max_turns']), '--system-prompt', SYSTEM_PREFIX + skill_md]
+    args = [str(Path.home() / '.local/bin/claude'), '--bare', '--restricted', '--print', '--output-format', 'stream-json', '--include-partial-messages', '--verbose', '--model', model, '--tools', '', '--strict-mcp-config', '--mcp-config', json.dumps(mcp), '--max-turns', str(skill['max_turns']), '--system-prompt', SYSTEM_PREFIX + skill_md]
     if skill.get('max_budget_usd') is not None:
         args += ['--max-budget-usd', str(skill['max_budget_usd'])]
     args += ['--resume' if resume else '--session-id', session_id]

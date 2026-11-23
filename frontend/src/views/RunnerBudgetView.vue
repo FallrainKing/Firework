@@ -20,7 +20,6 @@ onMounted(load)
   <section v-if="data"><h2>账号默认额度</h2>
    <label>新任务使用 <select v-model="selected" :disabled="busy"><option value="">沿用各 Skill 原有额度</option><option v-for="b in data.budgets" :key="b.id" :value="b.id">{{ b.name }} · v{{ b.revision }}</option></select></label>
    <button :disabled="busy" @click="apply">保存默认选择</button>
-   <p>原有额度可能包含 $0.20 估价上限。选择“标准研究”可关闭该金额守卫，同时保留轮次、输出、工具次数和时长限制。不会自动重跑失败任务。</p>
    <label>验证任务 <select v-model="skill"><option value="chat">阅读问答</option><option value="paper_guide">阅读导读与批注</option><option value="frontier_monitor">前沿追踪</option></select></label><button :disabled="busy" @click="check">仅校验所选额度，不调用模型</button>
    <div v-if="preview"><p>{{ preview.warning }}</p><pre>{{ JSON.stringify(preview.effective,null,2) }}</pre><p>保留工具权限：{{ preview.tools.join('、') || '无' }}</p></div>
    <h2>额度预设</h2><ul><li v-for="b in data.budgets" :key="b.id">{{ b.name }} · v{{ b.revision }} · {{ b.values.max_turns }} 轮 / {{ b.values.timeout_s }} 秒 <button :disabled="busy" @click="edit(b,true)">复制</button><button v-if="!b.builtin" :disabled="busy" @click="edit(b)">编辑</button></li></ul>

@@ -14,6 +14,7 @@ class SkillInstall(BaseModel):
 
 
 class SkillUpdate(BaseModel):
+    expected_revision: int | None = Field(None,ge=1)
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=1000)
     category_ids: list[int] | None = None

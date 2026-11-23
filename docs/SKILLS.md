@@ -86,3 +86,14 @@ skill_resource 只读取允许的资源范围，不启动包内命令。需要�
 ## 8. 后台设计 Skill（待实现）
 
 规划后台直接新建/编辑指令与资源、草稿、试运行和版本发布；显示名复用 name 元数据，稳定 ID 与历史版本不变。技能范围、自定义执行、兼容会话内按轮次调用及 SSE 正文输出统一见 [产品化工作台设计](AGENT-PRODUCT-DESIGN.md)。不把现有改名接口误称为已经具备完整在线 Skill 编辑器。
+
+
+## 后台设计与功能范围（2026-11-23）
+
+技能库支持直接新建、编辑草稿与发布；无需先制作 ZIP。设置显示名不会改变 Skill ID、历史 Run 和已发布指令。已发布版本升级需新的版本号，发布后仍需启用才能执行。
+
+“展示并可用于”可配置阅读对话、研究对话、论文比较、论文审查、前沿追踪、导读批注。保存范围即时影响新任务选择；前沿和导读还要求各自的结构化工具，配置可见不代表通过兼容检查。ZIP 版本也可以在此配置范围。
+
+编辑内置技能的指令会创建独立副本；“保存显示名与使用范围”用于原技能的展示配置。资源路径仅支持 references/ 或 templates/ 下的文本，不支持脚本执行。大资源无法完整载入时拒绝在线编辑，改用下载、编辑、重新上传。
+
+草稿 API：POST /api/skills/drafts、GET/PATCH /api/skills/{skill_id}/draft、POST /api/skills/{skill_id}/publish。功能范围：GET /api/skills/surfaces、GET /api/skills/available?surface=reader_chat、GET/PUT /api/skills/{skill_id}/placements。写请求需当前账号 Cookie 和 CSRF，修订过期返回409；历史版本保持不可变。

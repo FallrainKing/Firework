@@ -2,6 +2,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, model_validator
 
 class TopicConfig(BaseModel):
+    skill_id: str = Field('frontier_monitor',max_length=120)
+    skill_version_id: int | None = Field(None,ge=1)
     goal: str = Field('', max_length=1500)
     domains: list[str] = Field(default_factory=list, max_length=10)
     keywords: list[str] = Field(default_factory=list, max_length=20)

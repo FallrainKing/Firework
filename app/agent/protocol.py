@@ -1,7 +1,7 @@
 """Shared release contract for the Web API and private host Runner."""
 
 # v2 adds immutable skill versions/hashes and custom-skill resources.
-RUNNER_PROTOCOL_VERSION = 8
+RUNNER_PROTOCOL_VERSION = 9
 
 # v3 registers scoped frontier discovery, evidence and report tools.
 
@@ -14,3 +14,5 @@ RUNNER_PROTOCOL_VERSION = 8
 # v7 adds account-scoped connection snapshots and ephemeral credentials.
 
 # v8 fixes execution-profile identity, role and narrowed MCP grants per native session.
+
+# v9 adds visible text snapshots and incremental CLI output.

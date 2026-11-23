@@ -11,8 +11,11 @@ import {
   type SkillResourceContent,
   type SkillVersionHistoryItem,
 } from '@/api/skills'
+import SkillDesigner from '@/components/SkillDesigner.vue'
 import StateFeedback from '@/components/StateFeedback.vue'
 
+const designerOpen=ref(false),designerSkill=ref<Skill|null>(null)
+function design(skill:Skill|null=null){designerSkill.value=skill;designerOpen.value=true}
 const skills = ref<Skill[]>([])
 const categories = ref<SkillCategory[]>([])
 const loading = ref(false)
@@ -279,13 +282,15 @@ watch(categoryFilter, () => undefined)
 
 <template>
   <section class="skills-workspace">
+    <SkillDesigner v-if="designerOpen" :skill="designerSkill" @close="designerOpen=false" @saved="refresh"/>
     <div class="module-heading">
       <div>
         <p class="eyebrow">DYNAMIC SKILLS</p>
         <h1>技能库</h1>
-        <p class="muted">上传 ZIP 技能包，先检查再安装；新技能默认停用，启用后无需重启即可被新任务发现。</p>
+        <p class="muted">创建、编辑或导入技能，管理显示名、版本和适用功能。</p>
       </div>
       <div class="heading-actions">
+        <button type="button" @click="design()">＋ 新建 Skill</button>
         <input ref="fileInput" data-testid="skill-file" type="file" accept=".zip,application/zip" @change="upload">
         <button class="primary" type="button" :disabled="uploading" @click="fileInput?.click()">{{ uploading ? '检查中…' : '＋ 上传技能包' }}</button>
       </div>
@@ -370,6 +375,7 @@ watch(categoryFilter, () => undefined)
           </p>
         </div>
         <div class="skill-actions">
+          <button type="button" @click="design(skill)">配置 / 编辑</button>
           <button
             type="button"
             data-testid="skill-version-toggle"

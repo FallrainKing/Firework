@@ -443,6 +443,9 @@ def update_skill(db, skill_id: str, body) -> dict:
     row = repo.find_skill(db, skill_id)
     if row is None:
         raise ValueError('Skill not found')
+    if body.expected_revision is not None and row['revision']!=body.expected_revision:
+        raise ValueError('Skill revision mismatch; please refresh')
+    if body.name is not None and not body.name.strip():raise ValueError('显示名不能为空')
     repo.update_skill_meta(
         db,
         skill_id,
@@ -507,7 +510,7 @@ def execution_policy(db, skill_id: str, version_id: int | None = None) -> dict:
     if row is None or row['status'] != 'enabled':
         raise ValueError('Skill unavailable')
     version = repo.find_version(db, version_id) if version_id else repo.default_version(db, skill_id)
-    if version is None or version['validation_status'] != 'validated':
+    if version is None or version['skill_id'] != skill_id or version['validation_status'] != 'validated':
         raise ValueError('Skill version unavailable')
     if row['source'] == 'builtin':
         cfg = BUILTIN_SKILLS[skill_id]
@@ -529,7 +532,7 @@ def execution_policy(db, skill_id: str, version_id: int | None = None) -> dict:
         'id': skill_id,
         'name': row['name'],
         'tools': requested_tools,
-        'max_calls': 4,
+        'max_calls': 24 if manifest.get('authoring_source')=='editor' else 4,
         'version_id': version['id'],
         'version': version['version'],
         'skill_hash': version['content_hash'],
@@ -537,6 +540,7 @@ def execution_policy(db, skill_id: str, version_id: int | None = None) -> dict:
         'entry': version['entry'],
         'budget_profile': manifest.get('budget_profile', 'short'),
         **profile,
+        **({'max_budget_usd':None} if manifest.get('authoring_source')=='editor' else {}),
     }
 
 

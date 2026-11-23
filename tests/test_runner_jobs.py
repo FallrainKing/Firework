@@ -353,3 +353,21 @@ def test_budget_stop_preserves_partial_output(engine,monkeypatch):
         assert r['metadata']['finish_reason']=='budget_usd' and r['metadata']['partial_answer']
         await engine.close()
     asyncio.run(main())
+
+
+def test_visible_text_arrives_before_cli_completion(engine, runtime, monkeypatch):
+    delta = json.dumps({'type':'stream_event','event':{'type':'content_block_delta','index':0,'delta':{'type':'text_delta','text':'Visible draft'}}})
+    monkeypatch.setattr(jobs_mod.asyncio, 'create_subprocess_exec', make_spawn([delta,result_line('Final answer')],delays={1:0.3}))
+    async def main():
+        await engine.start()
+        ident='f'*32
+        await engine.submit(ident,'chat',body())
+        partial=None
+        async for frame in engine.events(ident):
+            if frame['type']=='progress' and frame.get('event',{}).get('answer'):
+                partial=frame['event']['answer']
+                assert engine.get(ident)['status']=='running'
+            if frame['type']=='result':break
+        assert partial=='Visible draft'
+        await engine.close()
+    asyncio.run(main())

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { renderMarkdown } from '@/shared/markdown'
-import { computed, nextTick, onUnmounted, ref, useSlots, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
+import {skillAuthoring} from '@/api/skillAuthoring'
+import type {Skill} from '@/api/skills'
 import { agentApi } from '@/api/agent'
 import { sessionsApi } from '@/api/sessions'
 import { readerApi } from '@/api/reader'
@@ -18,13 +20,8 @@ import StateFeedback from '@/components/StateFeedback.vue'
 
 const props = defineProps<{ session: Session | null; paperId: number; paperTitle?: string; orchestrator?: { jump: (ctx: SelectionContext) => void; refreshAnnotations: () => Promise<void> } }>()
 const wb = useWorkbenchStore()
-const slots = useSlots()
 
-const QUICK: Template[] = [
-  { id: 'quick_overview', name: '快速概览', description: '', kind: 'reading', skill: 'chat', prompt: '请概述当前论文的研究问题、方法、主要结论与材料覆盖范围。', builtin: 0 },
-  { id: 'explain_method', name: '解释方法', description: '', kind: 'reading', skill: 'chat', prompt: '请结合当前论文的原文，逐步解释核心方法与关键公式。', builtin: 0 },
-  { id: 'inspect_experiment', name: '检查实验', description: '', kind: 'reading', skill: 'chat', prompt: '请核对当前论文的实验设置、对照方法和结论支持程度，列出证据与疑问。', builtin: 0 },
-]
+
 
 const runs = ref<Run[]>([])
 const question = ref('')
@@ -32,10 +29,15 @@ const selectedProfile=ref<ProfileRef|null>(null)
 watch(selectedProfile,p=>{if(p){selectedBudget.value=null;selectedConnection.value=null}})
 const selectedBudget=ref<BudgetRef|null>(null)
 const selectedConnection=ref<ConnectionRef|null>(null)
-watch(()=>props.session?.id,()=>{selectedBudget.value=null;selectedConnection.value=null;selectedProfile.value=null})
+watch(()=>props.session?.id,()=>{selectedBudget.value=null;selectedConnection.value=null;selectedProfile.value=null;chosenSkill.value=null})
 const contexts = ref<SelectionContext[]>([])
 const attachments = ref<Attachment[]>([])
 const templates = ref<Template[]>([])
+const availableSkills=ref<(Skill&{selectable:boolean;blocked_reason:string|null})[]>([])
+const chosenSkill=ref<Skill|null>(null)
+const skillError=ref('')
+async function loadSkills(){skillError.value='';try{const kind=currentSession.value?.skill;const surface=currentSession.value?.entry_context||(kind==='paper_compare'||currentSession.value?.kind==='comparison'?'compare':kind==='paper_review'?'review':props.paperId?'reader_chat':'research_chat');availableSkills.value=(await skillAuthoring.available(surface)).skills}catch(e){skillError.value=String(e)}}
+function selectSkill(skill:Skill){chosenSkill.value=skill;selectedProfile.value=null;void loadTemplates();slashMenuOpen.value=false;focusInput()}
 const associatedPapers = ref<Array<{ id: number; title: string }>>([])
 const composerMinimized = ref(false)
 const detailsOpen = ref(false)
@@ -78,6 +80,7 @@ function resizeInput() {
 watch(question, () => { void nextTick(resizeInput) })
 watch([slashMenuOpen, mentionMenuOpen, slashQuery, mentionQuery], () => { menuIndex.value = 0 })
 watch(slashMenuOpen, open => {
+  if(open) void loadSkills()
   if (open) void nextTick(() => {
     const extras = questionInput.value?.closest('.chat-panel')?.querySelector('.composer-extras')
     if (extras) extras.scrollTop = 0
@@ -96,7 +99,7 @@ function onComposerKeydown(event: KeyboardEvent) {
   if (event.isComposing || composing.value || event.keyCode === 229) return
   if (event.key === 'Escape') { closeMenus(); event.preventDefault(); return }
   const menuOpen = slashMenuOpen.value || mentionMenuOpen.value
-  const count = slashMenuOpen.value ? visibleTemplates.value.length : visiblePapers.value.length
+  const count = slashMenuOpen.value ? visibleSkills.value.length+visibleTemplates.value.length : visiblePapers.value.length
   if (menuOpen && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
     event.preventDefault()
     if (count) menuIndex.value = (menuIndex.value + (event.key === 'ArrowDown' ? 1 : -1) + count) % count
@@ -107,8 +110,8 @@ function onComposerKeydown(event: KeyboardEvent) {
   event.preventDefault()
   if (menuOpen && !event.ctrlKey && !event.metaKey) {
     if (slashMenuOpen.value) {
-      const template = visibleTemplates.value[menuIndex.value]
-      if (template) chooseTemplate(template)
+      const skill=visibleSkills.value[menuIndex.value]
+      if(skill){if(skill.selectable)selectSkill(skill)}else{const template=visibleTemplates.value[menuIndex.value-visibleSkills.value.length];if(template)chooseTemplate(template)}
     } else {
       const paper = visiblePapers.value[menuIndex.value]
       if (paper) void choosePaper(paper)
@@ -122,9 +125,21 @@ let epoch = 0
 let saveTimer: ReturnType<typeof setTimeout> | null = null
 let saveQueue: Promise<unknown> = Promise.resolve()
 const watching = new Set<string>()
+const streams=new Map<string,()=>void>()
+async function streamRun(id:string,sid:number|undefined){
+  if(typeof EventSource==='undefined')return
+  await new Promise<void>(resolve=>{
+    const source=new EventSource(agentApi.runEventsUrl(id))
+    const close=()=>{source.close();streams.delete(id);resolve()}
+    streams.set(id,close)
+    source.onerror=close
+    source.onmessage=e=>{try{const snap=JSON.parse(e.data);if(stopped||currentSession.value?.id!==sid){close();return}const old=runs.value.find(r=>r.id===id);if(old&&snap.id===id){upsertRun({...old,status:snap.status,answer:snap.answer??old.answer,progress:snap.progress??old.progress});if(['succeeded','failed','cancelled'].includes(snap.status))close()}}catch{/* malformed events do not restart a task */}}
+  })
+}
 let stopped = false
-onUnmounted(() => { stopped = true })
+onUnmounted(() => { stopped = true;for(const close of [...streams.values()])close() })
 const currentSession = ref<Session | null>(props.session)
+watch(()=>props.session?.id,()=>{for(const close of [...streams.values()])close()})
 
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const canSend = computed(() => !loading.value && !loadError.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
@@ -140,6 +155,7 @@ watch([() => props.paperId, question, contexts, attachments, activeRun], () => {
     running: activeRun.value !== null,
   })
 }, { deep: true })
+const visibleSkills=computed(()=>availableSkills.value.filter(s=>!slashQuery.value.trim()||(s.name+' '+s.description).toLowerCase().includes(slashQuery.value.trim().toLowerCase())))
 const visibleTemplates = computed(() => {
   const q = slashQuery.value.trim().toLowerCase()
   return templates.value.filter(t => !q || t.name.toLowerCase().includes(q) || t.prompt.toLowerCase().includes(q)).slice(0, 8)
@@ -201,7 +217,7 @@ async function loadTemplates() {
   const data = await sessionsApi.templates()
   // The built-in reading starter is represented by the confirmed reading task.
   // Keep custom prompts and quick questions in the same picker without a duplicate entry.
-  templates.value = [...data.templates.filter(t => (t.skill === currentSession.value?.skill || t.skill === 'chat') && !(slots['paper-actions'] && t.id === 'read')), ...QUICK]
+  templates.value=data.templates.filter(t=>t.id!=='read'&&t.skill===(chosenSkill.value?.id||currentSession.value?.skill))
 }
 
 async function load(session: Session) {
@@ -519,9 +535,9 @@ async function ask(prompt: string, selectedContexts: SelectionContext[] = [], pu
   let body: Record<string, unknown> | null = null
   try {
     const old = JSON.parse(localStorage.getItem(storage) || 'null')
-    body = old && JSON.stringify(old.profile??null)===JSON.stringify(selectedProfile.value) && JSON.stringify(old.connection??null)===JSON.stringify(selectedConnection.value) && JSON.stringify(old.budget??null)===JSON.stringify(selectedBudget.value) && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
+    body = old && old.skill===(chosenSkill.value?.id??undefined) && old.skill_version_id===(chosenSkill.value?.default_version_id??undefined) && JSON.stringify(old.profile??null)===JSON.stringify(selectedProfile.value) && JSON.stringify(old.connection??null)===JSON.stringify(selectedConnection.value) && JSON.stringify(old.budget??null)===JSON.stringify(selectedBudget.value) && old.prompt === prompt && JSON.stringify(old.contexts) === JSON.stringify(selectedContexts) && JSON.stringify(old.attachment_ids || []) === JSON.stringify(attachment_ids) ? old : null
   } catch { /* ignore */ }
-  body = body ?? { conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, ...(selectedProfile.value?{profile:selectedProfile.value}:{}), ...(selectedConnection.value?{connection:selectedConnection.value}:{}), ...(selectedBudget.value?{budget:selectedBudget.value}:{}), request_key: uid32() }
+  body = body ?? { ...(chosenSkill.value?{skill:chosenSkill.value.id,skill_version_id:chosenSkill.value.default_version_id}:{}), conversation_id: sid, prompt, contexts: selectedContexts, purpose, attachment_ids, ...(selectedProfile.value?{profile:selectedProfile.value}:{}), ...(selectedConnection.value?{connection:selectedConnection.value}:{}), ...(selectedBudget.value?{budget:selectedBudget.value}:{}), request_key: uid32() }
   localStorage.setItem(storage, JSON.stringify(body))
   busy.value = true
   try {
@@ -568,7 +584,8 @@ async function watchRun(id: string, sid = currentSession.value?.id) {
         await props.orchestrator?.refreshAnnotations()
         break
       }
-      await new Promise(r => setTimeout(r, 2000))
+      await streamRun(id,sid)
+      if(!stopped)await new Promise(r => setTimeout(r, 1000))
     }
   } catch {
     if (!stopped) showToast('任务状态连接中断，重新打开会话可继续查看。')
@@ -806,7 +823,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     </div>
     <div class="composer-tools composer-toolbar">
       <template v-if="!composerMinimized">
-        <button type="button" class="menu-toggle" :aria-expanded="slashMenuOpen" @click="slashMenuOpen = !slashMenuOpen; slashQuery = ''; mentionMenuOpen = false">/ 任务与模板</button>
+        <button type="button" class="menu-toggle" :aria-expanded="slashMenuOpen" @click="slashMenuOpen = !slashMenuOpen; slashQuery = ''; mentionMenuOpen = false">{{chosenSkill?.name||'/ 技能与模板'}}</button>
         <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
         <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
       </template>
@@ -817,11 +834,11 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       <div class="task-template-panel" :class="{ open: slashMenuOpen }">
         <slot name="paper-actions" :menu-open="slashMenuOpen" :close-menu="closeTaskPicker" />
       <div v-if="slashMenuOpen" class="template-options" role="listbox" aria-label="提问模板">
-        <h3>提问模板 <small>填入后发送</small></h3>
-        <button v-for="(t, i) in visibleTemplates" :key="t.id" type="button" role="option" :aria-selected="menuIndex === i" @click="chooseTemplate(t)" @mousedown.prevent>
+        <h3>选择 Skill</h3><p v-if="skillError" role="alert">{{skillError}}</p><button v-for="(s,i) in visibleSkills" :key="s.id" type="button" role="option" :aria-selected="menuIndex===i" :disabled="!s.selectable" :title="s.blocked_reason||s.description" @click="selectSkill(s)"><strong>{{s.name}}</strong><span>{{s.description}} · {{s.default_version?.version}}</span></button><a href="/#/?view=skills" @click.prevent="wb.setView('skills')">管理技能库</a><h3 v-if="visibleTemplates.length">要求模板</h3>
+        <button v-for="(t, i) in visibleTemplates" :key="t.id" type="button" role="option" :aria-selected="menuIndex === visibleSkills.length+i" @click="chooseTemplate(t)" @mousedown.prevent>
           <strong>{{ t.name }}</strong><span>{{ t.description || t.prompt }}</span>
         </button>
-        <StateFeedback v-if="!visibleTemplates.length" empty empty-text="暂无匹配模板。" />
+        <StateFeedback v-if="!visibleTemplates.length" empty empty-text="选择 Skill 后可编辑本次要求。" />
       </div>
       </div>
 
@@ -852,7 +869,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <StateFeedback v-if="!visiblePapers.length" empty empty-text="当前会话没有匹配论文。" />
       </div>
       <div class="composer-fields">
-      <textarea ref="questionInput" v-model="question" aria-label="向智能体提问" aria-describedby="composer-help" rows="3" maxlength="3000" placeholder="输入 / 选任务与模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown="onComposerKeydown" @compositionstart="composing = true" @compositionend="composing = false" @paste="onPaste"></textarea>
+      <textarea ref="questionInput" v-model="question" aria-label="向智能体提问" aria-describedby="composer-help" rows="3" maxlength="3000" placeholder="输入 / 选择技能，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown="onComposerKeydown" @compositionstart="composing = true" @compositionend="composing = false" @paste="onPaste"></textarea>
       <StateFeedback
         v-if="uploadError"
         class="upload-error"
@@ -860,7 +877,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         retry-text="重试上传"
         @retry="retryUpload"
       />
-      <div id="composer-help" class="composer-help muted">Enter 发送 · Shift+Enter 换行 · / 任务与模板 · @ 论文</div>
+      <div id="composer-help" class="composer-help muted">Enter 发送 · Shift+Enter 换行 · / 技能与模板 · @ 论文</div>
       </div>
       <div class="composer-footer"><span class="muted">{{ question.length }}/3000 · 图片 {{ attachments.length }}/3 · 引用 {{ contexts.length }}/3</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">{{ uploading ? '上传中…' : busy ? '处理中…' : '发送 ↑' }}</button></div>
     </form>

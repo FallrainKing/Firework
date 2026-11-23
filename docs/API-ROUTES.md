@@ -1,8 +1,8 @@
 # 当前注册路由清单
 
-生成核对：2026-11-22。从 `app.main.create_app().openapi()` 提取，共 **175** 条 HTTP 方法/路径；业务迁移 0022、身份 schema 3、Runner 协议 8。
+生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **183** 条 HTTP 方法/路径；业务迁移0023、身份schema3、Runner协议9。
 
-浏览器私有接口需登录，写请求需 CSRF；外部 API Bearer、Zotero 设备与内部工具令牌互不替代。该清单不含未来设计路由、静态下载或内部 Runner Socket API。字段见 [API](API.md)、[Runner 配置](RUNNER-CONFIGURATION.md) 和 [外部接入](EXTERNAL-AGENT-API.md)。
+浏览器私有接口需登录，写请求需CSRF；外部API Bearer、Zotero设备与内部工具令牌互不替代。字段见 [API](API.md)、[Runner配置](RUNNER-CONFIGURATION.md)、[Skills](SKILLS.md)。不含未来设计接口或静态下载。
 
 | 方法 | 路径 |
 | --- | --- |
@@ -69,11 +69,15 @@
 | GET | `/api/sessions/{session_id}` |
 | GET | `/api/sessions/{session_id}/runs` |
 | GET | `/api/skills` |
+| GET | `/api/skills/available` |
 | GET | `/api/skills/categories` |
 | GET | `/api/skills/imports/{import_id}` |
 | GET | `/api/skills/registry` |
+| GET | `/api/skills/surfaces` |
 | GET | `/api/skills/{skill_id}` |
 | GET | `/api/skills/{skill_id}/audit` |
+| GET | `/api/skills/{skill_id}/draft` |
+| GET | `/api/skills/{skill_id}/placements` |
 | GET | `/api/skills/{skill_id}/versions` |
 | GET | `/api/skills/{skill_id}/versions/{version_id}/resources` |
 | GET | `/api/skills/{skill_id}/versions/{version_id}/resources/content` |
@@ -104,6 +108,7 @@
 | PATCH | `/api/sessions/{session_id}` |
 | PATCH | `/api/skills/categories/{category_id}` |
 | PATCH | `/api/skills/{skill_id}` |
+| PATCH | `/api/skills/{skill_id}/draft` |
 | PATCH | `/api/workbench/schedules/{ident}` |
 | POST | `/api/admin/accounts` |
 | POST | `/api/admin/accounts/{ident}/password` |
@@ -156,11 +161,13 @@
 | POST | `/api/sessions/categories` |
 | POST | `/api/sessions/templates` |
 | POST | `/api/skills/categories` |
+| POST | `/api/skills/drafts` |
 | POST | `/api/skills/imports` |
 | POST | `/api/skills/imports/{import_id}/install` |
 | POST | `/api/skills/{skill_id}/default-version` |
 | POST | `/api/skills/{skill_id}/disable` |
 | POST | `/api/skills/{skill_id}/enable` |
+| POST | `/api/skills/{skill_id}/publish` |
 | POST | `/api/skills/{skill_id}/validate-run` |
 | POST | `/api/workbench/images` |
 | POST | `/api/workbench/schedules` |
@@ -179,5 +186,6 @@
 | PUT | `/api/me/runner/budgets/default` |
 | PUT | `/api/me/runner/connections/default` |
 | PUT | `/api/reader/papers/{paper_id}/state` |
+| PUT | `/api/skills/{skill_id}/placements` |
 | PUT | `/api/workbench/drafts/{sid}/{pid}` |
 | PUT | `/api/workbench/states/{ident}` |

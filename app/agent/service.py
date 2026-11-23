@@ -181,6 +181,7 @@ async def create_run(body: RunCreate, state) -> dict:
                 or prior['purpose'] != body.purpose
                 or json.loads(prior['execution_policy_json'] or '{}').get('connection_selection') != (body.connection.model_dump() if body.connection else None)
                 or json.loads(prior['execution_policy_json'] or '{}').get('budget_selection') != (body.budget.model_dump() if body.budget else None)
+                or (body.skill_version_id is not None and prior['skill_version_id'] != body.skill_version_id)
                 or prior['prompt'] != prompt
                 or (body.skill is not None and prior['skill'] != body.skill)
                 or (body.conversation_id is not None and prior['conversation_id'] != body.conversation_id)):
@@ -198,9 +199,17 @@ async def create_run(body: RunCreate, state) -> dict:
         guard_session(db, state.settings, state, conv_id)
         if session['archived']:
             raise ServiceError(409, '请先取消归档，再继续会话')
-        if body.skill is not None and body.skill != session['skill']:
-            raise ServiceError(409, '会话任务类型已固定；不同任务请创建新会话')
-        skill = session['skill']
+        skill = body.skill or session['skill']
+        switching=skill!=session['skill'] or (body.skill_version_id is not None and body.skill_version_id!=session['skill_version_id'])
+        if switching:
+            from ..skills import authoring
+            ids=[r[0] for r in db.execute('SELECT paper_id FROM conversation_papers WHERE conversation_id=?',(conv_id,))]
+            surface=session['entry_context'] or ('compare' if session['skill']=='paper_compare' or session['kind']=='comparison' else 'review' if session['skill']=='paper_review' else 'reader_chat' if ids else 'research_chat')
+            if surface not in authoring.placements(db,skill)['surfaces']:raise ServiceError(409,'所选技能未开放到当前功能')
+            if surface=='compare' and len(ids)<2:raise ServiceError(422,'比较需要至少两篇论文')
+            try:authoring.compatible(db,skill,body.skill_version_id,surface)
+            except ValueError as e:raise ServiceError(409,str(e)) from None
+            if session['runner_profile_json']:raise ServiceError(409,'此会话已固定执行方案；更换技能请新建不绑定方案的会话')
         if repo.has_active_run(db, conv_id):
             raise ServiceError(409, 'This conversation already has an active task')
     elif skill in ('paper_read', 'paper_review', 'paper_compare'):
@@ -222,10 +231,15 @@ async def create_run(body: RunCreate, state) -> dict:
         except ValueError as e:
             raise ServiceError(409, str(e)) from e
 
-    session_version_id = None
+    session_version_id = body.skill_version_id
+    if conv_id is None and body.skill is not None:
+        from ..skills import authoring
+        if 'research_chat' not in authoring.placements(db,skill)['surfaces']:raise ServiceError(409,'技能未开放到研究对话')
+        try:authoring.compatible(db,skill,body.skill_version_id,'research_chat')
+        except ValueError as e:raise ServiceError(409,str(e)) from None
     if conv_id is not None:
         session = require_session(db, conv_id)
-        session_version_id = session['skill_version_id']
+        session_version_id = body.skill_version_id or (session['skill_version_id'] if skill==session['skill'] else None)
     try:
         policy = skills_service.execution_policy(db, skill, session_version_id)
     except ValueError as exc:
@@ -259,7 +273,7 @@ async def create_run(body: RunCreate, state) -> dict:
         raise ServiceError(422,'输出额度超过模型声明的上下文容量')
     policy['connection_snapshot']=connection_snapshot
     policy['connection_selection']=body.connection.model_dump() if body.connection else None
-    if conv_id is not None and session_version_id is None:
+    if conv_id is not None and session_version_id is None and skill==session['skill']:
         repo.set_conversation_skill_version(db, conv_id, policy['version_id'])
         db.commit()
 
@@ -333,7 +347,7 @@ def run_snapshot(db, run_id: str):
     row = repo.find_run(db, run_id)
     if row is None:
         return None
-    return {'status': row['status'], 'progress': json.loads(row['progress_json'] or '{}')}
+    return {'status':row['status'],'progress':json.loads(row['progress_json'] or '{}'),'answer':row['answer'] or '', 'revision':row['stream_revision'],'id':run_id}
 
 
 async def execute_run(run_id: str, state):
@@ -346,6 +360,7 @@ async def execute_run(run_id: str, state):
     workspace_token=workspace_context.set(getattr(state.settings,'workspace_key','legacy'))
     try:
         row = repo.find_run(db, run_id)
+        live_text=row['answer'] or ''
         session = require_session(db, row['conversation_id'])
         if not session['native_session_id']:
             repo.set_native_session(db, session['id'], str(uuid.uuid4()))
@@ -390,10 +405,12 @@ async def execute_run(run_id: str, state):
                         if frame.get('type') == 'progress':
                             event = frame.get('event') or {}
                             now = time.monotonic()
-                            if event.get('tools') or now - last_write >= 1.0:
-                                repo.update_progress(db, run_id, json.dumps(event, ensure_ascii=False))
+                            if event.get('type')=='text_snapshot':live_text=str(event.get('answer',''))[-256000:]
+                            if event.get('tools') or event.get('type')=='text_snapshot' or now - last_write >= 1.0:
+                                repo.update_progress(db,run_id,json.dumps({k:v for k,v in event.items() if k!='answer'},ensure_ascii=False))
+                                db.execute("UPDATE agent_runs SET answer=?,stream_revision=stream_revision+1 WHERE id=? AND status IN ('queued','running')",(live_text,run_id))
                                 db.commit()
-                                last_write = now
+                                last_write=now
                         elif frame.get('type') == 'result':
                             result = frame.get('result') or {}
                             break

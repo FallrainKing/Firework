@@ -45,7 +45,9 @@ async def run_events(run_id: str, request: Request):
 
     async def gen():
         last = None
+        heartbeat=0
         while True:
+            if await request.is_disconnected():return
             auth=getattr(request.app.state,"auth_store",None)
             if auth:
                 from ..auth.store import COOKIE
@@ -55,13 +57,15 @@ async def run_events(run_id: str, request: Request):
             if snap is None:
                 return
             if snap != last:
-                yield f'data: {json.dumps(snap, ensure_ascii=False)}\n\n'
+                yield f'id: {run_id}:{snap["revision"]}\ndata: {json.dumps(snap, ensure_ascii=False)}\n\n'
                 last = snap
             if snap['status'] in ('succeeded', 'failed', 'cancelled'):
                 return
-            await asyncio.sleep(1)
+            heartbeat+=1
+            if heartbeat%30==0:yield ': heartbeat\n\n'
+            await asyncio.sleep(0.5)
 
-    return StreamingResponse(gen(), media_type='text/event-stream')
+    return StreamingResponse(gen(),media_type='text/event-stream',headers={'X-Accel-Buffering':'no','Cache-Control':'no-store'})
 
 
 @router.get('/library')

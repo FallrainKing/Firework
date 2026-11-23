@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import {skillAuthoring} from '@/api/skillAuthoring'
 import TaskDialog from './TaskDialog.vue'
 import { sessionsApi } from '@/api/sessions'
 import { papersApi } from '@/api/papers'
@@ -12,6 +13,7 @@ const templates = [
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  vi.spyOn(skillAuthoring,'available').mockResolvedValue({skills:[]})
   vi.spyOn(sessionsApi, 'templates').mockResolvedValue({ templates, kinds: {}, skills: [] })
   vi.spyOn(sessionsApi, 'categories').mockResolvedValue({ categories: [{ id: 1, name: '方法精读' }] })
   vi.spyOn(sessionsApi, 'list').mockResolvedValue({ sessions: [] })

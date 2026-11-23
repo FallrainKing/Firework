@@ -288,9 +288,11 @@ class JobEngine:
                 proc = await asyncio.create_subprocess_exec(*args, stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=sfolder, env=env, start_new_session=True, limit=10 * 1024 * 1024)
                 job['proc'] = proc
 
+                from .streaming import LiveText
+                live=LiveText();last_live=0.0
                 partial_text = ''
                 async def monitor():
-                    nonlocal partial_text
+                    nonlocal partial_text,last_live
                     proc.stdin.write(input_bytes)
                     await proc.stdin.drain()
                     proc.stdin.write_eof()
@@ -309,6 +311,13 @@ class JobEngine:
                             if not line:
                                 continue
                             event = json.loads(line)
+                            text=live.consume(event)
+                            if text is not None:
+                                partial_text=text
+                                stamp=asyncio.get_running_loop().time()
+                                if stamp-last_live>=0.1 or event.get('type')=='assistant':
+                                    self._progress(job,{'type':'text_snapshot','answer':live.safe_prefix(text,body.get('_connection_secret'))})
+                                    last_live=stamp
                             if event.get('type') == 'result':
                                 job['result_event'] = event
                             elif event.get('type') in ('assistant', 'user', 'system'):

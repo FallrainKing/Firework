@@ -7,6 +7,9 @@ class Name(BaseModel):
 
 
 class SessionCreate(BaseModel):
+    skill_id: str | None = Field(None,max_length=120)
+    skill_version_id: int | None = Field(None,ge=1)
+    entry_context: str | None = None
     title: str = Field('', max_length=160)
     template_id: str = 'chat'
     starting_prompt: str | None = Field(None, max_length=3000)

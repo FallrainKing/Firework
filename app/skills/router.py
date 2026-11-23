@@ -103,6 +103,37 @@ async def validate_run(skill_id: str, body: SkillValidateRun, request: Request):
     return await agent_service.validate_skill_run(skill_id, body, request.app.state)
 
 
+from . import authoring
+
+@router.get('/surfaces')
+async def surfaces():return {'surfaces':[{'id':k,'label':v} for k,v in authoring.SURFACES.items()]}
+
+@router.get('/available')
+async def available(request:Request,surface:str='reader_chat'):
+    return authoring.available(request.app.state.db,surface)
+
+@router.post('/drafts',status_code=201)
+async def create_draft(body:authoring.DraftBody,request:Request):
+    service.ensure_builtin_skills(request.app.state.db)
+    return authoring.save(request.app.state.db,body)
+
+@router.get('/{skill_id}/draft')
+async def get_draft(skill_id:str,request:Request):return authoring.draft(request.app.state.db,request.app.state.settings,skill_id)
+
+@router.patch('/{skill_id}/draft')
+async def update_draft(skill_id:str,body:authoring.DraftWrite,request:Request):return authoring.save(request.app.state.db,body,skill_id)
+
+@router.post('/{skill_id}/publish')
+async def publish(skill_id:str,body:authoring.Publish,request:Request):
+    try:return authoring.publish(request.app.state.db,request.app.state.settings,skill_id,body)
+    except ValueError as e:raise ServiceError(422,str(e)) from None
+
+@router.get('/{skill_id}/placements')
+async def placements(skill_id:str,request:Request):return authoring.placements(request.app.state.db,skill_id)
+
+@router.put('/{skill_id}/placements')
+async def update_placements(skill_id:str,body:authoring.Placements,request:Request):return authoring.set_placements(request.app.state.db,skill_id,body)
+
 @router.get('/{skill_id}')
 async def get_skill(skill_id: str, request: Request):
     try:

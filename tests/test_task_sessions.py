@@ -64,17 +64,18 @@ def test_category_rename_archive_pin_and_search(client):
     assert c.patch(f'/api/sessions/{ident}',json={'archived':False,'category_id':None}).status_code==200
     assert len(c.get('/api/sessions?category_id=0').json()['sessions'])==1
 
-def test_fixed_skill_and_bound_paper_payload(client,monkeypatch):
+def test_per_turn_skill_preserves_native_session_and_bound_papers(client,monkeypatch):
     from app.agent import runner_client as agent
     c,s=client;pid=paper(s)
     session=c.post('/api/sessions',json={'template_id':'read','paper_ids':[pid]}).json()['session']
-    assert c.post('/api/agent/runs',json={'conversation_id':session['id'],'skill':'chat','prompt':'x'}).status_code==409
     captures=[]
     from test_agent_mvp import runner_mock
     mock=runner_mock(lambda p:{'status':'succeeded','answer':'read','session_id':p['session_id'],'native_ready':True},capture=captures)
     monkeypatch.setattr(agent,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(mock),base_url='http://test'))
     first=wait(c,c.post('/api/agent/runs',json={'conversation_id':session['id'],'prompt':'read'}).json()['id'])
-    second=wait(c,c.post('/api/agent/runs',json={'conversation_id':session['id'],'prompt':'continue'}).json()['id'])
+    second=wait(c,c.post('/api/agent/runs',json={'conversation_id':session['id'],'prompt':'continue','skill':'chat'}).json()['id'])
+    assert captures[1]['skill']=='chat'
+    assert c.get(f"/api/sessions/{session['id']}").json()['session']['skill']=='paper_read'
     assert captures[0]['paper_ids']==[pid]
     assert captures[0]['session_id']==captures[1]['session_id']==session['native_session_id']
     assert captures[1]['native_ready'] and captures[1]['history']==[]

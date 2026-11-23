@@ -89,7 +89,8 @@ def edit_annotation(db: sqlite3.Connection, ident: str, body: AnnotationPatch) -
 
 def get_state(db: sqlite3.Connection, sid: int, pid: int) -> dict:
     linked(db, sid, pid)
-    row = repo.find_state(db, sid, pid)
+    version=db.execute('SELECT v.file_hash FROM papers p JOIN document_versions v ON v.id=p.default_version_id WHERE p.id=?',(pid,)).fetchone()
+    row=db.execute('SELECT * FROM version_reader_states WHERE conversation_id=? AND paper_id=? AND file_version=?',(sid,pid,version[0])).fetchone() if version else repo.find_state(db,sid,pid)
     return dict(row) if row else {'page': 1, 'zoom': 'fit', 'tab': 'outline'}
 
 
@@ -99,11 +100,13 @@ async def save_state(db: sqlite3.Connection, settings, paper_id: int, body: Posi
         doc = await asyncio.to_thread(pages.document_info, settings, paper(db, paper_id))
     except ValueError as e:
         raise ServiceError(400, str(e))
+    if body.file_version and body.file_version!=doc['file_version']:raise ServiceError(409,'保存位置时文件版本已变化，请刷新')
     if body.page > doc['page_count']:
         raise ServiceError(400, '页码超出范围')
+    db.execute('INSERT INTO version_reader_states(conversation_id,paper_id,file_version,page,zoom,tab) VALUES (?,?,?,?,?,?) ON CONFLICT(conversation_id,paper_id,file_version) DO UPDATE SET page=excluded.page,zoom=excluded.zoom,tab=excluded.tab,updated_at=CURRENT_TIMESTAMP',(body.conversation_id,paper_id,doc['file_version'],body.page,body.zoom,body.tab))
     repo.upsert_state(db, body.conversation_id, paper_id, body.page, body.zoom, body.tab)
     db.commit()
-    return body.model_dump()
+    return body.model_dump(exclude_none=True)
 
 
 def translations(db: sqlite3.Connection, paper_id: int) -> dict:

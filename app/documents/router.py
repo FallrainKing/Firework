@@ -78,3 +78,22 @@ async def download(paper_id: int, version_id: str, request: Request,
     async with state.document_export_limit:
         data = await asyncio.to_thread(annotated_pdf,path,items)
     return Response(data,media_type='application/pdf',headers=headers)
+
+
+from . import migration
+
+@router.post('/{paper_id}/annotation-migration-preview')
+async def migration_preview(paper_id:int,body:migration.Preview,request:Request):
+    return migration.preview(request.app.state.db,request.app.state.settings,paper_id,body)
+
+@router.post('/{paper_id}/annotation-migrations')
+async def migrate_annotations(paper_id:int,body:migration.Confirm,request:Request):
+    return migration.apply(request.app.state.db,request.app.state.settings,paper_id,body)
+
+@router.get('/{paper_id}/document-versions/{version_id}/index')
+async def version_index(paper_id:int,version_id:str,request:Request,offset:int=0,limit:int=30):
+    from ..core.errors import ServiceError
+    if offset<0 or not 1<=limit<=100:raise ServiceError(422,'分页范围无效')
+    db=request.app.state.db;s.version(db,paper_id,version_id)
+    rows=db.execute('SELECT * FROM document_text_chunks WHERE version_id=? ORDER BY chunk_index LIMIT ? OFFSET ?',(version_id,limit+1,offset)).fetchall()
+    return {'version_id':version_id,'chunks':[dict(r) for r in rows[:limit]],'has_more':len(rows)>limit,'next_offset':offset+min(limit,len(rows))}

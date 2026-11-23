@@ -96,7 +96,7 @@ for avatar in $(sqlite3 "$DB" "SELECT avatar_storage_key FROM user_profile WHERE
 done
 
 # Optional reader and native-session folders are restored when present.
-for folder in papers imports attachments; do
+for folder in papers imports attachments research-files; do
     archive="${BACKUP_DIR}/${folder}-${DATE}.tar.gz"
     if [ -f "$archive" ]; then
         mkdir -p "$STAGE/$folder"
@@ -112,6 +112,16 @@ if [ -f "${BACKUP_DIR}/runner-secrets-${DATE}.tar.gz" ]; then
     mkdir -p "$STAGE/auth"
     tar -xzf "${BACKUP_DIR}/runner-secrets-${DATE}.tar.gz" -C "$STAGE/auth" --strip-components 1
 fi
+check_research_files() {
+    research_db="$1"; research_root="$2"
+    if [ "$(sqlite3 "$research_db" "SELECT count(*) FROM sqlite_master WHERE name='research_files'")" = 0 ]; then return; fi
+    for research_hash in $(sqlite3 "$research_db" 'SELECT hash FROM research_files'); do
+        research_path="$research_root/research-files/$research_hash"
+        [ -f "$research_path" ] && [ ! -L "$research_path" ] || { echo 'restore.sh: research asset missing' >&2; exit 1; }
+        [ "$(sha256sum "$research_path" | cut -d ' ' -f 1)" = "$research_hash" ] || { echo 'restore.sh: research asset checksum mismatch' >&2; exit 1; }
+    done
+}
+check_research_files "$DB" "$STAGE"
 check_runner_key() {
     if [ "$(sqlite3 "$1" "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='runner_connections';")" = "1" ] && [ "$(sqlite3 "$1" 'SELECT count(*) FROM runner_connections;')" -gt 0 ]; then
         runner_key="${FIREWORK_RUNNER_MASTER_KEY_FILE:-$2/auth/runner-master.key}"
@@ -163,6 +173,7 @@ if [ -f "$IDENTITY_BACKUP" ]; then
         for pdf in $(sqlite3 "$tenant_db" "SELECT pdf_path FROM papers WHERE pdf_path<>'' AND pdf_path IS NOT NULL"); do
             [ -f "$STAGE/accounts/$workspace_id/papers/${pdf##*/}" ] || exit 1
         done
+        check_research_files "$tenant_db" "$STAGE/accounts/$workspace_id"
         check_runner_key "$tenant_db" "$STAGE/accounts/$workspace_id"
         check_document_files "$tenant_db" "$STAGE/accounts/$workspace_id/papers"
         for image in $(sqlite3 "$tenant_db" 'SELECT id FROM image_attachments'); do
@@ -178,13 +189,13 @@ fi
 
 mkdir -p "$DATA_DIR" "$ROLLBACK"
 RESTORE_STARTED=1
-for item in app.db app.db-wal app.db-shm skills avatars papers imports attachments agent auth accounts; do
+for item in app.db app.db-wal app.db-shm skills avatars papers imports attachments research-files agent auth accounts; do
     if [ -e "$DATA_DIR/$item" ]; then
         mv -- "$DATA_DIR/$item" "$ROLLBACK/$item"
     fi
 done
 cp -- "$DB" "$DATA_DIR/app.db"
-for folder in skills avatars papers imports attachments agent auth accounts; do
+for folder in skills avatars papers imports attachments research-files agent auth accounts; do
     if [ -d "$STAGE/$folder" ]; then
         cp -a -- "$STAGE/$folder" "$DATA_DIR/$folder"
     fi

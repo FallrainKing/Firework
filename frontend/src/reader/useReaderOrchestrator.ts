@@ -59,7 +59,7 @@ export function useReaderOrchestrator(deps: Deps) {
 
   function positionSnapshot(): Position | null {
     return session.value && doc.value
-      ? { conversation_id: session.value.id, page: engine.currentPage, zoom: engine.zoom as Position['zoom'], tab: sidebarTab.value }
+      ? { file_version:doc.value.file_version, conversation_id: session.value.id, page: engine.currentPage, zoom: engine.zoom as Position['zoom'], tab: sidebarTab.value }
       : null
   }
 

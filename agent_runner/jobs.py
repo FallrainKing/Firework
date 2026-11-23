@@ -56,8 +56,11 @@ class JobEngine:
         self._env_loader = env_loader or (lambda rt: cli.load_environment(rt))
         self._sem = asyncio.Semaphore(concurrency)
         self._jobs: dict[str, dict] = {}
+        from .terminal import TerminalManager
+        self.terminals=TerminalManager(self)
 
     async def start(self):
+        await self.terminals.recover()
         runs = self.runtime / 'runs'
         if not runs.exists():
             return
@@ -172,6 +175,7 @@ class JobEngine:
             job['subs'].discard(q)
 
     async def close(self):
+        await self.terminals.close()
         # Graceful shutdown is a restart, not a user cancel: interrupted runs
         # must read as failed, never as "已取消".
         for j in self._jobs.values():
@@ -248,10 +252,11 @@ class JobEngine:
                     return
                 log_path = folder / 'tools.jsonl'
                 allowed = skill['tools']
+                env['RESEARCH_MATERIAL_MANIFEST']=json.dumps(body.get('material_manifest',[]))
                 env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = str(skill['max_output_tokens'])
                 mcp = {'mcpServers': {}}
                 if allowed:
-                    tool_env = {'RESEARCH_DB_PATH': str(self.runtime.parent / 'app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS': json.dumps(body.get('paper_ids') or []), 'RESEARCH_MAX_TOOL_CALLS': str(skill['max_calls']), 'RESEARCH_IMPORT_ID': body.get('import_request_id') or '', 'RESEARCH_RUN_ID': job['run_id'], 'RESEARCH_TOKEN_FILE': str(self.runtime / 'internal-token'), 'RESEARCH_WORKSPACE': body.get('workspace_key','legacy')}
+                    tool_env = {'RESEARCH_DB_PATH': str(self.runtime.parent / 'app.db'), 'RESEARCH_TOOL_LOG': str(log_path), 'RESEARCH_ALLOWED_TOOLS': json.dumps(allowed), 'RESEARCH_PAPER_IDS': json.dumps(body.get('paper_ids') or []), 'RESEARCH_MAX_TOOL_CALLS': str(skill['max_calls']), 'RESEARCH_IMPORT_ID': body.get('import_request_id') or '', 'RESEARCH_RUN_ID': job['run_id'], 'RESEARCH_TOKEN_FILE': str(self.runtime / 'internal-token'), 'RESEARCH_WORKSPACE': body.get('workspace_key','legacy'), 'RESEARCH_API_BASE':os.getenv('RESEARCH_API_BASE','http://127.0.0.1:8600')}
                     if 'skill_resource' in allowed and skill.get('storage_key'):
                         tool_env['RESEARCH_SKILL_ROOT'] = str(self.runtime.parent / 'skills' / skill['storage_key'])
                         tool_env['RESEARCH_SKILL_HASH'] = str(skill.get('skill_hash') or '')

@@ -23,6 +23,7 @@ from .schemas import RunCreate
 from ..runner_config import budgets,connections,profiles
 from . import diagnostics
 from .protocol import RUNNER_PROTOCOL_VERSION
+from ..research import events as run_events, materials as run_materials
 
 logger = logging.getLogger(__name__)
 SKILLS = {k: v['name'] for k, v in CATALOG.items()}
@@ -197,6 +198,7 @@ async def create_run(body: RunCreate, state) -> dict:
             raise ServiceError(409, '会话关联的论文在回收站中，请先恢复论文再执行任务')
         from ..documents.service import guard_session
         guard_session(db, state.settings, state, conv_id)
+        if session['execution_mode']!='managed':raise ServiceError(409,'此会话由原生终端控制，请在终端中继续')
         if session['archived']:
             raise ServiceError(409, '请先取消归档，再继续会话')
         skill = body.skill or session['skill']
@@ -305,6 +307,9 @@ async def create_run(body: RunCreate, state) -> dict:
             json.dumps(policy, ensure_ascii=False),
             policy['version'],
         )
+        manifest=run_materials.snapshot(db,state.settings,conv_id)
+        db.execute('INSERT INTO material_manifests(run_id,authorized_json) VALUES (?,?)',(run_id,json.dumps(manifest)))
+        run_events.append(db,run_id,'queued',{'status':'queued'})
         db.execute('UPDATE conversations SET runner_connection_json=? WHERE id=? AND runner_connection_json IS NULL',(json.dumps(connection_snapshot,ensure_ascii=False),conv_id))
         if selection:
             db.execute('UPDATE conversations SET runner_profile_json=? WHERE id=? AND runner_profile_json IS NULL',(json.dumps(plan['snapshot'],ensure_ascii=False),conv_id))
@@ -339,6 +344,7 @@ async def cancel_run(db, run_id: str, state) -> dict:
     except httpx.HTTPError:
         raise ServiceError(503, 'Runner 离线，无法取消')
     repo.cancel_run(db, run_id)
+    run_events.append(db,run_id,'cancelled',{'status':'cancelled'})
     repo.fail_imports_for_run(db, run_id, '已取消')
     db.commit()
     return view(repo.find_run(db, run_id))
@@ -369,10 +375,12 @@ async def execute_run(run_id: str, state):
         paper_ids = repo.conversation_paper_ids(db, session['id'])
         past = repo.past_successful_runs(db, row['conversation_id'], run_id)
         import_row = repo.find_import_request(db, session['id'], run_id)
-        history = []
+        seed=db.execute('SELECT history_json FROM conversation_seeds WHERE conversation_id=?',(session['id'],)).fetchone()
+        history = json.loads(seed[0]) if seed else []
         for entry in reversed(past):
             history.extend([{'role': 'user', 'content': entry['prompt']}, {'role': 'assistant', 'content': entry['answer']}])
         repo.set_run_status(db, run_id, 'running')
+        if repo.find_run(db,run_id)['status']=='running':run_events.append(db,run_id,'running',{'status':'running'})
         db.commit()
         # Cancel may have landed while this task was starting: never submit a
         # run the user already cancelled (it would be billed and discarded).
@@ -388,7 +396,7 @@ async def execute_run(run_id: str, state):
                     health.raise_for_status()
                     if health.json().get('protocol_version') != RUNNER_PROTOCOL_VERSION:
                         raise ValueError('runner_protocol_mismatch')
-                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash'], 'budget_policy': json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot'), 'connection_snapshot':({k:v for k,v in connection_snap.items() if k!='mode'} if connection_snap and connection_snap.get('mode')=='custom' else None), 'connection_secret':connection_secret,'profile_ref':({k:policy_snap['profile_snapshot'][k] for k in ('id','revision')} if policy_snap.get('profile_snapshot') else None)})
+                sub = await c.post('/runs', json={'run_id': run_id, 'skill': row['skill'], 'prompt': row['prompt'], 'history': history if not session['native_ready'] else [], 'session_id': session['native_session_id'], 'native_ready': bool(session['native_ready']), 'paper_ids': paper_ids, 'contexts': json.loads(row['context_json']), 'attachment_ids': json.loads(row['attachment_ids_json']), 'import_request_id': import_row['id'] if import_row else None, 'material_manifest':run_materials.frozen(db,run_id)['authorized'], 'skill_version_id': row['skill_version_id'], 'skill_hash': row['skill_hash'], 'budget_policy': json.loads(row['execution_policy_json'] or '{}').get('budget_snapshot'), 'connection_snapshot':({k:v for k,v in connection_snap.items() if k!='mode'} if connection_snap and connection_snap.get('mode')=='custom' else None), 'connection_secret':connection_secret,'profile_ref':({k:policy_snap['profile_snapshot'][k] for k in ('id','revision')} if policy_snap.get('profile_snapshot') else None)})
                 sub.raise_for_status()
                 if repo.find_run(db, run_id)['status'] not in ('queued', 'running'):
                     with contextlib.suppress(httpx.HTTPError):
@@ -405,7 +413,11 @@ async def execute_run(run_id: str, state):
                         if frame.get('type') == 'progress':
                             event = frame.get('event') or {}
                             now = time.monotonic()
-                            if event.get('type')=='text_snapshot':live_text=str(event.get('answer',''))[-256000:]
+                            if event.get('type')=='text_snapshot':
+                                new_text=str(event.get('answer',''))[-256000:]
+                                run_events.append(db,run_id,'text_delta' if new_text.startswith(live_text) else 'text_reset',{'text':new_text[len(live_text):] if new_text.startswith(live_text) else new_text})
+                                live_text=new_text
+                            elif event.get('tools'):run_events.append(db,run_id,'tool_activity',{'tools':event['tools']})
                             if event.get('tools') or event.get('type')=='text_snapshot' or now - last_write >= 1.0:
                                 repo.update_progress(db,run_id,json.dumps({k:v for k,v in event.items() if k!='answer'},ensure_ascii=False))
                                 db.execute("UPDATE agent_runs SET answer=?,stream_revision=stream_revision+1 WHERE id=? AND status IN ('queued','running')",(live_text,run_id))
@@ -427,6 +439,17 @@ async def execute_run(run_id: str, state):
             if str(exc)=='runner_protocol_mismatch': result['metadata']={'subtype':'runner_protocol_mismatch'}
         answer=result.get('answer') or (live_text if result['status'] in ('failed','cancelled') else '')
         repo.finish_run(db, run_id, result['status'], str(answer), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
+        run_materials.record_actual(db,run_id,result.get('tool_calls') or [])
+        final_record=repo.find_run(db,run_id)
+        run_events.append(db,run_id,'finished',{'status':final_record['status'],'error':final_record['error'],'partial':bool(final_record['answer']) and final_record['status']!='succeeded'})
+        from ..research.service import capture_run
+        # Asset capture is deterministic management; failure must not erase a successful answer.
+        db.execute('SAVEPOINT capture_asset')
+        try:capture_run(db,state.settings,run_id)
+        except Exception:
+            db.execute('ROLLBACK TO capture_asset')
+            logger.exception('Research artifact capture failed')
+        finally:db.execute('RELEASE capture_asset')
         if result['status'] == 'cancelled':
             repo.fail_imports_for_run(db, run_id, str(result.get('error') or '已取消'))
         if result.get('session_id') == session['native_session_id'] and result.get('native_ready'):

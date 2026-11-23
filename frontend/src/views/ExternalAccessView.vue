@@ -4,7 +4,7 @@ import {api} from '@/api/client'
 import RunnerSettingsNav from '@/components/RunnerSettingsNav.vue'
 interface Token{id:string;name:string;prefix:string;scopes:string[];paper_ids:number[]|null;expires_at:number;revoked:boolean;last_seen:number|null}
 const base='/api/me/access-tokens',tokens=ref<Token[]>([]),name=ref(''),days=ref(7),paperIds=ref(''),scopes=ref(['papers:read','annotations:read']),secret=ref(''),error=ref(''),busy=ref(false)
-const options=['papers:read','papers:write','annotations:read','annotations:write','files:read','frontier:read','frontier:write']
+const options=['papers:read','papers:write','annotations:read','annotations:write','files:read','frontier:read','frontier:write','artifacts:read','artifacts:write','knowledge:read','knowledge:write','runs:read']
 async function load(){tokens.value=(await api<{tokens:Token[]}>(base)).tokens}
 onMounted(async()=>{try{await load()}catch(e){error.value=String(e)}})
 async function issue(){busy.value=true;error.value='';secret.value='';try{const ids=paperIds.value.trim()?paperIds.value.split(',').map(x=>Number(x.trim())):null;if(ids?.some(x=>!Number.isSafeInteger(x)||x<1))throw Error('论文 ID 请输入逗号分隔的正整数');const result=await api<{token:string}>(base,{method:'POST',body:{name:name.value,scopes:scopes.value,expires_days:days.value,paper_ids:ids}});secret.value=result.token;await load()}catch(e){error.value=String(e)}finally{busy.value=false}}

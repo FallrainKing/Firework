@@ -1,7 +1,9 @@
 """HTTP routes for task sessions, templates and categories."""
 from fastapi import APIRouter, Query, Request
+from pydantic import BaseModel,Field
 
 from . import service
+from . import terminal as terminal_service
 from .schemas import Name, SessionCreate, SessionPatch, TemplateCreate
 
 router = APIRouter(prefix='/api/sessions', tags=['sessions'])
@@ -56,3 +58,87 @@ async def update(session_id: int, body: SessionPatch, request: Request):
 async def native_session(session_id:int,request:Request,offset:int=Query(0,ge=0),source:str|None=Query(None,pattern='^[a-f0-9]{32}$'),limit:int=Query(50,ge=1,le=100)):
     from . import native
     return await native.view(request.app.state,session_id,offset,source,limit)
+
+
+@router.get('/{session_id}/terminal-capabilities')
+async def terminal_capabilities(session_id:int,request:Request):
+    service.require_session(request.app.state.db,session_id)
+    from .terminal import call
+    return await call('GET','/terminal-capabilities')
+
+@router.post('/{session_id}/terminal')
+async def start_terminal(session_id:int,body:terminal_service.Start,request:Request):
+    from .terminal import start
+    return await start(request.app.state,session_id,body)
+
+@router.get('/{session_id}/terminal')
+async def read_terminal(session_id:int,request:Request,offset:int=Query(0,ge=0),generation:str|None=Query(None,pattern='^[a-f0-9]{32}$'),controller_id:str|None=Query(None,pattern='^[a-f0-9]{32}$')):
+    from .terminal import call,require_terminal
+    require_terminal(request.app.state.db,session_id)
+    return await call('GET',f'/terminals/{session_id}',params={'offset':offset,**({'generation':generation} if generation else {}),**({'controller_id':controller_id} if controller_id else {})})
+
+@router.post('/{session_id}/terminal/input')
+async def input_terminal(session_id:int,body:terminal_service.Input,request:Request):
+    from .terminal import call,require_terminal
+    require_terminal(request.app.state.db,session_id)
+    return await call('POST',f'/terminals/{session_id}/input',json=body.model_dump())
+
+@router.post('/{session_id}/terminal/resize')
+async def resize_terminal(session_id:int,body:terminal_service.Resize,request:Request):
+    from .terminal import call,require_terminal
+    require_terminal(request.app.state.db,session_id)
+    return await call('POST',f'/terminals/{session_id}/resize',json=body.model_dump())
+
+@router.post('/{session_id}/terminal/stop')
+async def stop_terminal(session_id:int,body:terminal_service.Control,request:Request):
+    from .terminal import call,require_terminal
+    require_terminal(request.app.state.db,session_id)
+    return await call('POST',f'/terminals/{session_id}/stop',json=body.model_dump())
+
+
+from . import forks
+
+@router.post('/{session_id}/fork-preview')
+async def fork_preview(session_id:int,body:forks.Preview,request:Request):
+    return forks.preview(request.app.state,session_id,body)
+
+@router.post('/{session_id}/forks',status_code=201)
+async def fork_session(session_id:int,body:forks.Confirm,request:Request):
+    return forks.create(request.app.state,session_id,body)
+
+
+@router.get('/{session_id}/terminal/files')
+async def terminal_files(session_id:int,request:Request):
+    from .workspace_files import listing
+    return listing(request.app.state,session_id)
+
+@router.get('/{session_id}/terminal/file')
+async def terminal_file(session_id:int,request:Request,path:str=Query(...,min_length=1,max_length=500),sha256:str=Query(...,pattern='^[a-f0-9]{64}$')):
+    from .workspace_files import read
+    from fastapi.responses import Response
+    from urllib.parse import quote
+    data,_=read(request.app.state,session_id,path,sha256)
+    return Response(data,media_type='application/octet-stream',headers={'Content-Disposition':"attachment; filename*=UTF-8''"+quote(path.split('/')[-1],safe=''),'Content-Security-Policy':"default-src 'none'; sandbox"})
+
+class SaveTerminalFile(BaseModel):
+    path:str=Field(min_length=1,max_length=500)
+    sha256:str=Field(pattern='^[a-f0-9]{64}$')
+    paper_id:int=Field(ge=1)
+
+@router.post('/{session_id}/terminal/artifacts',status_code=201)
+async def save_terminal_file(session_id:int,body:SaveTerminalFile,request:Request):
+    from .workspace_files import read
+    from . import repository
+    from ..research import files,service as research
+    from ..research.schemas import ArtifactWrite
+    db=request.app.state.db
+    if body.paper_id not in repository.paper_ids(db,session_id):
+        from ..core.errors import ServiceError
+        raise ServiceError(404,'论文未关联此会话')
+    data,digest=read(request.app.state,session_id,body.path,body.sha256)
+    source=f'terminal:{session_id}:{digest}'
+    existing=db.execute('SELECT id FROM research_artifacts WHERE source_key=?',(source,)).fetchone()
+    if existing:return research.artifact_view(db,existing[0])
+    with db:
+        file=files.store(db,request.app.state.settings,body.paper_id,body.path.split('/')[-1],data)
+        return research.artifact_save(db,request.app.state.settings,ArtifactWrite(title=file['filename'],kind='file',markdown='来自隔离终端的工作文件，尚未经研究审核。',paper_ids=[body.paper_id],file_ids=[file['hash']],status='partial',producer=f'terminal-session:{session_id}'),origin='terminal',source_key=source)

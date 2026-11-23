@@ -10,6 +10,7 @@ import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
+import NativeTerminalPanel from './NativeTerminalPanel.vue'
 import NativeSessionPanel from './NativeSessionPanel.vue'
 import RunConnectionControl from './RunConnectionControl.vue'
 import type {ConnectionRef} from '@/api/runnerConnections'
@@ -25,6 +26,7 @@ const wb = useWorkbenchStore()
 
 
 const nativeOpen=ref(false)
+const terminalOpen=ref(false)
 const runs = ref<Run[]>([])
 const question = ref('')
 const selectedProfile=ref<ProfileRef|null>(null)
@@ -144,7 +146,7 @@ const currentSession = ref<Session | null>(props.session)
 watch(()=>props.session?.id,()=>{for(const close of [...streams.values()])close()})
 
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
-const canSend = computed(() => !loading.value && !loadError.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
+const canSend = computed(() => currentSession.value?.execution_mode!=='terminal' && !loading.value && !loadError.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
 const agentState = computed(() => uploading.value ? '上传图片中…' : '智能体正在执行…')
 const activeRun = computed(() => [...runs.value].reverse().find(run => run.status === 'queued' || run.status === 'running') ?? null)
 const latestRun = computed(() => runs.value.at(-1) ?? null)
@@ -740,8 +742,10 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       <button type="button" :aria-pressed="!nativeOpen && !resultsOnly" @click="nativeOpen=false;resultsOnly = false">完整会话</button>
       <button type="button" :aria-pressed="!nativeOpen && resultsOnly" @click="nativeOpen=false;resultsOnly = true">阅读结果</button>
       <button type="button" :aria-pressed="nativeOpen" :disabled="!currentSession" @click="nativeOpen=!nativeOpen">原生记录</button>
+      <button type="button" :disabled="!currentSession" @click="terminalOpen=true">隔离终端</button>
       <button type="button" class="latest-message" @click="jumpToBottom">↓ 最新</button>
     </nav>
+    <NativeTerminalPanel v-if="terminalOpen && currentSession" :session-id="currentSession.id" @close="terminalOpen=false" />
     <div class="conversation-view">
     <div ref="chatBox" class="reader-chat" role="region" aria-label="智能体回答与会话记录" tabindex="0" @scroll.passive="handleScroll" @load.capture="followLatest()">
     <NativeSessionPanel v-if="nativeOpen && currentSession" :session-id="currentSession.id" @continue="composerMinimized=false; nextTick(focusInput)" />
@@ -815,7 +819,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
             <div v-if="run.diagnostics"><dt>结束原因</dt><dd>{{ run.diagnostics.finish_reason }} · {{ run.diagnostics.subtype || '无原始子类型' }}</dd></div>
             <div v-if="run.diagnostics?.profile_snapshot"><dt>执行方案 / 版本</dt><dd>{{ run.diagnostics.profile_snapshot.name }} · v{{ run.diagnostics.profile_snapshot.revision }} · MCP: {{ run.diagnostics.effective_tools?.join(', ') || '无工具' }}</dd></div>
             <div v-if="run.diagnostics"><dt>任务额度快照</dt><dd>{{ run.diagnostics.budget_snapshot?.name || 'Skill 原有额度' }} <a href="/#/settings/runner/budgets">管理</a></dd></div>
-            <div><dt>运行编号</dt><dd>{{ run.id }}</dd></div>
+            <div><dt>运行编号</dt><dd><RouterLink :to="`/runs/${run.id}`">{{ run.id }} · 检查运行</RouterLink></dd></div>
             <div><dt>技能 / 版本</dt><dd>{{ run.skill }} / {{ run.skill_version || '未提供' }}</dd></div>
             <div v-if="run.diagnostics?.connection_snapshot"><dt>连接 / 版本</dt><dd>{{ run.diagnostics.connection_snapshot.name || '管理员原有连接' }} · {{ run.diagnostics.connection_snapshot.revision || '原配置' }}</dd></div>
             <div><dt>模型</dt><dd>{{ run.model || '未提供' }}</dd></div>

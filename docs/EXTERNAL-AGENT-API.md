@@ -124,3 +124,8 @@ Web：`/#/settings/integrations`。当前账号可创建带用途名称、操作
 迁移 0022 增加 frontier_runs.origin 和 external_provenance_json，保留提交者用途、授权 ID、调用方提供的验证等级。Web 时间线明确显示“外部智能体提交，服务器未验证检索或调用模型”。报告成功表示保存完整及调用方声明覆盖完整，**不表示服务器独立完成真实性验证**。该路径不更新服务器检索游标、不创建 agent_runs、不启用调度、不自动批准候选入库。原有前沿页面负责批准、忽略及后续讨论。
 
 CLI 增加 frontier-topics/create-frontier-topic/frontier-reports/frontier-report/submit-frontier-report；上传可同时提供 JSON 元数据与 `--markdown-file review.md`，直接保存已有本机审查文本。完整示例见 [前沿 Skill 参考](../plugins/agent-skill/firework-paper-ops/references/frontier.md)。上传授权来自当前任务范围；Skill 不自行安装其他研究工具，不修改本机或部署服务器的模型配置。
+
+
+## 研究产物和知识扩展
+
+新增产物修订、候选知识、审核后召回、研究文件附件和Run事件接口，范围分别为artifacts:read/write、knowledge:read/write、runs:read。外部客户端不能发布知识。JSON写操作保持幂等键和64KiB限制；仅multipart研究附件允许30MiB。详细字段与流程见 [研究平台接口](RESEARCH-PLATFORM.md#接口)。

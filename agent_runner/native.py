@@ -15,10 +15,11 @@ MAX_LINE = 1024 * 1024
 def binding(runtime, conversation_id, allow_legacy=False):
     with sqlite3.connect((Path(runtime).parent/'app.db').resolve().as_uri()+'?mode=ro',uri=True) as db:
         db.row_factory=sqlite3.Row
-        row=db.execute('SELECT native_session_id,runner_connection_json FROM conversations WHERE id=?',(conversation_id,)).fetchone()
+        row=db.execute('SELECT native_session_id,runner_connection_json,execution_mode FROM conversations WHERE id=?',(conversation_id,)).fetchone()
     if not row:raise HTTPException(404,'会话不存在')
     sid=row['native_session_id']
     if not sid or not re.fullmatch(r'[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}',sid):raise HTTPException(409,'会话尚未绑定原生标识')
+    if row['execution_mode']=='terminal':return sid,Path(runtime)/'terminals'/str(conversation_id)/'config'
     config=Path(runtime)/'claude-config'
     snap=json.loads(row['runner_connection_json'] or '{}')
     if snap.get('mode')=='custom':
@@ -119,7 +120,8 @@ async def provider_status():
     import time
     global _provider_cache
     if _provider_cache and time.monotonic()-_provider_cache[0]<60:return _provider_cache[1]
-    executable=Path.home()/'.local/bin/claude'
+    from .cli import binary_path
+    executable=binary_path()
     result={'id':'claude_code','name':'Claude Code','installed':executable.is_file(),'version':None,'authentication':'not_checked','execution':'managed_print','capabilities':{'native_history':True,'structured_stream':False,'terminal':False,'permission_reply':False},'status':'missing'}
     if result['installed']:
         proc=None

@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.staticfiles import StaticFiles
 from qdrant_client import QdrantClient
 
+from .research.router import router as research_router
 from .external.router import router as external_router, management as external_management
 from .runner_config.profiles_router import router as profiles_router
 from .documents.router import router as documents_router
@@ -170,6 +171,7 @@ def create_app(*, authentication: bool = True) -> FastAPI:
     app.include_router(frontier_router)
     app.include_router(frontier_internal)
     app.include_router(sessions_router)
+    app.include_router(research_router)
     app.include_router(papers_router)
     app.include_router(documents_router)
     app.include_router(zotero_router)

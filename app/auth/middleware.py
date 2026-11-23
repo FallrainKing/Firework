@@ -51,12 +51,14 @@ class AuthenticationMiddleware:
                 except ServiceError as e:return await JSONResponse({'detail':e.detail},status_code=e.status)(scope,receive,send)
                 if grant is None:return await JSONResponse({'detail':'外部授权无效、过期或已撤销'},status_code=401)(scope,receive,send)
                 if not same_origin(request,store):return await JSONResponse({'detail':'浏览器跨站请求不允许'},status_code=403)(scope,receive,send)
-                if not request.headers.get('content-length','0').isdigit() or int(request.headers.get('content-length','0'))>65536:return await JSONResponse({'detail':'外部请求最多 64 KiB'},status_code=413)(scope,receive,send)
+                asset_upload=path=='/api/external/v1/files' and request.method=='POST' and request.headers.get('content-type','').startswith('multipart/form-data;')
+                body_limit=30*1024*1024+65536 if asset_upload else 65536
+                if not request.headers.get('content-length','0').isdigit() or int(request.headers.get('content-length','0'))>body_limit:return await JSONResponse({'detail':'外部请求超过大小限制'},status_code=413)(scope,receive,send)
                 # Bound streamed/chunked bodies as well as Content-Length, before parsing JSON.
                 chunks=[];size=0
                 async for chunk in request.stream():
                     size+=len(chunk)
-                    if size>65536:return await JSONResponse({'detail':'外部请求最多 64 KiB'},status_code=413)(scope,receive,send)
+                    if size>body_limit:return await JSONResponse({'detail':'外部请求超过大小限制'},status_code=413)(scope,receive,send)
                     chunks.append(chunk)
                 original_receive=receive;replayed=False
                 async def replay_receive():

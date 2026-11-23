@@ -46,6 +46,7 @@ class AnnotationPatch(BaseModel):
 
 
 class Position(BaseModel):
+    file_version:str|None=Field(None,pattern='^[a-f0-9]{64}$')
     conversation_id: int
     page: int = Field(ge=1)
     zoom: Literal['fit', '1', '1.25', '1.5', '2'] = 'fit'

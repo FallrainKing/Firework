@@ -1,6 +1,6 @@
 # 环境、部署与排障
 
-更新：2026-11-22。当前业务迁移 0023、身份 schema 3、Runner 协议 **10**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
+更新：2026-11-23。当前业务迁移 0025、身份 schema 3、Runner 协议 **11**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
 
 ## 1. 当前实例与部署边界
 
@@ -123,3 +123,8 @@ node --test plugins/zotero/tests/plugin.test.cjs
 新增入口：`/#/settings/runner/profiles`、`/#/settings/integrations`；Skill 下载 `/downloads/firework-paper-ops.zip`。授权密钥与客户端环境在使用者本地配置，不写入本文档。
 
 2026-11-22：Skill 审查修复及本机前沿报告上传代码 `a8023b9` 已发布，业务迁移 0023，身份 schema 3 与 Runner 协议 10 不变。发布前备份日志 `/tmp/firework-local-reviews-backup.log`，旧镜像 `firework-before-local-reviews:20261122`。本次仅重建/切换 app，Runner 协议未变；无活动任务时发布。线上只读验证与新授权入口核验通过，未创建真实外部授权、报告或模型任务。
+
+
+## 隔离终端运行配置
+
+原生镜像：`firework-native-runner:2.1.322`；CLI二进制固定为`/home/f/.local/share/claude/versions/2.1.322`。Runner需设置`FIREWORK_NATIVE_ENABLED=1`、`FIREWORK_NATIVE_CLI_SHA256`和`RESEARCH_CLAUDE_BINARY`。校验值由部署时对真实二进制计算，不使用浮动符号链接；与实际文件不符则终端关闭。独立状态位于各账号`agent/terminals/{session_id}`，附件位于`research-files`。模型调用仍由用户明确输入触发。详见 [联合部署与边界](RESEARCH-PLATFORM.md)。

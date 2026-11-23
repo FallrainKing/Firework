@@ -138,6 +138,7 @@ def list_documents(db, settings, pid):
             item['available'] = (settings.data_dir / 'papers' / f"blob-{v['file_hash']}.pdf").is_file()
             item['is_default'] = v['id'] == paper['default_version_id']
             item['annotation_count'] = counts[v['file_hash']]
+            item['saved_index_chunks']=db.execute('SELECT count(*) FROM document_text_chunks WHERE version_id=?',(v['id'],)).fetchone()[0]
             vs.append(item)
         docs.append({**dict(d), 'versions': vs})
     known = {v['file_hash'] for d in docs for v in d['versions']}
@@ -227,7 +228,12 @@ async def make_default(db, state, pid, vid, expected_version):
     try:
         from ..ingest.pipeline import _parse_and_embed
         from ..rag.vector_store import ChunkPoint
-        chunks, vectors = await asyncio.to_thread(_parse_and_embed, path, state.embedder)
+        saved=db.execute('SELECT text,page,section FROM document_text_chunks WHERE version_id=? ORDER BY chunk_index',(vid,)).fetchall()
+        if saved:
+            from ..rag.chunker import Chunk
+            chunks=[Chunk(text=c['text'],page=c['page'],section=c['section']) for c in saved]
+            vectors=await asyncio.to_thread(state.embedder.embed,[c.text for c in chunks])
+        else:chunks, vectors = await asyncio.to_thread(_parse_and_embed, path, state.embedder)
         if not chunks:
             raise ServiceError(400, '此 PDF 没有可索引文本，无法作为当前阅读版本')
         if active() or reader.paper(db, pid)['default_version_id'] != expected_version:
@@ -237,6 +243,8 @@ async def make_default(db, state, pid, vid, expected_version):
         with state.store.replacing_paper_chunks(pid, points), db:
             db.execute('DELETE FROM chunks_meta WHERE paper_id=?', (pid,))
             db.executemany('INSERT INTO chunks_meta(paper_id,chunk_idx,section,page,text) VALUES (?,?,?,?,?)', [(pid, i, c.section, c.page, c.text) for i, c in enumerate(chunks)])
+            db.execute('DELETE FROM document_text_chunks WHERE version_id=?',(vid,))
+            db.executemany('INSERT INTO document_text_chunks(version_id,chunk_index,text,page,section) VALUES (?,?,?,?,?)',[(vid,i,c.text,c.page,c.section) for i,c in enumerate(chunks)])
             db.execute('UPDATE papers SET pdf_path=?,default_version_id=? WHERE id=?', (str(path), vid, pid))
             db.execute('UPDATE paper_documents SET current_version_id=? WHERE id=?', (vid, row['document_id']))
         return {'version_id': vid, 'unchanged': False}

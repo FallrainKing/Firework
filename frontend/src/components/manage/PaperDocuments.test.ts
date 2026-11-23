@@ -16,3 +16,18 @@ describe('Paper document management',()=>{
 it('uploads a revision to the selected document and clears the input only after success',async()=>{vi.spyOn(documentsApi,'upload').mockResolvedValue({version_id:'v2',deduplicated:false});const w=await setup();const select=w.find('.upload-form select');await select.setValue('doc');await w.find('input[placeholder="例如 arXiv v2、会议正式版"]').setValue('arXiv v2');const input=w.find('input[type="file"]');const file=new File(['%PDF test'],'new.pdf',{type:'application/pdf'});Object.defineProperty(input.element,'files',{value:[file],configurable:true});await input.trigger('change');expect(w.find('input[type="file"]').element).toBe(input.element);await w.find('form').trigger('submit');await flushPromises();expect(documentsApi.upload).toHaveBeenCalled();const form=vi.mocked(documentsApi.upload).mock.calls[0]![1];expect(form.get('document_id')).toBe('doc');expect(form.get('label')).toBe('arXiv v2');expect(w.text()).toContain('版本已保存')})
 
 it('keeps imported PDFs readable while indexing is an explicit action',async()=>{vi.mocked(documentsApi.list).mockResolvedValue({...data,fulltext_indexed:false});const w=await setup();expect(w.text()).toContain('原文已可阅读');const button=w.findAll('button').find(x=>x.text()==='建立全文检索索引')!;expect(button.exists()).toBe(true);expect(documentsApi.setDefault).not.toHaveBeenCalled();vi.mocked(window.confirm).mockReturnValue(true);await button.trigger('click');await flushPromises();expect(documentsApi.setDefault).toHaveBeenCalledWith(1,'v1','v1');expect(w.text()).toContain('全文检索索引已建立')})
+
+it('previews a cross-version annotation copy before confirmation',async()=>{
+ const client=await import('@/api/client')
+ const mocked=vi.spyOn(client,'api').mockResolvedValue({confirmation_hash:'d'.repeat(64),items:[{source_id:'note-one',eligible:true,reason:null,target:{page:2}}]})
+ vi.mocked(documentsApi.annotations).mockResolvedValue({annotations:[{id:'note-one',page:1,kind:'highlight',quote:'Exact text',content:'Explanation',origin:'personal'} as never]})
+ const w=await setup();await w.findAll('nav button')[1]!.trigger('click');await flushPromises()
+ const checkbox=w.find('input[type="checkbox"]');await checkbox.setValue(true)
+ await w.find('fieldset select').setValue('v2')
+ expect(mocked).not.toHaveBeenCalled()
+ await w.findAll('button').find(b=>b.text()==='预览匹配位置')!.trigger('click');await flushPromises()
+ expect(mocked).toHaveBeenLastCalledWith('/api/library/papers/1/annotation-migration-preview',{body:{source_version_id:'v1',target_version_id:'v2',annotation_ids:['note-one']}})
+ expect(w.text()).toContain('可复制至第 2 页')
+ await checkbox.setValue(false)
+ expect(w.text()).not.toContain('确认复制可匹配批注')
+})

@@ -23,7 +23,7 @@ def require_session(db: sqlite3.Connection, session_id: int):
 def session_view(db: sqlite3.Connection, row) -> dict:
     from ..agent import service as agent_service  # late import: agent.service imports this module
 
-    out = {k: row[k] for k in ('id', 'title', 'kind', 'entry_context', 'skill', 'skill_version_id', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
+    out = {k: row[k] for k in ('id', 'title', 'kind', 'execution_mode', 'parent_session_id', 'entry_context', 'skill', 'skill_version_id', 'category_id', 'template_id', 'native_session_id', 'native_ready', 'archived', 'pinned', 'draft_prompt', 'created_at', 'updated_at')}
     out['paper_ids'] = repo.paper_ids(db, row['id'])
     out['stale_paper_ids'] = [r[0] for r in db.execute('SELECT cp.paper_id FROM conversation_papers cp JOIN papers p ON p.id=cp.paper_id JOIN document_versions v ON v.id=p.default_version_id WHERE cp.conversation_id=? AND cp.file_version IS NOT NULL AND cp.file_version<>v.file_hash', (row['id'],))]
     out['run_count'] = agent_service.run_count(db, row['id'])

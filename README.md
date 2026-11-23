@@ -159,3 +159,8 @@ A project-level license has not yet been added. Do not assume an open-source lic
 ## External agent integration
 
 Create scoped, expiring API authorization in Settings → External agent access. Download the portable paper-operation Skill to search your library, update metadata and manage PDF annotations from another compatible agent. This gateway does not invoke the server model. Execution profiles now combine versioned Skills, model connections, budgets, roles and narrowed built-in MCP tools. See the [integration design and API](docs/EXTERNAL-AGENT-API.md).
+
+
+### Research workspace
+
+Firework includes versioned research artifacts, PDF-bound evidence, reviewed knowledge candidates, and a run inspector with durable event replay. An optional isolated Claude terminal uses per-session containers and a model-only relay. See [implementation and operational boundaries](docs/RESEARCH-PLATFORM.md).

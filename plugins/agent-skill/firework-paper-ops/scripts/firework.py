@@ -67,14 +67,22 @@ def call(method,path,body=None,key=None):
 
 def main(argv=None):
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('command',choices=['capabilities','search','collections','show','document','page','annotations','create-paper','edit-paper','add-note','edit-note','note','frontier-topics','create-frontier-topic','frontier-reports','frontier-report','submit-frontier-report'])
+    p.add_argument('command',choices=['capabilities','search','collections','show','document','page','annotations','create-paper','edit-paper','add-note','edit-note','note','frontier-topics','create-frontier-topic','frontier-reports','frontier-report','submit-frontier-report','artifacts','artifact','create-artifact','edit-artifact','submit-knowledge','recall-knowledge','run-timeline'])
+    p.add_argument('--id');p.add_argument('--revision',type=int);p.add_argument('--after',type=int,default=0)
     p.add_argument('--paper',type=int);p.add_argument('--page',type=int);p.add_argument('--annotation')
     p.add_argument('--include-deleted',action='store_true');p.add_argument('--topic',type=int);p.add_argument('--report');p.add_argument('--before',type=int)
     p.add_argument('--query',default='');p.add_argument('--limit',type=int,default=20);p.add_argument('--offset',type=int,default=0)
     p.add_argument('--markdown-file',type=Path);p.add_argument('--json-file',type=Path);p.add_argument('--request-key')
     a=p.parse_args(argv);cmd=a.command
     if a.markdown_file and cmd!='submit-frontier-report':p.error('--markdown-file requires submit-frontier-report')
-    if cmd in ('frontier-topics','create-frontier-topic'):path='/frontier/topics'
+    if cmd in ('artifacts','create-artifact'):path='/artifacts'+('?' + parse.urlencode({'q':a.query,'limit':a.limit}) if cmd=='artifacts' else '')
+    elif cmd in ('artifact','edit-artifact','run-timeline'):
+        if not a.id or len(a.id)!=32 or any(c not in '0123456789abcdef' for c in a.id):p.error('--id requires a 32-character resource ID')
+        path=('/runs/'+a.id+'/timeline?'+parse.urlencode({'after':a.after,'limit':a.limit})) if cmd=='run-timeline' else '/artifacts/'+a.id
+        if cmd=='artifact' and a.revision:path+='?revision='+str(a.revision)
+    elif cmd=='submit-knowledge':path='/knowledge/candidates'
+    elif cmd=='recall-knowledge':path='/knowledge/recall?'+parse.urlencode({'q':a.query,'limit':a.limit})
+    elif cmd in ('frontier-topics','create-frontier-topic'):path='/frontier/topics'
     elif cmd=='frontier-reports':
         params={'limit':a.limit}
         if a.topic:params['topic_id']=a.topic
@@ -101,7 +109,7 @@ def main(argv=None):
         if cmd=='page':
             if not a.page or a.page<1:p.error('--page must be positive')
             path+='/pages/'+str(a.page)
-    writes={'create-paper':'POST','edit-paper':'PATCH','add-note':'POST','edit-note':'PATCH','create-frontier-topic':'POST','submit-frontier-report':'POST'}
+    writes={'create-artifact':'POST','edit-artifact':'PATCH','submit-knowledge':'POST','create-paper':'POST','edit-paper':'PATCH','add-note':'POST','edit-note':'PATCH','create-frontier-topic':'POST','submit-frontier-report':'POST'}
     try:
         body=None
         if cmd in writes:

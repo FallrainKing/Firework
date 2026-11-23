@@ -10,6 +10,8 @@ export interface SessionUsage {
 }
 
 export interface Session {
+  execution_mode?: 'managed' | 'terminal'
+  parent_session_id?: number | null
   entry_context?: string | null
   id: number
   title: string
@@ -283,6 +285,7 @@ export interface AnnotationCreate extends SelectionContext {
 }
 
 export interface Position {
+  file_version?: string
   conversation_id: number
   page: number
   zoom: 'fit' | '1' | '1.25' | '1.5' | '2'

@@ -64,7 +64,7 @@ fi
 
 # Project-owned native transcripts are paired with DB session mappings.
 set --
-for folder in agent/claude-config agent/sessions agent/connections; do
+for folder in agent/claude-config agent/sessions agent/connections agent/terminals; do
     if [ -d "${DATA_DIR}/$folder" ]; then set -- "$@" "$folder"; fi
 done
 if [ "$#" -gt 0 ]; then
@@ -89,7 +89,7 @@ for folder in skills avatars; do
 done
 
 # Original PDFs and staged imports are needed alongside reader records.
-for folder in papers imports attachments; do
+for folder in papers imports attachments research-files; do
     if [ -d "${DATA_DIR}/$folder" ]; then
         tar -czf "${BACKUP_DIR}/${folder}-${DATE}.tar.gz" -C "$DATA_DIR" "$folder"
     fi
@@ -105,6 +105,7 @@ prune() {
         echo "backup.sh: pruned $f"
     done
 }
+prune 'research-files-*.tar.gz'
 prune 'attachments-*.tar.gz'
 prune 'skills-*.tar.gz'
 prune 'avatars-*.tar.gz'

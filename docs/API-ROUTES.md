@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **185** 条 HTTP 方法/路径；业务迁移0023、身份schema3、Runner协议10。
+生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **226** 条 HTTP 方法/路径；业务迁移0025、身份schema3、Runner协议11。
 
 浏览器私有接口需登录，写请求需CSRF；外部API Bearer、Zotero设备与内部工具令牌互不替代。字段见 [API](API.md)、[Runner配置](RUNNER-CONFIGURATION.md)、[Skills](SKILLS.md)。不含未来设计接口或静态下载。
 
@@ -16,14 +16,21 @@
 | GET | `/api/agent/providers` |
 | GET | `/api/agent/runs` |
 | GET | `/api/agent/runs/{run_id}` |
+| GET | `/api/agent/runs/{run_id}/debug-bundle` |
 | GET | `/api/agent/runs/{run_id}/events` |
+| GET | `/api/agent/runs/{run_id}/materials` |
+| GET | `/api/agent/runs/{run_id}/timeline` |
 | GET | `/api/agent/status` |
 | GET | `/api/auth/session` |
+| GET | `/api/external/v1/artifacts` |
+| GET | `/api/external/v1/artifacts/{ident}` |
 | GET | `/api/external/v1/capabilities` |
 | GET | `/api/external/v1/collections` |
+| GET | `/api/external/v1/files/{ident}` |
 | GET | `/api/external/v1/frontier/reports` |
 | GET | `/api/external/v1/frontier/reports/{ident}` |
 | GET | `/api/external/v1/frontier/topics` |
+| GET | `/api/external/v1/knowledge/recall` |
 | GET | `/api/external/v1/papers` |
 | GET | `/api/external/v1/papers/{pid}` |
 | GET | `/api/external/v1/papers/{pid}/annotations` |
@@ -31,6 +38,7 @@
 | GET | `/api/external/v1/papers/{pid}/document` |
 | GET | `/api/external/v1/papers/{pid}/file` |
 | GET | `/api/external/v1/papers/{pid}/pages/{page}` |
+| GET | `/api/external/v1/runs/{ident}/timeline` |
 | GET | `/api/frontier/candidates` |
 | GET | `/api/frontier/capabilities` |
 | GET | `/api/frontier/projects` |
@@ -44,6 +52,7 @@
 | GET | `/api/library/papers/{paper_id}` |
 | GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/annotations` |
 | GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/file` |
+| GET | `/api/library/papers/{paper_id}/document-versions/{version_id}/index` |
 | GET | `/api/library/papers/{paper_id}/documents` |
 | GET | `/api/library/papers/{paper_id}/thumbnail` |
 | GET | `/api/me` |
@@ -64,12 +73,24 @@
 | GET | `/api/reader/papers/{paper_id}/translations` |
 | GET | `/api/reader/papers/{pid}/guide` |
 | GET | `/api/reader/papers/{pid}/guides` |
+| GET | `/api/research/artifacts` |
+| GET | `/api/research/artifacts/{ident}` |
+| GET | `/api/research/artifacts/{ident}/markdown` |
+| GET | `/api/research/audit/{kind}/{ident}` |
+| GET | `/api/research/files/{ident}` |
+| GET | `/api/research/knowledge` |
+| GET | `/api/research/knowledge/recall` |
+| GET | `/api/research/knowledge/{ident}` |
 | GET | `/api/sessions` |
 | GET | `/api/sessions/categories` |
 | GET | `/api/sessions/templates` |
 | GET | `/api/sessions/{session_id}` |
 | GET | `/api/sessions/{session_id}/native` |
 | GET | `/api/sessions/{session_id}/runs` |
+| GET | `/api/sessions/{session_id}/terminal` |
+| GET | `/api/sessions/{session_id}/terminal-capabilities` |
+| GET | `/api/sessions/{session_id}/terminal/file` |
+| GET | `/api/sessions/{session_id}/terminal/files` |
 | GET | `/api/skills` |
 | GET | `/api/skills/available` |
 | GET | `/api/skills/categories` |
@@ -93,6 +114,7 @@
 | GET | `/api/zotero/exports` |
 | GET | `/health` |
 | PATCH | `/api/admin/accounts/{ident}` |
+| PATCH | `/api/external/v1/artifacts/{ident}` |
 | PATCH | `/api/external/v1/papers/{pid}` |
 | PATCH | `/api/external/v1/papers/{pid}/annotations/{ident}` |
 | PATCH | `/api/frontier/reports/{run_id}/read-state` |
@@ -107,6 +129,8 @@
 | PATCH | `/api/reader/annotations/{ident}` |
 | PATCH | `/api/reader/guide-runs/{ident}` |
 | PATCH | `/api/reader/translations/{ident}` |
+| PATCH | `/api/research/artifacts/{ident}` |
+| PATCH | `/api/research/knowledge/{ident}` |
 | PATCH | `/api/sessions/{session_id}` |
 | PATCH | `/api/skills/categories/{category_id}` |
 | PATCH | `/api/skills/{skill_id}` |
@@ -120,8 +144,11 @@
 | POST | `/api/auth/logout` |
 | POST | `/api/auth/password` |
 | POST | `/api/auth/register` |
+| POST | `/api/external/v1/artifacts` |
+| POST | `/api/external/v1/files` |
 | POST | `/api/external/v1/frontier/topics` |
 | POST | `/api/external/v1/frontier/topics/{topic_id}/reports` |
+| POST | `/api/external/v1/knowledge/candidates` |
 | POST | `/api/external/v1/papers` |
 | POST | `/api/external/v1/papers/{pid}/annotations` |
 | POST | `/api/frontier/decisions/batch` |
@@ -142,6 +169,8 @@
 | POST | `/api/internal/reader-guide/submit` |
 | POST | `/api/library/collections` |
 | POST | `/api/library/collections/{collection_id}/restore` |
+| POST | `/api/library/papers/{paper_id}/annotation-migration-preview` |
+| POST | `/api/library/papers/{paper_id}/annotation-migrations` |
 | POST | `/api/library/papers/{paper_id}/document-versions` |
 | POST | `/api/library/papers/{paper_id}/document-versions/{version_id}/default` |
 | POST | `/api/library/papers/{paper_id}/refresh-card` |
@@ -159,9 +188,21 @@
 | POST | `/api/reader/guide-runs/{ident}/cancel` |
 | POST | `/api/reader/papers/{pid}/guide-runs` |
 | POST | `/api/reader/translations` |
+| POST | `/api/research/artifacts` |
+| POST | `/api/research/files` |
+| POST | `/api/research/import-existing` |
+| POST | `/api/research/knowledge` |
+| POST | `/api/research/knowledge/{ident}/transition` |
 | POST | `/api/sessions` |
 | POST | `/api/sessions/categories` |
 | POST | `/api/sessions/templates` |
+| POST | `/api/sessions/{session_id}/fork-preview` |
+| POST | `/api/sessions/{session_id}/forks` |
+| POST | `/api/sessions/{session_id}/terminal` |
+| POST | `/api/sessions/{session_id}/terminal/artifacts` |
+| POST | `/api/sessions/{session_id}/terminal/input` |
+| POST | `/api/sessions/{session_id}/terminal/resize` |
+| POST | `/api/sessions/{session_id}/terminal/stop` |
 | POST | `/api/skills/categories` |
 | POST | `/api/skills/drafts` |
 | POST | `/api/skills/imports` |

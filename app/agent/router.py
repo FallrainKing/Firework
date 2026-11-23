@@ -89,3 +89,35 @@ async def providers(request:Request):
         if response.status_code!=200:raise ServiceError(503,'运行环境检测暂不可用，请检查 Runner 版本')
         return response.json()
     except (httpx.HTTPError,ValueError):raise ServiceError(503,'运行环境检测暂不可用') from None
+
+
+@router.get('/runs/{run_id}/timeline')
+async def timeline(run_id:str,request:Request,after:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
+    from ..research.events import listing
+    return listing(request.app.state.db,run_id,after,limit)
+
+@router.get('/runs/{run_id}/materials')
+async def materials(run_id:str,request:Request):
+    service.get_run(request.app.state.db,run_id)
+    from ..research.materials import frozen
+    return frozen(request.app.state.db,run_id)
+
+@router.get('/runs/{run_id}/debug-bundle')
+async def debug_bundle(run_id:str,request:Request):
+    from fastapi.responses import Response
+    from ..research.events import listing
+    from ..research.materials import frozen
+    from ..sessions.native import clean
+    from ..runner_config import connections
+    db=request.app.state.db;run=service.get_run(db,run_id)
+    secret_values=[connections.decrypt(request.app.state.settings,r['id'],r['secret_cipher']) for r in db.execute('SELECT id,secret_cipher FROM runner_connections')]
+    summary={k:run.get(k) for k in ('id','status','skill','skill_version','error','created_at','finished_at','diagnostics')}
+    # Exclude prompt/answer and event text by default; retain state/tool/config evidence.
+    def scrub(value):
+        if isinstance(value,str):return clean(value,secret_values)
+        if isinstance(value,list):return [scrub(x) for x in value]
+        if isinstance(value,dict):return {k:scrub(v) for k,v in value.items() if k not in ('role_prompt','storage_key')}
+        return value
+    events=db.execute("SELECT id,kind,created_at,payload_json FROM run_events WHERE run_id=? AND kind NOT IN ('text_delta','text_reset') ORDER BY id LIMIT 1001",(run_id,)).fetchall()
+    payload=scrub({'version':1,'events_truncated':len(events)>1000,'run':summary,'materials':frozen(db,run_id),'events':[{'seq':r['id'],'kind':r['kind'],'created_at':r['created_at'],'payload':json.loads(r['payload_json'])} for r in events[:1000]],'excluded':['prompt','answer','terminal_bytes','credentials','headers','role_prompt']})
+    return Response(json.dumps(payload,ensure_ascii=False,indent=2),media_type='application/json',headers={'Content-Disposition':f'attachment; filename="firework-debug-{run_id}.json"'})

@@ -68,7 +68,7 @@ def mutate(request,body,key,operation):
 @router.get('/capabilities')
 def capabilities(request:Request):
     t=request.state.external_token
-    return {'version':'v1','scopes':json.loads(t['scopes_json']),'paper_ids':json.loads(t['paper_ids_json']) if t['paper_ids_json'] else None,'model_operations':False,'writes_require_idempotency':True,'pdf_upload':False,'permanent_delete':False,'annotation_recovery':True,'external_frontier_reports':True}
+    return {'version':'v1','scopes':json.loads(t['scopes_json']),'paper_ids':json.loads(t['paper_ids_json']) if t['paper_ids_json'] else None,'model_operations':False,'writes_require_idempotency':True,'pdf_upload':False,'permanent_delete':False,'annotation_recovery':True,'external_frontier_reports':True,'research_artifacts':True,'knowledge_candidates':True,'published_knowledge_recall':True,'run_timeline':True,'research_asset_upload':True}
 
 @router.get('/collections')
 def collections(request:Request):
@@ -197,3 +197,79 @@ def submit_frontier_report(topic_id:int,body:Submission,request:Request,idempote
     grant=frontier_auth(request,'frontier:write')
     from .frontier import submit
     return mutate(request,body,idempotency_key,lambda db:submit(db,topic_id,body,grant['id']))
+
+
+from ..research import service as research
+from ..research.schemas import ArtifactWrite,KnowledgeWrite
+from fastapi import Query
+
+def scoped(request,scope,ids):
+    token=request.state.external_token
+    if scope not in json.loads(token['scopes_json']):raise ServiceError(403,'缺少所需 scope')
+    allowed=json.loads(token['paper_ids_json']) if token['paper_ids_json'] else None
+    if allowed is not None and (not ids or not set(ids)<=set(allowed)):raise ServiceError(404,'记录未授权或不存在')
+    research.check_papers(request.app.state.db,ids)
+    return allowed
+
+def scope_filter(request,scope):
+    token=request.state.external_token
+    if scope not in json.loads(token['scopes_json']):raise ServiceError(403,'缺少所需 scope')
+    return json.loads(token['paper_ids_json']) if token['paper_ids_json'] else None
+
+@router.get('/artifacts')
+async def artifact_list(request:Request,q:str=Query('',max_length=200),paper_id:int|None=None,before:int|None=None,limit:int=Query(30,ge=1,le=100)):
+    return research.artifact_list(request.app.state.db,q,paper_id,before,limit,scope_filter(request,'artifacts:read'))
+
+@router.get('/artifacts/{ident}')
+async def artifact_detail(ident:str,request:Request,revision:int|None=Query(None,ge=1)):
+    scope_filter(request,'artifacts:read')
+    data=research.artifact_view(request.app.state.db,ident,revision);scoped(request,'artifacts:read',data['paper_ids']);return data
+
+@router.post('/artifacts',status_code=201)
+async def artifact_create(body:ArtifactWrite,request:Request,idempotency_key:str|None=Header(None)):
+    scoped(request,'artifacts:write',body.paper_ids)
+    return mutate(request,body,idempotency_key,lambda db:research.artifact_save(db,request.app.state.settings,body,origin='external'))
+
+@router.patch('/artifacts/{ident}')
+async def artifact_revise(ident:str,body:ArtifactWrite,request:Request,idempotency_key:str|None=Header(None)):
+    scope_filter(request,'artifacts:write')
+    old=research.artifact_view(request.app.state.db,ident);scoped(request,'artifacts:write',old['paper_ids']);scoped(request,'artifacts:write',body.paper_ids)
+    return mutate(request,body,idempotency_key,lambda db:research.artifact_save(db,request.app.state.settings,body,ident,origin='external'))
+
+@router.get('/knowledge/recall')
+async def knowledge_recall(request:Request,q:str=Query('',max_length=200),limit:int=Query(20,ge=1,le=50)):
+    return research.knowledge_list(request.app.state.db,q,limit=limit,allowed=scope_filter(request,'knowledge:read'),recall=True)
+
+@router.post('/knowledge/candidates',status_code=201)
+async def knowledge_candidate(body:KnowledgeWrite,request:Request,idempotency_key:str|None=Header(None)):
+    ids=set()
+    scope_filter(request,'knowledge:write')
+    for source in body.sources:ids.update(research.artifact_view(request.app.state.db,source.artifact_id,source.revision)['paper_ids'])
+    scoped(request,'knowledge:write',list(ids))
+    return mutate(request,body,idempotency_key,lambda db:research.knowledge_save(db,body))
+
+@router.get('/runs/{ident}/timeline')
+async def external_timeline(ident:str,request:Request,after:int=Query(0,ge=0),limit:int=Query(100,ge=1,le=200)):
+    scope_filter(request,'runs:read')
+    row=request.app.state.db.execute('SELECT conversation_id FROM agent_runs WHERE id=?',(ident,)).fetchone()
+    if not row:raise ServiceError(404,'任务不存在')
+    ids=[r[0] for r in request.app.state.db.execute('SELECT paper_id FROM conversation_papers WHERE conversation_id=?',(row[0],))]
+    scoped(request,'runs:read',ids)
+    from ..research.events import listing
+    return listing(request.app.state.db,ident,after,limit)
+
+
+from fastapi import UploadFile,File,Form
+from ..research import files as research_files
+
+@router.post('/files',status_code=201)
+async def upload_asset(request:Request,paper_id:int=Form(...),file:UploadFile=File(...)):
+    scoped(request,'artifacts:write',[paper_id])
+    data=await file.read(research_files.MAX_SIZE+1)
+    with request.app.state.db:return research_files.store(request.app.state.db,request.app.state.settings,paper_id,file.filename or 'file',data)
+
+@router.get('/files/{ident}')
+async def download_asset(ident:str,request:Request):
+    scope_filter(request,'artifacts:read')
+    row,path=research_files.resolve(request.app.state.db,request.app.state.settings,ident);scoped(request,'artifacts:read',[row['paper_id']])
+    return FileResponse(path,media_type='application/octet-stream',filename=row['filename'],headers={'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"})

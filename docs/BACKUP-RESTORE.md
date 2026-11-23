@@ -82,3 +82,6 @@ docker compose up -d app backup
 启用个人连接后，管理员的默认主密钥随 runner-secrets-YYYYMMDD.tar.gz 归档，独立账号密钥随 accounts 归档。自定义连接的 agent/connections 目录随 agent-sessions 归档。归档权限为私有；连接数据库和密钥是成套恢复资源。
 
 恢复前检查有连接记录的工作区具备对应 32 字节主密钥；外部 FIREWORK_RUNNER_MASTER_KEY_FILE 不由脚本归档，必须另行恢复原文件。缺失主密钥时不要新建随机文件替代。恢复脚本只校验文件结构，重启后还需验证实际解密。不要将包含主密钥的备份公开或放入 Git。
+
+
+研究平台补充：`research-files`包含产物附件；`agent/terminals`包含原生分支工作文件和会话状态，随agent-sessions归档。Unix socket不是可恢复资源，恢复后由Runner重建。活跃工作文件与数据库并非跨资源原子快照，正式发布/恢复前应停止所有执行。恢复后原生进程不自动恢复或重发问题。

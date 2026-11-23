@@ -58,7 +58,8 @@ class RunRequest(BaseModel):
     skill_version_id: int | None = None
     skill_hash: str | None = Field(default=None, max_length=128)
     prompt: str = Field(min_length=1, max_length=3000)
-    history: list[dict] = Field(default_factory=list, max_length=40)
+    history: list[dict] = Field(default_factory=list, max_length=100)
+    material_manifest: list[dict] = Field(default_factory=list,max_length=20)
     session_id: str | None = Field(None, pattern=r"^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$")
     native_ready: bool = False
     contexts: list[dict] = Field(default_factory=list,max_length=3)
@@ -204,6 +205,10 @@ async def run_events(run_id: str, request: Request):
 @app.post('/runs/{run_id}/cancel')
 async def cancel_run(run_id: str, request: Request):
     current=await engine_for(request)
+    native=current.terminals.for_run(run_id)
+    if native:
+        await current.terminals.stop(native[0],native[1]['generation'])
+        return {'run_id':run_id,'status':'cancelled'}
     got = await current.cancel(run_id)
     if got is None:
         raise HTTPException(404, 'Run not found')
@@ -232,3 +237,53 @@ async def providers(request:Request):
     await engine_for(request)
     from .native import provider_status
     return {'providers':[await provider_status()]}
+
+
+class TerminalStart(BaseModel):
+    controller_id:str=Field(pattern='^[a-f0-9]{32}$')
+    connection_snapshot: ConnectionSnapshot | None = None
+    connection_secret: SecretStr | None = Field(None,exclude=True,repr=False)
+
+class TerminalInput(BaseModel):
+    generation: str = Field(pattern='^[a-f0-9]{32}$')
+    request_key: str = Field(pattern='^[a-f0-9]{32}$')
+    controller_id:str=Field(pattern='^[a-f0-9]{32}$')
+    data: str = Field(min_length=1,max_length=32768)
+
+class TerminalControl(BaseModel):
+    controller_id:str=Field(pattern='^[a-f0-9]{32}$')
+    generation: str = Field(pattern='^[a-f0-9]{32}$')
+
+class TerminalResize(TerminalControl):
+    cols:int=Field(ge=20,le=240)
+    rows:int=Field(ge=10,le=100)
+
+@app.get('/terminal-capabilities')
+async def terminal_capabilities(request:Request):
+    await engine_for(request)
+    from .terminal import availability
+    return await availability()
+
+@app.post('/terminals/{ident}/start')
+async def terminal_start(ident:int,body:TerminalStart,request:Request):
+    current=await engine_for(request)
+    payload=body.model_dump()
+    if body.connection_secret:payload['connection_secret']=body.connection_secret.get_secret_value()
+    return await current.terminals.start(ident,payload,request.headers.get('x-research-workspace','legacy')=='legacy')
+
+@app.get('/terminals/{ident}')
+async def terminal_read(ident:int,request:Request,offset:int=0,generation:str|None=None,controller_id:str|None=None):
+    if offset<0:raise HTTPException(422,'Invalid cursor')
+    return (await engine_for(request)).terminals.read(ident,offset,generation,controller_id)
+
+@app.post('/terminals/{ident}/input')
+async def terminal_input(ident:int,body:TerminalInput,request:Request):
+    return await (await engine_for(request)).terminals.input(ident,body.model_dump())
+
+@app.post('/terminals/{ident}/resize')
+async def terminal_resize(ident:int,body:TerminalResize,request:Request):
+    return await (await engine_for(request)).terminals.resize(ident,body.model_dump())
+
+@app.post('/terminals/{ident}/stop')
+async def terminal_stop(ident:int,body:TerminalControl,request:Request):
+    return await (await engine_for(request)).terminals.stop(ident,body.generation,controller_id=body.controller_id)

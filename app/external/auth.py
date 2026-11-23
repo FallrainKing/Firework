@@ -5,11 +5,11 @@ import uuid
 from pydantic import BaseModel,ConfigDict,Field
 from ..auth.store import token_hash
 from ..core.errors import ServiceError
-SCOPES={'papers:read','papers:write','annotations:read','annotations:write','files:read','frontier:read','frontier:write'}
+SCOPES={'papers:read','papers:write','annotations:read','annotations:write','files:read','frontier:read','frontier:write','artifacts:read','artifacts:write','knowledge:read','knowledge:write','runs:read'}
 class TokenCreate(BaseModel):
     model_config=ConfigDict(extra='forbid')
     name:str=Field(min_length=1,max_length=80)
-    scopes:list[str]=Field(min_length=1,max_length=7)
+    scopes:list[str]=Field(min_length=1,max_length=12)
     paper_ids:list[int]|None=Field(None,max_length=200)
     expires_days:int=Field(7,ge=1,le=90)
 

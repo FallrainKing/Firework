@@ -74,6 +74,7 @@ onMounted(() => { void loadProfile() })
         </div>
         <span class="account-mode">{{authState?.account?.username}} · {{authState?.account?.role==='admin'?'管理员':'独立账号'}}</span>
         <button v-if="authState?.account?.role==='admin'" type="button" role="menuitem" @click="router.push('/accounts');userMenuOpen=false">账号管理</button>
+        <button type="button" role="menuitem" @click="router.push('/research');userMenuOpen=false">研究产物与知识库</button>
         <button type="button" role="menuitem" @click="router.push('/integrations/zotero');userMenuOpen=false">Zotero 集成</button>
         <button type="button" role="menuitem" @click="router.push('/settings/runner/connections');userMenuOpen=false">模型连接</button>
         <button type="button" role="menuitem" @click="wb.setView('skills'); userMenuOpen = false">技能库</button>

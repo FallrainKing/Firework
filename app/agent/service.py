@@ -425,7 +425,8 @@ async def execute_run(run_id: str, state):
         except (httpx.HTTPError, ValueError) as exc:
             result = {'status': 'failed', 'error': ('Runner 版本不支持当前执行配置；本轮没有调用模型，请升级运行服务。' if str(exc)=='runner_protocol_mismatch' else 'Agent connection failed or timed out; retry manually. No automatic retry was made.')}
             if str(exc)=='runner_protocol_mismatch': result['metadata']={'subtype':'runner_protocol_mismatch'}
-        repo.finish_run(db, run_id, result['status'], str(result.get('answer') or ''), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
+        answer=result.get('answer') or (live_text if result['status'] in ('failed','cancelled') else '')
+        repo.finish_run(db, run_id, result['status'], str(answer), result.get('model'), json.dumps(result.get('usage') or {}), json.dumps(result.get('tool_calls') or [], ensure_ascii=False), json.dumps(result.get('metadata') or {}), result.get('cli_estimated_cost_usd'), result.get('error'))
         if result['status'] == 'cancelled':
             repo.fail_imports_for_run(db, run_id, str(result.get('error') or '已取消'))
         if result.get('session_id') == session['native_session_id'] and result.get('native_ready'):

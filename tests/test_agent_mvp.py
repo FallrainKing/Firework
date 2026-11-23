@@ -406,3 +406,13 @@ def test_late_result_cannot_overwrite_cancel(client):
     row = db.execute('SELECT status,answer FROM agent_runs WHERE id=?', (run_id,)).fetchone()
     assert row['status'] == 'cancelled' and row['answer'] == ''
     db.close()
+
+
+def test_streamed_partial_answer_survives_runner_failure(client,monkeypatch):
+    c,_=client
+    frames=[{'type':'progress','event':{'type':'text_snapshot','answer':'Already generated text'}},{'type':'result','result':{'status':'failed','error':'Connection lost'}}]
+    monkeypatch.setattr(runner_client,'client',lambda:httpx.AsyncClient(transport=httpx.MockTransport(runner_mock({},frames=frames)),base_url='http://test'))
+    r=c.post('/api/agent/runs',json={'prompt':'test partial output'})
+    assert r.status_code==202
+    result=wait(c,r.json()['id'])
+    assert result['status']=='failed' and result['answer']=='Already generated text'

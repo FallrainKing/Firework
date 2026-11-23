@@ -26,8 +26,8 @@ async def skills(request:Request):
 async def create(pid:int,body:GuideCreate,request:Request):return await s.create(request.app.state.db,request.app.state,pid,body)
 
 @router.get('/papers/{pid}/guide')
-async def current(pid:int,request:Request):
-    try:return s.current(request.app.state.db,request.app.state.settings,pid)
+async def current(pid:int,request:Request,file_version:str|None=None):
+    try:return s.current(request.app.state.db,request.app.state.settings,pid,file_version)
     except (ValueError,OSError) as e:raise ServiceError(400,str(e)) from e
 
 @router.get('/papers/{pid}/guides')

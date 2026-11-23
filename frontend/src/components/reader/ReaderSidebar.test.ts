@@ -20,6 +20,7 @@ function makeOrch() {
 
 beforeEach(() => {
   setActivePinia(createPinia())
+  vi.spyOn(readerApi,'readingResults').mockResolvedValue({artifacts:[],unverified_artifacts:[],older_versions:0,has_more:false})
   vi.spyOn(readerApi, 'annotations').mockResolvedValue({ annotations: [] })
   vi.spyOn(readerApi, 'translations').mockResolvedValue({ translations: [] })
   vi.spyOn(readerApi, 'patchAnnotation').mockResolvedValue({} as never)
@@ -114,4 +115,24 @@ describe('ReaderSidebar', () => {
     await flushPromises()
     expect(readerApi.createAnnotation).toHaveBeenCalledWith(expect.objectContaining({ kind: 'note', content: '我的批注', conversation_id: 5 }))
   })
+})
+
+
+it('shows one selected reading result and separates unverified legacy results',async()=>{
+ vi.spyOn(readerApi,'readingResults').mockResolvedValue({artifacts:[{id:'new',title:'Current summary',kind:'reading',markdown:'CURRENT BODY',current_revision:1,version_status:'matched'}],unverified_artifacts:[{id:'old',title:'Old summary',kind:'reading',markdown:'OLD BODY',current_revision:1,version_status:'unverified'}],older_versions:1,has_more:false})
+ const {wrapper}=await mountSidebar();await wrapper.find('[data-tab="guide"]').trigger('click');await flushPromises()
+ expect(wrapper.findAll('.guide-pane')).toHaveLength(1);expect(wrapper.findAll('.reading-result')).toHaveLength(1)
+ expect(wrapper.text()).toContain('CURRENT BODY');expect(wrapper.text()).not.toContain('OLD BODY')
+ await wrapper.find('select[aria-label="选择导读结果"]').setValue('old')
+ expect(wrapper.text()).toContain('OLD BODY');expect(wrapper.text()).not.toContain('CURRENT BODY');expect(wrapper.text()).toContain('未记录可核验的 PDF 版本')
+ wrapper.unmount()
+})
+it('ignores late record responses after switching papers',async()=>{
+ let finish!:(value:any)=>void
+ vi.spyOn(readerApi,'readingResults').mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve})).mockResolvedValue({artifacts:[{id:'b',title:'Paper B',markdown:'B ONLY',current_revision:1,version_status:'matched'}],unverified_artifacts:[],older_versions:0,has_more:false} as never)
+ const wrapper=mount(ReaderSidebar,{props:{doc:doc as never,session:session as never,orchestrator:makeOrch() as never}});await flushPromises()
+ await wrapper.setProps({doc:{...doc,paper_id:2,file_version:'v2'} as never});await flushPromises()
+ finish({artifacts:[{id:'a',title:'Paper A',markdown:'STALE A',current_revision:1,version_status:'matched'}],unverified_artifacts:[],older_versions:0,has_more:false});await flushPromises()
+ await wrapper.find('[data-tab="guide"]').trigger('click');await flushPromises()
+ expect(wrapper.text()).toContain('B ONLY');expect(wrapper.text()).not.toContain('STALE A');wrapper.unmount()
 })

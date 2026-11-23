@@ -86,7 +86,7 @@ def capture_run(db,settings,run_id):
     if not r or not r['answer']:return
     ids=[x[0] for x in db.execute('SELECT paper_id FROM conversation_papers WHERE conversation_id=?',(r['conversation_id'],))]
     skill=r['skill'];kind='comparison' if skill=='paper_compare' else 'review' if skill=='paper_review' else 'reading'
-    if r['purpose'] in ('translate','explain'):kind='note'
+    if r['purpose'] in ('translate','explain','guide','skill-validation'):kind='note'
     body=ArtifactWrite(title=r['prompt'][:160],kind=kind,markdown=r['answer'][:100000],paper_ids=ids,status='complete' if r['status']=='succeeded' and len(r['answer'])<=100000 else 'partial',source_run_id=run_id,producer=skill+':'+str(r['skill_version_id'] or 'unknown'))
     return artifact_save(db,settings,body,origin='agent',source_key=source)
 
@@ -212,3 +212,32 @@ def import_existing(db,settings,limit=30):
             db.execute('ROLLBACK TO import_source');skipped.append({'type':kind,'source_id':row['id']})
         finally:db.execute('RELEASE import_source')
     return {'created':created,'skipped':skipped,'model_called':False,'knowledge_published':False}
+
+
+def reader_artifacts(db,settings,pid,file_version,limit=100):
+    """A version-aware view over saved results, including legacy misclassified runs."""
+    from ..reader.service import paper
+    paper(db,pid)
+    documents.ensure_paper(db,settings,pid)
+    known=db.execute('SELECT 1 FROM document_versions v JOIN paper_documents d ON d.id=v.document_id WHERE d.paper_id=? AND v.file_hash=?',(pid,file_version)).fetchone()
+    if not known:raise ServiceError(404,'原文版本不存在')
+    rows=db.execute("""SELECT a.*,r.purpose AS run_purpose FROM research_artifacts a
+      JOIN artifact_papers ap ON ap.artifact_id=a.id
+      JOIN artifact_revisions rev ON rev.artifact_id=a.id AND rev.revision=a.current_revision
+      LEFT JOIN agent_runs r ON r.id=a.source_run_id
+      WHERE ap.paper_id=? AND a.archived=0 AND a.kind IN ('reading','guide')
+      AND rev.status IN ('complete','partial')
+      AND coalesce(r.purpose,'') NOT IN ('translate','explain','guide','skill-validation','frontier')
+      AND NOT EXISTS(SELECT 1 FROM reader_guide_tasks t WHERE t.agent_run_id=a.source_run_id)
+      AND coalesce(a.source_key,'') NOT LIKE 'guide:%'
+      ORDER BY a.rowid DESC""",(pid,)).fetchall()
+    current=[];unverified=[];older=0
+    for row in rows:
+        a=artifact_view(db,row['id'])
+        refs=[e for e in a['evidence'] if e.get('paper_id')==pid]
+        refs += [e for e in a['materials'].get('authorized',[]) if e.get('paper_id')==pid]
+        hashes={e.get('file_version') for e in refs if e.get('file_version')}
+        if hashes and hashes!={file_version}:older+=1;continue
+        a['version_status']='matched' if hashes else 'unverified'
+        (current if hashes else unverified).append(a)
+    return {'artifacts':current[:limit],'unverified_artifacts':unverified[:limit],'older_versions':older,'has_more':len(current)>limit or len(unverified)>limit}

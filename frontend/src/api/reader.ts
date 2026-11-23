@@ -1,7 +1,10 @@
 import { api } from './client'
 import type { Annotation, AnnotationCreate, Position, ReaderDoc, SelectionContext, TranslationRecord } from './types'
 
+export interface ReadingArtifact {id:string;title:string;kind:string;markdown:string;current_revision:number;created_at?:string;version_status:'matched'|'unverified'}
+export interface ReadingResults {artifacts:ReadingArtifact[];unverified_artifacts:ReadingArtifact[];older_versions:number;has_more:boolean}
 export const readerApi = {
+  readingResults:(pid:number,version:string)=>api<ReadingResults>(`/api/research/artifacts?paper_id=${pid}&reader_file_version=${encodeURIComponent(version)}&limit=100`),
   locate:(body:SelectionContext)=>api<SelectionContext&{status:string;original_url?:string}>('/api/reader/anchors/locate',{body}),
   document(paperId: number,versionId?:string): Promise<ReaderDoc> {
     return api(`/api/reader/papers/${paperId}${versionId?'?version_id='+encodeURIComponent(versionId):''}`)

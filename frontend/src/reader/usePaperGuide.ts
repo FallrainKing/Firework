@@ -1,4 +1,4 @@
-import {computed,onUnmounted,ref,watch,type Ref} from 'vue'
+import {computed,onUnmounted,onActivated,onDeactivated,ref,watch,type Ref} from 'vue'
 import {guidesApi,type GuideSkill,type GuideState} from '@/api/guides'
 import {uid32} from '@/api/client'
 import type {ReaderDoc} from '@/api/types'
@@ -9,16 +9,16 @@ export function usePaperGuide(doc:Ref<ReaderDoc|null>,onPublished:()=>Promise<vo
  let timer:ReturnType<typeof setInterval>|null=null,epoch=0,stopped=false
  function stopPoll(){if(timer)clearInterval(timer);timer=null}
  async function refresh(){const d=doc.value;if(!d)return;const e=++epoch
-  try{const next=await guidesApi.current(d.paper_id);if(stopped||e!==epoch||doc.value?.file_version!==d.file_version)return
+  try{const next=await guidesApi.current(d.paper_id,d.file_version);if(stopped||e!==epoch||doc.value?.paper_id!==d.paper_id||doc.value?.file_version!==d.file_version)return
    if(next.guide&&next.guide.file_version!==d.file_version){next.guide=null;next.task=null;next.older_versions=Math.max(1,next.older_versions)}
    const old=state.value.guide?.id;state.value=next;error.value=''
    if(next.guide?.id!==old){await onPublished()}
    if(running.value&&!timer)timer=setInterval(()=>void refresh(),2500)
    if(!running.value)stopPoll()
-  }catch(e){if(!stopped)error.value=e instanceof Error?e.message:'导读载入失败'}
+  }catch(errorValue){if(!stopped&&e===epoch&&doc.value?.paper_id===d.paper_id&&doc.value?.file_version===d.file_version)error.value=errorValue instanceof Error?errorValue.message:'导读载入失败'}
  }
  watch(showAI,value=>{if(doc.value)localStorage.setItem('paper-ai-layer-'+doc.value.paper_id,String(value))})
- watch(()=>doc.value?.file_version,()=>{if(doc.value)showAI.value=localStorage.getItem('paper-ai-layer-'+doc.value.paper_id)!=='false';stopPoll();state.value={task:null,guide:null,older_versions:0};if(doc.value)void refresh()},{immediate:true})
+ watch(()=>[doc.value?.paper_id,doc.value?.file_version],()=>{epoch++;error.value='';focusItem.value=null;if(doc.value)showAI.value=localStorage.getItem('paper-ai-layer-'+doc.value.paper_id)!=='false';stopPoll();state.value={task:null,guide:null,older_versions:0};if(doc.value)void refresh()},{immediate:true})
  async function loadSkills(){try{skills.value=(await guidesApi.skills()).skills}catch(e){error.value=e instanceof Error?e.message:'技能载入失败'}}
  async function start(options:{skill_id:string;skill_version_id:number;reading_goal:string;max_items:number;max_pages:number}){
   if(!doc.value||busy.value||running.value)return;busy.value=true;error.value=''
@@ -27,6 +27,8 @@ export function usePaperGuide(doc:Ref<ReaderDoc|null>,onPublished:()=>Promise<vo
  }
  async function cancel(){if(!state.value.task)return;busy.value=true;try{await guidesApi.cancel(state.value.task.id);await refresh()}catch(e){error.value=e instanceof Error?e.message:'停止失败'}finally{busy.value=false}}
  async function hide(){if(!state.value.task)return;busy.value=true;try{await guidesApi.hide(state.value.task.id);await refresh();await onPublished()}catch(e){error.value=e instanceof Error?e.message:'移除失败'}finally{busy.value=false}}
+ onActivated(()=>{void refresh()})
+ onDeactivated(()=>{epoch++;stopPoll()})
  onUnmounted(()=>{stopped=true;epoch++;stopPoll()})
  return {state,busy,error,running,showAI,focusItem,skills,refresh,loadSkills,start,cancel,hide}
 }

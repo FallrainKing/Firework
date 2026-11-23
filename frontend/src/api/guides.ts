@@ -6,7 +6,7 @@ export interface GuideState {task:PaperGuide|null;guide:PaperGuide|null;older_ve
 export interface GuideSkill {id:string;name:string;version_id:number;max_budget_usd:number;max_output_tokens:number}
 export const guidesApi={
  history:(pid:number)=>api<{guides:PaperGuide[]}>(`/api/reader/papers/${pid}/guides`),
- current:(pid:number)=>api<GuideState>(`/api/reader/papers/${pid}/guide`),
+ current:(pid:number,fileVersion?:string)=>api<GuideState>(`/api/reader/papers/${pid}/guide${fileVersion?'?file_version='+encodeURIComponent(fileVersion):''}`),
  skills:()=>api<{skills:GuideSkill[];contract:string}>('/api/reader/guide-skills'),
  create:(pid:number,body:{confirmed:true;file_version:string;request_key:string;skill_id:string;skill_version_id:number;reading_goal:string;max_items:number;max_pages:number})=>api<PaperGuide>(`/api/reader/papers/${pid}/guide-runs`,{body}),
  cancel:(id:string)=>api<PaperGuide>(`/api/reader/guide-runs/${id}/cancel`,{method:'POST'}),

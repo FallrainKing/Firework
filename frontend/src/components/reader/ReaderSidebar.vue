@@ -4,9 +4,9 @@ import GuidePanel from './GuidePanel.vue'
 import type { PaperGuideController } from '@/reader/usePaperGuide'
 import { renderMarkdown } from '@/shared/markdown'
 import {api} from '@/api/client'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch,onActivated,onBeforeUnmount } from 'vue'
 import StateFeedback from '@/components/StateFeedback.vue'
-import { readerApi } from '@/api/reader'
+import { readerApi,type ReadingArtifact } from '@/api/reader'
 import type { Annotation, Position, ReaderDoc, SelectionContext, Session, TranslationRecord } from '@/api/types'
 
 interface Orch {
@@ -37,7 +37,12 @@ const TABS: Array<{ id: Position['tab']; label: string }> = [
 const tab = ref<Position['tab']>('outline')
 const originFilter=ref('all')
 const annotations = ref<Annotation[]>([])
-const readingArtifacts=ref<{id:string;title:string;kind:string;markdown:string;current_revision:number}[]>([])
+const readingArtifacts=ref<ReadingArtifact[]>([]),unverifiedArtifacts=ref<ReadingArtifact[]>([])
+const guideSelection=ref<string|null>(null),guideLoadError=ref(''),olderResults=ref(0)
+const selectedGuide=computed({get:()=>guideSelection.value??(props.guideController?.state.value.guide?'structured':readingArtifacts.value[0]?.id??'structured'),set:(id:string)=>{guideSelection.value=id}})
+const selectedArtifact=computed(()=>[...readingArtifacts.value,...unverifiedArtifacts.value].find(a=>a.id===selectedGuide.value))
+let refreshEpoch=0,disposed=false
+
 async function adoptExternal(a:Annotation){try{await api(`/api/reader/annotations/${a.id}/adopt`,{method:'POST'});await refresh();await orch?.refreshAnnotations()}catch(e){showToast(String(e))}}
 const translations = ref<TranslationRecord[]>([])
 const visibleAnnotations=computed(()=>annotations.value.filter(a=>originFilter.value==='all'||(originFilter.value==='ai'?a.origin==='ai':a.origin!=='ai')))
@@ -62,6 +67,7 @@ function setTab(t: Position['tab']) {
   tab.value = t
   orch?.setTab(t)
   orch?.savePosition()
+  if(t==='guide'){void refresh();void props.guideController?.refresh()}
 }
 
 function focusNote() {
@@ -70,25 +76,40 @@ function focusNote() {
 }
 
 async function refresh() {
-  if (!props.doc) return
+  const doc=props.doc
+  if (!doc) return
+  const epoch=++refreshEpoch
+  const current=()=>!disposed&&epoch===refreshEpoch&&props.doc?.paper_id===doc.paper_id&&props.doc?.file_version===doc.file_version
   loading.value = true
   loadError.value = null
   try {
-    const [a, t] = await Promise.all([readerApi.annotations(props.doc.paper_id), readerApi.translations(props.doc.paper_id)])
-    annotations.value = a.annotations
-    translations.value = t.translations
-    try{readingArtifacts.value=(await api<{artifacts:typeof readingArtifacts.value}>(`/api/research/artifacts?paper_id=${props.doc.paper_id}&limit=100`)).artifacts.filter(a=>['reading','guide'].includes(a.kind))}catch{readingArtifacts.value=[]}
+    const [a,t]=await Promise.all([readerApi.annotations(doc.paper_id),readerApi.translations(doc.paper_id)])
+    if(!current())return
+    annotations.value=a.annotations
+    translations.value=t.translations
+    try{
+      const results=await readerApi.readingResults(doc.paper_id,doc.file_version)
+      if(!current())return
+      readingArtifacts.value=results.artifacts
+      unverifiedArtifacts.value=results.unverified_artifacts
+      olderResults.value=results.older_versions
+      const valid=guideSelection.value===null||guideSelection.value==='structured'||[...results.artifacts,...results.unverified_artifacts].some(a=>a.id===guideSelection.value)
+      if(!valid)guideSelection.value=null
+      guideLoadError.value=''
+    }catch(error){if(current())guideLoadError.value=error instanceof Error?error.message:'阅读结果载入失败'}
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '阅读记录载入失败'
+    if(current())loadError.value=e instanceof Error ? e.message : '阅读记录载入失败'
   } finally {
-    loading.value = false
+    if(current())loading.value=false
   }
 }
+onActivated(()=>{void refresh()})
+onBeforeUnmount(()=>{disposed=true;refreshEpoch++})
 
 watch(() => orch?.annotationsVersion.value, () => { void refresh() })
 // 编排器侧的 tab 变更（恢复位置/高亮/翻译）同步到 UI，不回写位置。
 watch(() => orch?.sidebarTab.value, t => { if (t) tab.value = t==='highlights'?'notes':t }, { immediate: true })
-watch(() => props.doc, d => { if (d) void refresh() }, { immediate: true })
+watch(() => [props.doc?.paper_id,props.doc?.file_version],()=>{refreshEpoch++;annotations.value=[];translations.value=[];readingArtifacts.value=[];unverifiedArtifacts.value=[];olderResults.value=0;guideSelection.value=null;guideLoadError.value='';editingNote.value=null;noteText.value='';if(props.doc)void refresh()},{immediate:true})
 watch(() => orch?.noteContext.value, ctx => { if (ctx) focusNote() })
 
 async function saveNote() {
@@ -177,8 +198,23 @@ defineExpose({ editNote, focusNote, refresh, setTab })
     </div>
 
     <select v-if="tab==='notes'||tab==='highlights'" v-model="originFilter" aria-label="批注来源"><option value="all">全部批注</option><option value="user">我的批注</option><option value="ai">AI 导读批注</option></select>
-    <GuidePanel class="tab-pane" v-if="tab === 'guide' && guideController && doc && orch" :controller="guideController" :paper-id="doc.paper_id" :file-version="doc.file_version" :jump="orch.jump" :refresh-annotations="orch.refreshAnnotations" />
-    <div v-if="tab==='guide'" class="tab-pane"><article v-for="a in readingArtifacts" :key="a.id" class="aux-entry"><h3>{{a.title}}</h3><RouterLink :to="`/research?artifact=${a.id}`">产物 · v{{a.current_revision}}</RouterLink><div class="markdown-content" v-html="renderMd(a.markdown)"></div></article></div>
+    <div v-if="tab==='guide'" class="tab-pane guide-pane">
+      <label class="guide-picker">阅读结果<select v-model="selectedGuide" aria-label="选择导读结果">
+        <option value="structured">结构化导读与阅读路线</option>
+        <optgroup v-if="readingArtifacts.length" label="当前 PDF 的阅读结果"><option v-for="a in readingArtifacts" :key="a.id" :value="a.id">{{a.title}} · v{{a.current_revision}}</option></optgroup>
+        <optgroup v-if="unverifiedArtifacts.length" label="历史结果（PDF版本未核验）"><option v-for="a in unverifiedArtifacts" :key="a.id" :value="a.id">{{a.title}} · 版本未核验</option></optgroup>
+      </select></label>
+      <button class="refresh-reading" @click="refresh();guideController?.refresh()">刷新阅读结果</button>
+      <p v-if="guideLoadError" role="alert">{{guideLoadError}}</p>
+      <GuidePanel v-if="selectedGuide==='structured'&&guideController&&doc&&orch" :controller="guideController" :paper-id="doc.paper_id" :file-version="doc.file_version" :jump="orch.jump" :refresh-annotations="orch.refreshAnnotations" />
+      <article v-else-if="selectedArtifact" :key="selectedArtifact.id+':'+selectedArtifact.current_revision" class="aux-entry reading-result">
+        <h3>{{selectedArtifact.title}}</h3>
+        <p v-if="selectedArtifact.version_status==='unverified'" class="muted">该历史结果未记录可核验的 PDF 版本，请结合原文检查。</p>
+        <RouterLink :to="`/research/artifacts/${selectedArtifact.id}`">查看来源与修订 · v{{selectedArtifact.current_revision}}</RouterLink>
+        <div class="markdown-content" v-html="renderMd(selectedArtifact.markdown)"></div>
+      </article>
+      <p v-if="olderResults" class="muted">其他 PDF 版本的结果未混入当前列表，可在研究产物库查看。</p>
+    </div>
     <div v-show="tab === 'outline'" class="tab-pane">
       <button v-for="(item, i) in doc?.outline ?? []" :key="i" class="outline-button" :style="{ paddingLeft: Math.min(item.level - 1, 3) * 10 + 'px' }" @click="locate({ page: item.page, file_version: doc!.file_version })">
         <span>{{ item.title }}</span><small class="muted">第 {{ item.page }} 页</small>
@@ -268,7 +304,8 @@ defineExpose({ editNote, focusNote, refresh, setTab })
 .sidebar-tabs { display: flex; border-bottom: 1px solid var(--border); }
 .sidebar-tabs button { flex: 1; border: none; border-radius: 0; padding: var(--space-2) 0; font-size: 12px; color: var(--text-muted); }
 .sidebar-tabs button[aria-selected='true'] { color: var(--accent); background: var(--accent-soft); }
-.tab-pane { flex: 1; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.tab-pane { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); }
+.guide-picker{display:grid;gap:6px;font-size:12px}.guide-picker select{width:100%;min-width:0}.reading-result{overflow-wrap:anywhere}.guide-pane>.paper-guide-panel{padding:0}
 .outline-button { display: flex; justify-content: space-between; gap: var(--space-2); border: none; background: none; text-align: left; padding: var(--space-1) var(--space-2); }
 .outline-button:hover { background: var(--accent-soft); color: var(--accent); }
 .aux-entry { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--space-2); background: var(--bg); display: flex; flex-direction: column; gap: var(--space-1); font-size: 13px; }

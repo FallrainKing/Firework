@@ -5,7 +5,12 @@ from .schemas import ArtifactWrite,KnowledgeWrite,Transition
 router=APIRouter(prefix='/api/research',tags=['research assets'])
 
 @router.get('/artifacts')
-async def artifacts(request:Request,q:str=Query('',max_length=200),paper_id:int|None=None,before:int|None=None,limit:int=Query(30,ge=1,le=100)):
+async def artifacts(request:Request,q:str=Query('',max_length=200),paper_id:int|None=None,before:int|None=None,limit:int=Query(30,ge=1,le=100),reader_file_version:str|None=Query(None,pattern='^[a-f0-9]{64}$')):
+    if reader_file_version:
+        if paper_id is None:
+            from ..core.errors import ServiceError
+            raise ServiceError(422,'阅读结果需要明确论文')
+        return s.reader_artifacts(request.app.state.db,request.app.state.settings,paper_id,reader_file_version,limit)
     return s.artifact_list(request.app.state.db,q,paper_id,before,limit)
 
 @router.post('/artifacts',status_code=201)

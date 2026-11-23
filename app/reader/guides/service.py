@@ -192,9 +192,14 @@ def view(db,r,cached=False):
     return d
 
 
-def current(db,settings,pid):
+def current(db,settings,pid,file_version=None):
     paper=reader_service.paper(db,pid);reconcile(db,settings,pid)
     _,version=pages.pdf_file(settings,paper)
+    if file_version:
+        from ...documents import service as documents
+        documents.ensure_paper(db,settings,pid)
+        if not db.execute('SELECT 1 FROM document_versions v JOIN paper_documents d ON d.id=v.document_id WHERE d.paper_id=? AND v.file_hash=?',(pid,file_version)).fetchone():raise ServiceError(404,'原文版本不存在')
+        version=file_version
     rows=db.execute('SELECT * FROM reader_guide_tasks WHERE paper_id=? AND hidden=0 ORDER BY rowid DESC',(pid,)).fetchall()
     latest=next((r for r in rows if r['file_version']==version),None)
     active=next((r for r in rows if r['file_version']==version and r['active']),None)

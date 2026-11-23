@@ -4,7 +4,7 @@
 
 [中文](README.zh-CN.md) · [Documentation](docs/README.md) · [Roadmap](docs/ROADMAP.md) · [Report an issue](https://github.com/FallrainKing/Firework/issues)
 
-Firework brings your paper library, PDF reader, and research conversations into one workspace. It connects to an existing Claude Code agent and extends its capabilities through Skills, while the application manages documents, sessions, tasks, evidence, and account isolation.
+Firework brings your paper library, PDF reader, and research conversations into one workspace. It connects to Claude Code and extends its capabilities through Skills, while the application manages documents, sessions, tasks, evidence, and account isolation. You can run compatible Skills on the server, or process papers with a local agent and send results back through Firework MCP without repeating model inference on the server.
 
 ## Start here
 
@@ -21,13 +21,16 @@ The current baseline uses business migrations through **0026**, identity schema 
 - **Tabbed PDF reader:** Open multiple papers in a resizable three-panel layout, with reading aids on the left, the original PDF in the center, and an agent conversation on the right. Restore reading positions, layout preferences, and drafts.
 - **Paper discovery and import:** Search for papers and add them through PDF uploads, arXiv identifiers, DOIs, and supported public URLs. Organize papers by category and reading status, with visual cards, author affiliations, and abstracts. Rename or move personal category trees, or remove and restore them without deleting their papers.
 - **PDF files and versions:** Keep immutable main-text revisions and supplementary PDFs, choose a default reading version, and inspect annotations per version. Download original PDFs, PDFs with standard annotations, or annotation Markdown without invoking the research agent.
-- **Persistent research conversations:** Keep tasks linked to agent sessions so you can revisit and continue previous work. Track execution progress, cancel runs, and inspect reported usage.
-- **On-demand reading guides:** Explicitly trigger a Skill to produce structured explanations and annotations linked to paper evidence. Opening or switching papers does not automatically run a reading guide.
+- **Persistent research conversations:** Revisit native sessions, receive streaming responses, cancel runs, inspect durable events and material evidence, and preview a branch before carrying history to another API connection.
+- **Source-linked reading aids:** Explicitly trigger a Skill for guides and annotations. Manage highlights and notes together, adopt AI annotations as editable personal copies, and locate translations against their original PDF. Ambiguous or unavailable text falls back to page-level navigation. Opening papers does not automatically run a guide.
 - **Research frontier tracking:** Define topics, keywords, authors, or teams. Use the agent to discover papers and open-source projects, generate deduplicated timeline reports, and approve discoveries before adding them to your library.
-- **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, and enable or disable capabilities. Templates and structured outputs connect Skills to the interface.
+- **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, customize display names, and configure where each Skill appears. Author and publish instruction revisions in the Web UI. Uploaded packages must satisfy supported tool and output contracts; installation does not execute arbitrary scripts.
 - **Richer agent input:** Combine editable templates, selected paper passages, and image attachments. Image interpretation requires a vision-capable agent or model.
 - **Manual Zotero exchange:** Pair a local Zotero 10 client, exchange selected papers, collection paths, tags, and immutable PDF files, and retry transfers without research-model calls. Imported PDFs become readable without waiting for embeddings; full-text indexing is an explicit action. Native annotation sync and automatic Connector ingestion are planned. See the [setup guide](docs/usage.md#9-zotero-手动双向交换).
 - **Personal model connections:** Configure an Anthropic Messages-compatible API, encrypted credentials, model name, declared vision/context capabilities, and a research role in the Web UI. Sessions bind a connection revision; custom runs do not inherit host Claude credentials. Per-account and per-run budgets are configurable. Provider presets, network-only checks, and explicitly confirmed minimal streaming model tests are available. Vision and long-context support remain declared capabilities until separately verified.
+- **Research artifacts and knowledge:** Save versioned reading, review, comparison, and frontier results with files and PDF evidence. Submit knowledge candidates for review, publish or revoke them, and recall approved knowledge through text search.
+- **Local-agent MCP:** Read explicitly shared page context, retrieve authorized paper material, and upload local results, files, annotations, translations, and frontier reports. Scoped tokens, PDF versions, and idempotent receipts protect the synchronization boundary.
+- **Isolated native terminal:** Optionally run Claude Code in a per-session container with controlled files and a model-only relay. Registered Skills and third-party MCP servers are not automatically mounted into this terminal.
 - **Account isolation:** Separate each account's research database, files, private Skills, vector collection, and agent workspace. Public registration is currently closed, and the default release permits only the primary administrator to log in.
 
 Firework is under active development. Versioned research artifacts and reviewed knowledge candidates are available; semantic long-term memory, OCR-based reading guides, and a complete six-stage deep-reading workflow remain future work. See the [implementation status](docs/STATUS.md) and [roadmap](docs/ROADMAP.md).
@@ -35,15 +38,17 @@ Firework is under active development. Versioned research artifacts and reviewed 
 ## How it works
 
 ```text
-Browser · Vue reading workspace
-            |
-FastAPI · authentication, library, sessions, tasks, evidence
-       |                   |                    |
-SQLite + files          Qdrant           Private host Runner
-                                                |
-                                      Existing Claude Code agent
-                                                |
-                                        Registered Skills
+Browser ------------------------------------> FastAPI
+Local agent + Skills -> Firework stdio MCP -> Scoped external API
+                                                 |
+                                              FastAPI
+                                                 |
+                         +-----------------------+-------------------+
+                         |                       |                   |
+                    SQLite + files             Qdrant          Private Runner
+                                                                     |
+                                                        Claude Code + Skills
+                                                        / optional CLI container
 ```
 
 The application handles management and persistence. Research operations run through the existing agent and its Skills. The private Runner connects agent execution to application tasks and preserves native session mappings.
@@ -97,7 +102,7 @@ Before starting services:
 docker compose up -d --build
 ```
 
-Starting Compose alone does not start the host Runner. Both components must be ready for agent tasks to work. The current application requires Runner protocol **7**.
+Starting Compose alone does not start the host Runner. Both components must be ready for agent tasks to work. The current application requires Runner protocol **12**. The optional native terminal also requires the pinned CLI image and explicit Runner configuration described in the deployment guide.
 
 Open your configured HTTPS address and sign in with your administrator account. See the [user guide](docs/usage.md) for importing papers, reading, conversations, and Skills.
 
@@ -156,11 +161,26 @@ Never commit credentials, `.env`, private keys, personal papers, runtime data, o
 
 A project-level license has not yet been added. Do not assume an open-source license from the repository's public visibility; third-party components retain their respective licenses.
 
-## External agent integration
+## Local agents and MCP
 
-Create scoped, expiring API authorization in Settings → External agent access. Download the portable paper-operation Skill to search your library, update metadata and manage PDF annotations from another compatible agent. This gateway does not invoke the server model. Execution profiles now combine versioned Skills, model connections, budgets, roles and narrowed built-in MCP tools. See the [integration design and API](docs/EXTERNAL-AGENT-API.md).
+Open **Settings → External agent access**, download the current paper-operation Skill ZIP, and create a scoped, expiring token. Keep the token in a private local file, then register the bundled Python stdio MCP server with your agent. No third-party Python dependencies are required.
 
+The two execution paths share the same managed research records:
 
-### Research workspace
+1. **Server:** upload or author a compatible Skill, publish it, select its available entry point, and explicitly run the server agent.
+2. **Local:** run your own agent and Skill, upload supporting files, and submit results with a stable job ID. Firework validates and stores the results without starting another server model request.
 
-Firework includes versioned research artifacts, PDF-bound evidence, reviewed knowledge candidates, and a run inspector with durable event replay. An optional isolated Claude terminal uses per-session containers and a model-only relay. See [implementation and operational boundaries](docs/RESEARCH-PLATFORM.md).
+Page sharing is off by default. Enable it for the intended Firework window, then select its context ID in the local agent. Shared selections require a separate action and permission. Reading context does not grant write access or browser control.
+
+See the [MCP setup and result examples](plugins/agent-skill/firework-paper-ops/references/mcp.md), [external API](docs/EXTERNAL-AGENT-API.md), and [current delivery boundaries](docs/READING-CONTEXT-DELIVERY.md).
+
+## Current limitations
+
+- The agent runtime is Claude Code; custom endpoints must support Anthropic Messages. Other agent runtimes and a general local-process Bridge are not implemented.
+- Firework exports a local stdio MCP server, but its Runner cannot yet manage arbitrary third-party MCP servers through the Web UI. Remote MCP transport and resource subscriptions are not provided.
+- Provider presets and a successful minimal text test do not certify vision, 1M context, or the complete Claude tool workflow. Adding a model currently creates an independent connection rather than a shared-credential model catalog.
+- Reader tabs deduplicate by paper. Historical PDF versions have independent links and reading positions, but multiple versions of one paper are not managed as separate internal tabs. OCR and advanced research interpretation belong to user-maintained Skills.
+- Zotero exchange is manual. Research-result notes, native annotation and reading-state synchronization, and automatic Connector ingestion remain planned.
+- Knowledge recall is text-based, not a complete semantic long-term memory system. The host Runner still needs separate installation; full restore rehearsal and multi-replica coordination remain unfinished.
+
+The latest joint verification recorded **363 backend tests passed, 5 skipped**, **269 frontend tests passed**, and a successful production build. Local stdio-to-HTTP result synchronization was tested end to end in an isolated environment. This release did not perform paid production-model or vision/long-context acceptance tests. See [release verification](docs/READING-CONTEXT-DELIVERY.md).

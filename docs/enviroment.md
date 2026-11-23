@@ -128,3 +128,5 @@ node --test plugins/zotero/tests/plugin.test.cjs
 ## 隔离终端运行配置
 
 原生镜像：`firework-native-runner:2.1.322`；CLI二进制固定为`/home/f/.local/share/claude/versions/2.1.322`。Runner需设置`FIREWORK_NATIVE_ENABLED=1`、`FIREWORK_NATIVE_CLI_SHA256`和`RESEARCH_CLAUDE_BINARY`。校验值由部署时对真实二进制计算，不使用浮动符号链接；与实际文件不符则终端关闭。独立状态位于各账号`agent/terminals/{session_id}`，附件位于`research-files`。模型调用仍由用户明确输入触发。详见 [联合部署与边界](RESEARCH-PLATFORM.md)。
+
+发布记录：2026-11-23，应用代码`df4fcc7`已上线。Web/Runner协议11一致，迁移0025已生效。发布前所有账号在途任务为0，已完成备份；回退镜像`firework-before-research-platform:20261123`保留。原生镜像通过Runner专用systemd配置固定实际镜像ID和CLI SHA-256；未修改宿主Claude设置。线上零模型冒烟、新接口及匿名401、外键校验通过；Chrome已核对终端预检和研究知识管理页面。完整后端348通过、5项环境跳过，前端264通过。

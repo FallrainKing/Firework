@@ -1,0 +1,228 @@
+# 阅读交互修复、模型配置与页面上下文 MCP 方案
+
+日期：2026-11-23。状态：设计，尚未实现。代码依据：`df4fcc7`，计划基线：`7be6bfe`。本轮更新方案与实施顺序，不变更线上功能。
+
+## 1. 引用与设计依据
+
+- [CC Switch 官方仓库](https://github.com/farion1231/cc-switch)：借鉴供应商预设、连接卡片、配置管理与快速切换的组织方式；不覆盖部署机器的全局Claude配置。
+- [CC Switch 连通检查说明](https://github.com/farion1231/cc-switch/blob/main/docs/user-manual/en/4-proxy/4.5-model-test.md)：其轻量检查判断网络可达性，不验证Key或模型。Firework必须将网络可达与真实调用成功分开呈现。
+- [MCP transports](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports)：本地适配器优先stdio；远程Streamable HTTP作为后续独立交付。
+- [MCP resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources)：以资源URI暴露上下文，资源订阅为可选能力；未实现不声明支持。
+- 复用 [当前架构](架构.md)、[联合交付](RESEARCH-PLATFORM.md)、[实施主计划](IMPLEMENTATION-PLAN.md)、[现有外部API](EXTERNAL-AGENT-API.md)。M1/M3/M4/M6已交付部分继续复用；本方案不恢复成本账本或平台研究算法专项。
+
+以上是借鉴来源，不表示CC Switch的全部协议、供应商或切换语义已经在Firework实现。以下接口、表名和路由均为拟议契约，不属于当前注册接口。
+
+## 2. 实际代码现状与问题
+
+| 项目 | 代码证据 | 当前问题及修复方向 |
+| --- | --- | --- |
+| 翻译定位 | `ReaderSidebar.vue` 的译文卡片调用`locate(t)`；`locate()`将quote/rects置空；`useReaderOrchestrator.jump()`只调用`engine.jump(page,true)` | 已有页码跳转，但没有段落级定位；统一原文锚点和PDF引擎定位，而非新增一个重复按钮 |
+| 用户菜单 | `TopNav.vue`仅在按钮/菜单项点击时改`userMenuOpen` | 缺少外部点击、焦点离开、Escape和导航关闭逻辑 |
+| 批注与导读 | `ReaderSidebar.vue`将notes/highlights分开，GuidePanel展示当前AI导读；高亮本身已允许content字段 | 统一批注工作流，保留原记录ID；将概要与阅读路线从批注入口中分离 |
+| 模型配置 | `RunnerConnectionsView.vue`为通用表单；`connections_router.py /preflight`返回`not_tested` | 没有供应商向导或真实连通测试，保存成功不能显示为调用成功 |
+| 快捷切换 | `RunConnectionControl.vue`已有底部选择器，但有运行历史时只提示新建会话；ChatPanel在连接/方案间维护不同选择 | 需要统一生效配置解析与明确切换动作，避免“界面选了，执行仍走旧连接”的误解 |
+| 页面身份 | `router.ts`保留`/reader/:paperId`，但多数功能由workbench.view切换；WorkbenchView主要在启动时解析深链 | 地址不能持续准确表达当前论文、前沿主题或报告 |
+| 工作区持久化 | `stores/workbench.ts`仅将workspace ID放localStorage，tabs/layout/activePaperId经workbench API入库；reader状态、草稿也有服务端保存 | 并非所有状态都只在本地；缺少可授权读取、有时效、能区分窗口的“活动上下文”，而非缺少所有持久化 |
+| 外部智能体接入 | 外部API已有账号令牌、论文白名单、产物/知识接口；目前没有活动页面上下文工具 | MCP应是现有领域API的适配层，不能直接读取数据库、浏览器存储或其他账号页面 |
+
+涉及路径主要位于`frontend/src/components/reader/`、`frontend/src/reader/`、`frontend/src/stores/`、`app/reader/`、`app/workbench/`、`app/runner_config/`、`app/external/`。
+
+## 3. 阅读交互修复
+
+### 3.1 翻译指向具体原文
+
+统一`SourceAnchor/v1`：`paper_id`、`document_version_id`、`file_hash`、`page`、`quote`、`rects`；可选text_block_id和字符起止。字符范围依附文本提取修订，不作为跨版本永久坐标。
+
+- 新翻译保存选区原文、原PDF版本和几何位置，译文关联这个锚点，不再只留页码和quote_hash。
+- 引擎新增统一`locateAnchor()`：打开指定论文和版本，等待该页文本层/画布就绪，滚动到选区并短暂强调；不把定位闪烁保存为个人高亮。
+- 旧翻译只有页码/quote时，在原文件指定页做确定性文字匹配：唯一匹配才定位段落；多处匹配提示选择，找不到则仅跳页并说明“未找到精确位置”。不能自动伪造坐标。
+- 引用旧PDF时打开原版本阅读标签或预览，不将旧坐标套到当前PDF。标签身份调整为`paper_id + document_version_id`；同一版本去重，两个版本可并存，保留各自会话和位置。
+- 点击“查看原文”及译文来源均可定位；可由显式锚点标记反向选中对应译文。正文普通点击不强制切换辅助栏。
+- 翻译删除/撤销、失败重试继续复用现有接口；定位失败不影响删除。旧行增补字段采用可空迁移，不调用模型补历史坐标。
+
+验收：跨行选区、多次出现同一句、页面缩放、扫描PDF无文字、旧版本、慢渲染、删除后撤销均表现明确；刷新后同一锚点可恢复。
+
+### 3.2 用户菜单关闭规则
+
+以触发按钮和弹层共同作为容器。打开时注册外部pointerdown和Escape；focusout使用relatedTarget判断是否仍在容器内；若焦点去向为空，延后一帧检查document.activeElement。窗口失焦也关闭，避免返回后悬留。
+
+- 点击弹层外、Tab离开容器、Escape、路由变化、登出后均关闭。
+- 点击菜单内部不会提前关闭导致操作丢失；Escape后焦点回触发按钮，外部点击不抢焦点。
+- 监听器在关闭或组件卸载时移除；触摸和鼠标统一处理。
+- 复用为公共Popover行为，逐步用于模型选择、论文卡片“更多”等，不只给单个菜单临时加遮罩。
+
+### 3.3 批注统一，导读承载阅读成果
+
+左侧主Tab调整为：**目录｜批注｜导读｜翻译｜信息**。
+
+“批注”将高亮、文字备注、手绘和AI批注合并为同一列表，按页/位置排序，提供类型、颜色、来源、重要程度筛选。高亮后可立即输入备注；再次点击高亮可编辑其备注，不额外生成一条无关联笔记。个人补充与AI原始解释分开存储或以父子关系关联，不能覆盖原AI证据。
+
+- 每项包含原文、备注/解释、来源、定位、加入对话、删除/撤销；AI项保留采纳/隐藏与生成Run/Skill版本。
+- “AI批注”入口放在批注栏顶部和选区浮层，可选择在该功能可见的Skill，明确范围后触发。继续遵循用户决定：打开论文不自动执行，不内置另一套研究算法。
+- “导读”只展示Skill生成的概要、论文重点、阅读路线及结构化解读，关联原论文版本、产物修订和来源Run。可切换已有成果，不将所有回答强制当导读。
+- 现有`paper-guide/v1`保持兼容：summary/reading_route进入导读；items锚点批注投影到统一批注列表；两者共享来源，不复制成两套独立批注。
+- 本地Skill结果通过现有研究产物接口提交，增加展示类型/关联字段后由前端适配；未结构化的Markdown可展示为导读正文，不能凭空生成定位批注。
+- 旧notes/highlights状态映射到批注Tab及对应筛选；旧guide仍映射导读。现有批注ID、版本、导出和Zotero映射保留。
+
+验收：高亮+备注是一个可管理对象；AI批注在统一列表出现一次；导读内容与批注互相定位；生成失败保留已保存结果，重复投影不重复新增。
+
+## 4. 模型配置与底部快速切换
+
+### 4.1 供应商与协议分离
+
+借鉴CC Switch的“预设 → 连接实例 → 模型 → 启用/测试/切换”流程。供应商品牌不代表协议兼容，模型能力声明不代表测试通过。
+
+配置页分为：供应商卡片、我的连接、连接编辑向导、测试结果。简单模式填名称、Key、模型；高级模式展示完整Base URL、鉴权、协议、模型映射、超时、角色与能力声明。模型目录优先选择，可手填服务商准确模型ID。保存后仍保留测试入口。
+
+首批预设候选：Anthropic官方、DeepSeek、Kimi/Moonshot、MiniMax、阿里云百炼，以及自定义Anthropic兼容连接。上线前逐家核对官方文档，记录来源、核验时间、地域/套餐与支持协议；没有确认的地址、模型名称或兼容能力不预填。无Key、不包含第三方推广地址，允许多个同供应商连接。
+
+当前Claude Runner仅直连Anthropic Messages。候选预设中只有已核实支持该协议的接入方式可启用；原生OpenAI/Responses/Gemini协议放入后续Provider适配器，或要求用户明确配置兼容网关。不能仅填入OpenAI地址就宣称Claude可调用；不引入未经验证的透明协议转换。
+
+建议实体：
+
+| 实体 | 职责 |
+| --- | --- |
+| provider_presets | 无密钥的版本化内置定义、协议、文档来源与地区选择 |
+| runner_connections | 复用现有加密凭据与连接身份；补preset_id/protocol |
+| connection_models | 单连接多个模型、准确ID、声明能力、映射及归档 |
+| connection_tests | 固定连接/模型修订下的测试类型、时间、耗时、状态、脱敏原因 |
+| effective_execution | 会话/Run解析出的连接、模型、角色、方案、Skill/MCP和额度快照 |
+
+凭据只存账号加密库，不写URL、浏览器持久缓存、日志、MCP结果或宿主Claude配置。预设升级不自动改用户已保存连接。
+
+### 4.2 分级测试，不能混用“通过”
+
+1. **配置检查**：校验字段、协议、路径拼接、Key存在性和本地能力约束，不发模型请求。
+2. **网络连通性**：从实际Runner执行环境检查DNS/TLS/端点，限时、限响应体、不跟随跳转；401/404表示可达但非鉴权成功，5xx单独展示服务异常。容器模式通过同一模型中转验证，不能只从Web容器测通。
+3. **最小模型测试**：用户显式点击后，显示发送内容与所选模型，用极短固定消息及有限输出验证Key、模型、协议、首包/流式结束和取消；可能产生费用。结果展示请求ID和脱敏错误，不自动换模型、换服务商或重试。
+4. **能力测试**：图片与长上下文单独触发。一次“回复成功”不认证视觉或1M上下文。大上下文测试不纳入默认最小测试。
+
+测试必须绑定connection revision、model revision、adapter revision和凭据修订；任一改变后旧结果显示过期。失败分类包括网络/TLS、401/403、模型不存在、不兼容响应、超时、限流、流式中断；不记录完整请求头或Key。
+
+拟议接口：`GET /api/runner/provider-presets`；连接下的`/models`、`POST /api/runner/connections/{id}/tests`与测试状态/取消接口。测试是专用受控任务，不借通用执行接口获得文件或MCP权限。
+
+### 4.3 智能体底部始终可见的连接条
+
+在输入框底部一行显示：`供应商 / 连接 · 模型 ▾  |  方案 ▾  |  状态`。原有折叠区保留高级参数，常用切换不藏在解释文字中。
+
+- 使用后端统一解析的生效配置，不把“账号默认”“下次选择”和“当前会话绑定”混显示；发起前给出精简预览，Run保存最终快照。
+- 新会话可直接选择API和模型；已有会话点击切换时，提供“新建空会话”或“预览携带历史的分支”。复用M3哈希确认，不静默向另一供应商传送原会话全文。
+- 同连接换模型也视为明确新执行身份；本批优先统一走分支，后续适配器真正支持原会话切模时再单独开放。
+- 执行中锁定切换入口，可查看目标配置但不改变在途Run；额度或Skill切换不应意外清空连接选择。
+- 方案若固定连接，显示“由方案指定”，提供编辑方案/创建副本；取消方案时明确恢复哪个选择，消除前端多个watch互相覆盖。
+- 原生终端同样固定绑定，不能仅改页面下拉框就切换已有容器；先停止后创建明确分支，不触碰宿主配置。
+
+验收：为每次实际请求记录并核对供应商/模型修订；改默认不影响旧Run；切换不会假成功；两个账号互不影响；最小测试与真实Run经过同一鉴权和路由逻辑。
+
+## 5. 页面路由、服务器活动上下文与本地 MCP
+
+### 5.1 是否应该移动浏览器缓存
+
+应优化页面身份和上下文服务，不必把所有缓存搬到服务器。Hash路由可继续使用；Hash片段不会随普通HTTP请求自动发到服务器，所以必须由应用显式上报。把Hash改为History也不能替代活动上下文协议。
+
+将状态分为三层：
+
+| 层级 | 保存内容 | 使用方式 |
+| --- | --- | --- |
+| 明确资源路由 | 论文/文件版本、会话、前沿主题/报告、比较任务、产物ID | 可复制、刷新和返回；无Key、草稿、选中文字或全文 |
+| 服务端持久工作区 | 已有标签、布局、阅读位置、草稿与业务记录 | 保留现有账号隔离；支持登录后恢复；不等于正在查看 |
+| 临时活动上下文 | 当前窗口/Tab、可见状态、激活资源、页码、时间与版本 | 短时效，给已授权MCP读取；不等于持久偏好 |
+
+建议资源路由：
+
+- `/#/home`
+- `/#/reader/27?version={version_id}&session=41&page=4&panel=annotations&annotation={annotation_id}`
+- `/#/frontier/topics/6`，`/#/frontier/topics/6/reports/{report_id}`
+- `/#/compare/{comparison_session_id}`
+- `/#/library?collection={collection_id}`
+- `/#/research/artifacts/{artifact_id}?revision=2`
+
+Vue Router成为资源选择的入口，store承载已载入数据和局部交互；双向同步有去重和初始化锁，不用两个watch反复覆盖状态。显式URL优先，服务器持久工作区次之，本机缓存最后；权限失败不回退打开其他论文。
+
+页码移动可节流replace，论文/报告切换使用push；浏览器前进后退和应用标签切换一致。兼容`/#/`、`/#/reader/:paperId`、旧paper_id/session_id查询与store.view，解析后规范化；保留旧链接有效。先完成路由再扩展MCP控制。
+
+### 5.2 活动上下文协议
+
+拟议`WorkspaceContext/v1`示例（字段展示设计，不是真实用户状态）：
+
+```json
+{
+  "context_id": "opaque-context-id",
+  "workspace_id": "opaque-workspace-id",
+  "device_id": "paired-device-id",
+  "window_id": "opaque-window-id",
+  "browser_tab_id": "opaque-app-tab-id",
+  "revision": 18,
+  "view": "reader",
+  "resource": {"paper_id": 27, "document_version_id": "version-id", "file_hash": "sha256", "session_id": 41},
+  "reading": {"page": 4, "panel": "annotations", "annotation_id": null},
+  "visibility": "visible",
+  "has_focus": true,
+  "observed_at": "server-validated timestamp",
+  "expires_at": "server-issued timestamp"
+}
+```
+
+- 登录后为每个应用浏览器Tab注册独立window/tab实例；复制标签页必须重新取实例ID，不能复制sessionStorage后争写同一实例。workspaceId可继续复用。
+- 路由/活动论文/报告/页码/焦点变化时节流上报；可见时默认15秒心跳、45秒过期，具体时限可配置。后台、断网、休眠、关闭及登出明确标记；过期返回stale/offline，不把上次论文说成“正在阅读”。
+- 服务端设置received_at和expires_at、单调修订/序号，拒绝旧包覆盖新状态；校验当前账号拥有每个论文、会话、版本、主题和报告，以及它们相互归属。
+- 多窗口/多设备返回列表，由用户在Web选择共享目标，或由已授权MCP指定明确context_id；不擅自猜“最新更新时间就是用户当前窗口”。visibility/focus只是页面上报信号，不声称监测整个操作系统。
+- 默认共享资源ID、页码和状态。选中文字、批注正文和截图不默认上报；显式“把当前选区提供给智能体”才生成有期限的分享快照。未发送输入、图片附件、Key和设置表单永不混入presence。
+- 上下文不是资源授权。MCP即使拿到ID，读取论文、批注、报告仍走各自scope和白名单。论文白名单令牌只见获准论文上下文；无权看到前沿报告，且不泄漏隐藏窗口数量、标题。
+- 只存当前快照及必要审计，不积累完整浏览轨迹。关闭共享即时撤销读取，断线的有效性最多保留TTL；登出撤销相关共享与连接。
+
+建议表：`workspace_contexts`（账号库，窗口快照和server时间）、`context_grants`（绑定外部令牌/本机设备与目标窗口、过期和字段范围）。资源状态仍以业务表为准，不把全部页面数据复制进这两张表。
+
+拟议浏览器接口：注册/更新/心跳/关闭`/api/workbench/contexts`与上下文共享管理；拟议外部接口：`GET /api/external/v1/contexts`、`GET /api/external/v1/contexts/{id}`和显式分享快照。新增`context:read`、选区独立scope，并扩展令牌scope数量限制。浏览器上报走Cookie+CSRF；外部只读凭据不能伪造页面状态。
+
+### 5.3 本地 Firework MCP
+
+```mermaid
+flowchart LR
+ Browser[Firework Web] -->|资源ID / 窗口状态 / 心跳| Context[服务端活动上下文]
+ Agent[本地智能体 + 用户Skill] -->|stdio MCP| Adapter[本地Firework MCP适配器]
+ Adapter -->|账号范围令牌 HTTPS| API[现有外部API + 上下文API]
+ API --> Context
+ API --> Domain[论文 / 批注 / 产物 / 前沿报告]
+```
+
+这里是“Firework向外提供MCP”，与“Runner连接第三方MCP服务器”的M2功能不同，两者共享账号鉴权和领域服务，但不共享权限含义。
+
+首批工具：
+
+| 工具 | 输入与输出 | 边界 |
+| --- | --- | --- |
+| `firework_list_contexts` | 列出授权、未过期且字段过滤后的上下文 | 不默认扫描本机Chrome或其他站点 |
+| `firework_get_context` | 指定context_id，返回视图、资源、页码、revision和时效 | 无目标或多个目标时返回明确选择要求 |
+| `firework_read_current_resource` | context_id + expected_revision，读取当前资源的授权摘要/原文页 | 若页面已变返回context_changed；用户可显式选择继续读固定快照 |
+| `firework_read_shared_selection` | 显式分享ID | 未分享或过期则不可读，不从草稿推断 |
+| 已有论文/批注/产物工具适配 | 映射现有外部领域接口 | 写入仍要业务scope、幂等键、版本/CAS和证据校验 |
+
+资源URI可采用`firework://contexts/{id}`及`firework://papers/{id}/versions/{version}/pages/{page}`。资源与工具都遵循同一权限，不能因换成resources/read绕过过滤。首批stdio按需读取，订阅为后续可选能力；不依赖每个智能体都支持自动注入资源。
+
+本机配置只保留Firework站点和私有令牌文件路径；stdout仅MCP协议，诊断走stderr且脱敏。不让智能体自行选择任意外部URL，也不让MCP读取用户所有浏览器存储。使用Skill的智能体必须具备MCP客户端或调用便携REST客户端的能力；Skill文档本身不会自动获得浏览器上下文。
+
+首批只读上下文，不提供任意DOM/JavaScript/SQL或直接远程操控浏览器。后续若增加“跳到论文/批注”工具，必须另建`context:navigate`授权、目标窗口指令队列和用户确认/回执；不能将读上下文授权扩大为页面控制授权。
+
+## 6. 实施顺序与验收
+
+| 阶段 | 功能与架构归属 | 交付与退出条件 |
+| --- | --- | --- |
+| R1：定位与菜单修复 | F6阅读锚点；通用Popover | 翻译段落定位；旧文件正确打开；外部点击/焦点/Escape关闭菜单；保留失败翻译删除回归 |
+| R2：批注与导读整合 | F6 / Skill前端适配S | 高亮备注一体；AI批注归批注；概要与阅读路线归导读；旧ID/导出/状态迁移无丢失 |
+| R3：供应商与快速切换 | M2 / F4；复用M3分支 | 经过核实的供应商预设、协议识别、统一生效配置、三层测试与底部切换；真实最小验证按需一次，不重复计费 |
+| R4：资源路由规范化 | F5/F6/F10页面上下文基础 | 论文版本、比较、前沿主题/报告地址完整；刷新/返回/复制链接一致；旧链接可用；明确URL优先于缓存 |
+| R5：活动上下文与只读MCP | M2 / F2接入、F10 / F9鉴权 | 一个本地智能体读取一个明确授权窗口；权限、过期、断线、多窗口和页面变化测试通过后接入更多Skill |
+
+顺序：R1 → R2 → R3 → R4 → R5。R3和R4内部可按依赖独立推进，但R5以前必须稳定资源身份；不重做已交付M1/M3/M4/M6，M5 Zotero计划保留且不混入本轮修复。
+
+联合验收场景：
+
+1. 翻译选区→查看原文→刷新/缩放→旧PDF版本，均能定位或诚实降级。
+2. 高亮写备注→AI批注→导读概要→删除/撤销→带批注导出，无重复或覆盖。
+3. 保存预设连接→网络可达但Key错误→最小调用成功→底部切换分支→核对真实Run绑定，界面状态与实际请求一致。
+4. 阅读论文A第4页→本地MCP读取A/版本/页码→切到前沿报告→旧revision读取被拒绝→获取新上下文后读取该报告。
+5. 两账号、两设备、多窗口、后台Tab、离线和撤销共享：不串号、不猜目标、不把过期页面当当前页面，不泄漏草稿或密钥。
+6. 所有迁移可回滚到成套备份；旧书目、批注、翻译、标签、会话和知识不删除。方案只新增必要字段和适配层，不因导航重构重建业务数据。
+
+发布流程复用现有隔离测试、前端交互回归、真实最小验证、活动任务保护、备份/旧镜像和统一线上核对。测试结果记录为模拟、真实、未验证三类，不把预设安装或配置保存当供应商调用成功。

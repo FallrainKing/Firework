@@ -128,7 +128,7 @@ const currentSession = ref<Session | null>(props.session)
 
 const STATES: Record<string, string> = { queued: '排队', running: '执行中', succeeded: '已完成', failed: '失败', cancelled: '已取消' }
 const canSend = computed(() => !loading.value && !loadError.value && !busy.value && !uploading.value && !!currentSession.value && !currentSession.value.archived)
-const agentState = computed(() => uploading.value ? '上传图片中…' : busy.value ? '智能体正在执行…' : currentSession.value?.native_ready ? '继续当前原生会话' : '发送后才调用智能体')
+const agentState = computed(() => uploading.value ? '上传图片中…' : '智能体正在执行…')
 const activeRun = computed(() => [...runs.value].reverse().find(run => run.status === 'queued' || run.status === 'running') ?? null)
 const latestRun = computed(() => runs.value.at(-1) ?? null)
 const runStatus = computed(() => activeRun.value ? STATES[activeRun.value.status] : latestRun.value ? STATES[latestRun.value.status] : '暂无运行')
@@ -710,7 +710,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <button class="detail-toggle" type="button" :aria-expanded="detailsOpen" @click="detailsOpen = !detailsOpen">详情</button>
       </div>
     </header>
-    <div class="agent-state muted">
+    <div v-if="activeRun || busy || uploading" class="agent-state muted">
       <span>{{ agentState }}</span>
       <template v-if="activeRun">
         <span class="run-meta">{{ STATES[activeRun.status] }} · 已用时 {{ elapsedText(activeRun) }}</span>
@@ -804,9 +804,14 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
     </div>
-    <div class="composer-toggle-bar">
-      <button class="composer-toggle" type="button" :aria-expanded="!composerMinimized" :aria-label="composerMinimized ? '展开智能体输入区' : '最小化智能体输入区'" @click="toggleComposer">{{ composerMinimized ? '展开输入区' : '收起输入区' }} {{ composerMinimized ? '▴' : '▾' }}</button>
-      <span class="draft-indicator muted" role="status">{{ draftSaveError ? '草稿保存失败' : draftSaving ? '保存中…' : draftSaved ? '草稿已保存' : composerMinimized && question ? '有未发送草稿' : '' }}</span>
+    <div class="composer-tools composer-toolbar">
+      <template v-if="!composerMinimized">
+        <button type="button" class="menu-toggle" :aria-expanded="slashMenuOpen" @click="slashMenuOpen = !slashMenuOpen; slashQuery = ''; mentionMenuOpen = false">/ 任务与模板</button>
+        <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
+        <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
+      </template>
+      <span class="draft-indicator muted" role="status">{{ draftSaveError ? '保存失败' : draftSaving ? '保存中…' : composerMinimized && question ? '有草稿' : '' }}</span>
+      <button class="composer-toggle" type="button" :aria-expanded="!composerMinimized" :aria-label="composerMinimized ? '展开智能体输入区' : '最小化智能体输入区'" :title="composerMinimized ? '展开输入区' : '收起输入区'" @click="toggleComposer">{{ composerMinimized ? '展开输入区 ▴' : '▾' }}</button>
     </div>
     <div v-show="!composerMinimized" class="composer-extras" aria-label="阅读辅助与本轮设置">
       <div class="task-template-panel" :class="{ open: slashMenuOpen }">
@@ -847,11 +852,6 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <StateFeedback v-if="!visiblePapers.length" empty empty-text="当前会话没有匹配论文。" />
       </div>
       <div class="composer-fields">
-      <div class="composer-tools">
-        <button type="button" class="menu-toggle" :aria-expanded="slashMenuOpen" @click="slashMenuOpen = !slashMenuOpen; slashQuery = ''; mentionMenuOpen = false">/ 任务与模板</button>
-        <button type="button" class="menu-toggle" @click="mentionMenuOpen = !mentionMenuOpen; slashMenuOpen = false">@ 论文</button>
-        <button type="button" class="image-picker" :disabled="!currentSession || currentSession.archived" @click="fileInput?.click()">＋ 图片</button><input ref="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg" multiple aria-label="上传图片" :disabled="!currentSession || currentSession.archived" @change="onFiles" />
-      </div>
       <textarea ref="questionInput" v-model="question" aria-label="向智能体提问" aria-describedby="composer-help" rows="3" maxlength="3000" placeholder="输入 / 选任务与模板，@ 引用论文，也可拖入或粘贴图片…" :disabled="!currentSession || currentSession.archived" @input="updateMenus" @keydown="onComposerKeydown" @compositionstart="composing = true" @compositionend="composing = false" @paste="onPaste"></textarea>
       <StateFeedback
         v-if="uploadError"
@@ -918,9 +918,10 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .chat-heading,.agent-state { flex-shrink:0; }
 .conversation-view { position:relative; display:flex; flex-direction:column; flex:1 1 0; min-height:80px; min-width:0; overflow:hidden; }
 .composer-extras { flex:0 1 auto; min-height:0; max-height:25%; overflow:auto; padding:6px 12px; border-top:1px solid var(--border); scrollbar-gutter:stable; }
-.composer-toggle-bar { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-shrink:0; padding:4px 12px; border-top:1px solid var(--border); }
-.composer-toggle { font-size:12px; padding:4px 8px; }
-.draft-indicator { font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.composer-tools.composer-toolbar { flex-wrap:nowrap; flex-shrink:0; padding:6px 12px; border-top:1px solid var(--border); overflow-x:auto; }
+.composer-toolbar button { flex-shrink:0; white-space:nowrap; }
+.composer-toggle { margin-left:auto; font-size:12px; padding:4px 8px; }
+.draft-indicator { margin-left:auto; min-width:0; font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .run-settings { flex:0 1 auto; min-height:0; max-height:25%; overflow:auto; font-size:12px; margin:0; padding:4px 12px; border-top:1px solid var(--border); }
 .run-settings summary { cursor:pointer; color:var(--text-muted); padding:4px 0; }
 .reader-chat,.composer-extras { overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--border-strong) var(--surface); }
@@ -950,7 +951,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .image-attachment { position: relative; }
 .image-attachment img { width: 64px; height: 64px; object-fit: cover; border-radius: var(--radius); }
 .image-attachment button { position: absolute; top: -6px; right: -6px; padding: 0 6px; border-radius: 50%; }
-.reader-composer { flex:0 1 auto; min-height:190px; max-height:45%; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); position:relative; }
+.reader-composer { flex:0 1 auto; min-height:154px; max-height:45%; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border-top: 1px solid var(--border); position:relative; }
 .reader-composer.dragging::after { content:'松开以上传图片'; position:absolute; inset:4px; display:grid; place-items:center; border:1px dashed var(--accent); border-radius:var(--radius); background:var(--bg); color:var(--accent); font-size:12px; pointer-events:none; }
 .composer-fields { min-height:0; overflow:auto; display:flex; flex-direction:column; gap:var(--space-2); }
 .composer-help { font-size:12px; line-height:1.6; }
@@ -994,7 +995,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 @container (max-height:520px) {
   .chat-heading { padding:6px 10px; }
   .agent-state { padding:5px 10px; }
-  .reader-composer { min-height:148px; padding:8px; gap:4px; }
+  .reader-composer { min-height:116px; padding:8px; gap:4px; }
   .reader-composer textarea { min-height:60px; }
   .composer-fields { gap:4px; }
   .composer-help { display:none; }

@@ -7,7 +7,7 @@ import { readerApi } from '@/api/reader'
 import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
-import type { Attachment, Run, SelectionContext, Session, SessionUsage, Template } from '@/api/types'
+import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
 import RunConnectionControl from './RunConnectionControl.vue'
 import type {ConnectionRef} from '@/api/runnerConnections'
 import RunBudgetControl from './RunBudgetControl.vue'
@@ -37,7 +37,7 @@ const contexts = ref<SelectionContext[]>([])
 const attachments = ref<Attachment[]>([])
 const templates = ref<Template[]>([])
 const associatedPapers = ref<Array<{ id: number; title: string }>>([])
-const sessionUsage = ref<SessionUsage | null>(null)
+const composerMinimized = ref(false)
 const detailsOpen = ref(false)
 const resultsOnly = ref(false)
 const busy = ref(false)
@@ -84,7 +84,12 @@ watch(slashMenuOpen, open => {
   })
 })
 
-function focusInput() { void nextTick(() => questionInput.value?.focus()) }
+function focusInput() { composerMinimized.value = false; void nextTick(() => questionInput.value?.focus()) }
+function toggleComposer() {
+  composerMinimized.value = !composerMinimized.value
+  closeMenus()
+  if (!composerMinimized.value) focusInput()
+}
 
 function onComposerKeydown(event: KeyboardEvent) {
   // Enter confirms a Chinese/Japanese IME candidate without sending a message.
@@ -188,27 +193,6 @@ function jumpToBottom() {
   atBottom.value = true
   newContent.value = false
 }
-function numberOrMissing(value: number | null | undefined): string {
-  return value === null || value === undefined ? '未提供' : String(value)
-}
-
-function usageText(usage: Record<string, number> | null | undefined): string {
-  const input = usage && 'input_tokens' in usage ? usage.input_tokens : null
-  const output = usage && 'output_tokens' in usage ? usage.output_tokens : null
-  return `输入 ${numberOrMissing(input)} / 输出 ${numberOrMissing(output)}`
-}
-
-function sessionUsageText(usage: SessionUsage | null): string {
-  if (!usage || !usage.runs_with_usage) return '未提供'
-  const input = usage.runs_with_input_tokens ? usage.input_tokens : null
-  const output = usage.runs_with_output_tokens ? usage.output_tokens : null
-  return `输入 ${numberOrMissing(input)} / 输出 ${numberOrMissing(output)}`
-}
-
-function costText(cost: number | null | undefined): string {
-  return cost === null || cost === undefined ? '未提供' : `$${cost.toFixed(4)}（CLI 估算，非实际账单）`
-}
-
 function resolvePaperTitle(id: number): string {
   return associatedPapers.value.find(p => p.id === id)?.title ?? (id === props.paperId ? (props.paperTitle || `论文 ${id}`) : `论文 ${id}`)
 }
@@ -245,7 +229,6 @@ async function load(session: Session) {
     contexts.value = draft.contexts?.length ? draft.contexts : draft.context ? [draft.context] : []
     attachments.value = draft.attachments ?? []
     associatedPapers.value = detail.papers.map(p => ({ id: p.id, title: p.title }))
-    sessionUsage.value = detail.usage ?? null
     runs.value = data.runs
     hasMoreRuns.value = data.has_more
     nextBefore.value = data.next_before
@@ -579,7 +562,6 @@ async function watchRun(id: string, sid = currentSession.value?.id) {
           const detail = await sessionsApi.get(sid!)
           if (currentSession.value?.id === sid) {
             currentSession.value = detail.session
-            sessionUsage.value = detail.usage
           }
           scroll()
         }
@@ -596,6 +578,7 @@ async function watchRun(id: string, sid = currentSession.value?.id) {
 }
 
 function reedit(run: Run) {
+  focusInput()
   question.value = run.prompt
   attachments.value = (run.attachment_ids || []).map(id => ({ id, url: '/api/workbench/images/' + id, filename: '本轮图片' } as Attachment))
   contexts.value = run.contexts ?? []
@@ -726,11 +709,6 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <button class="export-chat" type="button" :disabled="loading || exporting" title="导出 Markdown 快照；不会写入长期记忆" @click="exportMarkdown">{{ exporting ? '导出中…' : '导出 MD' }}</button>
         <button class="detail-toggle" type="button" :aria-expanded="detailsOpen" @click="detailsOpen = !detailsOpen">详情</button>
       </div>
-      <div class="usage-summary" aria-label="会话用量">
-        <span>本轮 tokens：{{ usageText(latestRun?.usage) }}</span>
-        <span>会话累计 tokens：{{ sessionUsageText(sessionUsage) }}</span>
-        <span>费用估算：{{ costText(sessionUsage?.cli_estimated_cost_usd ?? latestRun?.cli_estimated_cost_usd) }}</span>
-      </div>
     </header>
     <div class="agent-state muted">
       <span>{{ agentState }}</span>
@@ -759,8 +737,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       <div v-for="run in [...runs].reverse()" :key="'record-' + run.id" class="run-record">
         <strong>{{ run.id }}</strong>
         <span>{{ STATES[run.status] }} · {{ run.created_at || '未提供' }}</span>
-        <span>{{ run.model || '未提供' }} · {{ usageText(run.usage) }}</span>
-        <span>{{ costText(run.cli_estimated_cost_usd) }}</span>
+        <span>{{ run.model || '未提供' }}</span>
       </div>
       <h4>附件详情</h4>
       <StateFeedback v-if="!attachments.length && !runs.some(run => run.attachment_ids.length)" empty empty-text="未提供。" />
@@ -815,21 +792,23 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           <dl>
             <div v-if="run.diagnostics"><dt>结束原因</dt><dd>{{ run.diagnostics.finish_reason }} · {{ run.diagnostics.subtype || '无原始子类型' }}</dd></div>
             <div v-if="run.diagnostics?.profile_snapshot"><dt>执行方案 / 版本</dt><dd>{{ run.diagnostics.profile_snapshot.name }} · v{{ run.diagnostics.profile_snapshot.revision }} · MCP: {{ run.diagnostics.effective_tools?.join(', ') || '无工具' }}</dd></div>
-            <div v-if="run.diagnostics"><dt>任务额度快照</dt><dd>{{ run.diagnostics.budget_snapshot?.name || 'Skill 原有额度' }} · {{ JSON.stringify(run.diagnostics.effective_budget) }} <a href="/#/settings/runner/budgets">管理</a></dd></div>
+            <div v-if="run.diagnostics"><dt>任务额度快照</dt><dd>{{ run.diagnostics.budget_snapshot?.name || 'Skill 原有额度' }} <a href="/#/settings/runner/budgets">管理</a></dd></div>
             <div><dt>运行编号</dt><dd>{{ run.id }}</dd></div>
             <div><dt>技能 / 版本</dt><dd>{{ run.skill }} / {{ run.skill_version || '未提供' }}</dd></div>
             <div v-if="run.diagnostics?.connection_snapshot"><dt>连接 / 版本</dt><dd>{{ run.diagnostics.connection_snapshot.name || '管理员原有连接' }} · {{ run.diagnostics.connection_snapshot.revision || '原配置' }}</dd></div>
             <div><dt>模型</dt><dd>{{ run.model || '未提供' }}</dd></div>
             <div><dt>开始 / 结束</dt><dd>{{ run.created_at || '未提供' }} → {{ run.finished_at || '未提供' }}</dd></div>
-            <div><dt>费用估算</dt><dd>{{ run.cli_estimated_cost_usd === null ? '未提供' : `$${run.cli_estimated_cost_usd.toFixed(4)}（CLI 估算，非实际账单）` }}</dd></div>
           </dl>
         </details>
-        <p v-if="!resultsOnly && run.usage && 'input_tokens' in run.usage" class="usage muted">本轮输入 {{ run.usage.input_tokens }} / 输出 {{ run.usage.output_tokens }} tokens{{ (run.metadata as any)?.session_mode === 'native_resume' ? ' · 原生续聊' : '' }}</p>
       </article>
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
     </div>
-    <div class="composer-extras" aria-label="阅读辅助与本轮设置">
+    <div class="composer-toggle-bar">
+      <button class="composer-toggle" type="button" :aria-expanded="!composerMinimized" :aria-label="composerMinimized ? '展开智能体输入区' : '最小化智能体输入区'" @click="toggleComposer">{{ composerMinimized ? '展开输入区' : '收起输入区' }} {{ composerMinimized ? '▴' : '▾' }}</button>
+      <span class="draft-indicator muted" role="status">{{ draftSaveError ? '草稿保存失败' : draftSaving ? '保存中…' : draftSaved ? '草稿已保存' : composerMinimized && question ? '有未发送草稿' : '' }}</span>
+    </div>
+    <div v-show="!composerMinimized" class="composer-extras" aria-label="阅读辅助与本轮设置">
       <div class="task-template-panel" :class="{ open: slashMenuOpen }">
         <slot name="paper-actions" :menu-open="slashMenuOpen" :close-menu="closeTaskPicker" />
       <div v-if="slashMenuOpen" class="template-options" role="listbox" aria-label="提问模板">
@@ -840,11 +819,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
         <StateFeedback v-if="!visibleTemplates.length" empty empty-text="暂无匹配模板。" />
       </div>
       </div>
-      <details class="run-settings"><summary>模型与任务额度</summary>
-    <RunProfileControl v-model="selectedProfile" :skill="currentSession?.skill" :disabled="busy || uploading" :bound="!!(runs.length || currentSession?.native_ready)" />
-    <RunConnectionControl v-model="selectedConnection" :disabled="busy || uploading || !!selectedProfile" :bound="!!(runs.length || currentSession?.native_ready)" />
-    <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading || !!selectedProfile" />
-      </details>
+
     <div v-if="contexts.length" class="context-bar" aria-label="本次提问上下文">
       <div v-for="(c, i) in contexts" :key="'ctx-' + c.paper_id + '-' + c.page + '-' + i" class="context-chip" :class="{ current: c.paper_id === paperId }">
         <strong>{{ c.paper_id === paperId ? '当前论文' : '引用论文' }}</strong>
@@ -859,14 +834,12 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </div>
     </div>
     <StateFeedback
-      v-if="draftSaving || draftSaved || draftSaveError || exportError"
+      v-if="draftSaveError || exportError"
       class="draft-state"
-      :saving="draftSaving"
-      :saved="draftSaved"
       :save-error="draftSaveError || exportError"
     />
     </div>
-    <form class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
+    <form v-show="!composerMinimized" class="reader-composer" :class="{ dragging }" @submit.prevent="submit" @dragover.prevent="dragging = true" @dragleave="dragging = false" @drop.prevent="onDrop">
       <div v-if="mentionMenuOpen" class="command-menu" role="listbox" aria-label="论文引用">
         <button v-for="(p, i) in visiblePapers" :key="p.id" type="button" role="option" :aria-selected="menuIndex === i" @click="choosePaper(p)" @mousedown.prevent>
           <strong>{{ p.title }}</strong><span>已授权当前会话</span>
@@ -891,6 +864,11 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </div>
       <div class="composer-footer"><span class="muted">{{ question.length }}/3000 · 图片 {{ attachments.length }}/3 · 引用 {{ contexts.length }}/3</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">{{ uploading ? '上传中…' : busy ? '处理中…' : '发送 ↑' }}</button></div>
     </form>
+      <details v-show="!composerMinimized" class="run-settings"><summary>模型与任务额度</summary>
+    <RunProfileControl v-model="selectedProfile" :skill="currentSession?.skill" :disabled="busy || uploading" :bound="!!(runs.length || currentSession?.native_ready)" />
+    <RunConnectionControl v-model="selectedConnection" :disabled="busy || uploading || !!selectedProfile" :bound="!!(runs.length || currentSession?.native_ready)" />
+    <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading || !!selectedProfile" />
+      </details>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>
   </div>
 </template>
@@ -910,7 +888,6 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .session-text strong,.session-text small span { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .session-text small { color:var(--text-muted); }
 .detail-toggle { flex-shrink:0; font-size:12px; padding:5px 8px; }
-.usage-summary { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:8px; font-size:12px; color:var(--text-muted); }
 .session-details { padding:12px 16px; border-bottom:1px solid var(--border); background:var(--surface); }
 .session-details dl { display:grid; gap:6px; margin:0; }
 .session-details dl div { display:grid; grid-template-columns:100px minmax(0,1fr); gap:8px; font-size:12px; }
@@ -941,7 +918,10 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .chat-heading,.agent-state { flex-shrink:0; }
 .conversation-view { position:relative; display:flex; flex-direction:column; flex:1 1 0; min-height:80px; min-width:0; overflow:hidden; }
 .composer-extras { flex:0 1 auto; min-height:0; max-height:25%; overflow:auto; padding:6px 12px; border-top:1px solid var(--border); scrollbar-gutter:stable; }
-.run-settings { font-size:12px; margin-top:6px; }
+.composer-toggle-bar { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-shrink:0; padding:4px 12px; border-top:1px solid var(--border); }
+.composer-toggle { font-size:12px; padding:4px 8px; }
+.draft-indicator { font-size:11px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.run-settings { flex:0 1 auto; min-height:0; max-height:25%; overflow:auto; font-size:12px; margin:0; padding:4px 12px; border-top:1px solid var(--border); }
 .run-settings summary { cursor:pointer; color:var(--text-muted); padding:4px 0; }
 .reader-chat,.composer-extras { overscroll-behavior:contain; scrollbar-width:thin; scrollbar-color:var(--border-strong) var(--surface); }
 .reader-chat::-webkit-scrollbar,.composer-extras::-webkit-scrollbar { width:9px; }
@@ -961,7 +941,6 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 .original-context button { border: none; background: none; color: var(--accent); padding: 0; font-size: 12px; }
 .answer :deep(p) { margin: var(--space-1) 0; }
 .error { color: var(--danger); }
-.usage { font-size: 12px; }
 .context-bar { display:flex; flex-wrap:wrap; gap:var(--space-1); padding:var(--space-2) var(--space-3) 0; }
 .context-chip { display:flex; align-items:center; gap:5px; max-width:100%; padding:4px 6px; border:1px solid var(--border); border-radius:999px; background:var(--bg); font-size:12px; }
 .context-chip.current { border-color:var(--accent); background:var(--accent-soft); }
@@ -1014,7 +993,6 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
 
 @container (max-height:520px) {
   .chat-heading { padding:6px 10px; }
-  .chat-heading .usage-summary { display:none; }
   .agent-state { padding:5px 10px; }
   .reader-composer { min-height:148px; padding:8px; gap:4px; }
   .reader-composer textarea { min-height:60px; }

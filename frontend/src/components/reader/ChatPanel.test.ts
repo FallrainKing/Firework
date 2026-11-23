@@ -1,3 +1,4 @@
+import type { Attachment } from '@/api/types'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -424,7 +425,9 @@ describe('ChatPanel long conversation', () => {
     expect(wrapper.find('.conversation-view .reader-chat').attributes('tabindex')).toBe('0')
     expect(wrapper.find('.composer-fields textarea').exists()).toBe(true)
     expect(wrapper.find('.reader-composer .composer-extras').exists()).toBe(false)
-    expect(wrapper.find('.composer-extras .run-settings').exists()).toBe(true)
+    expect(wrapper.find('.composer-extras .run-settings').exists()).toBe(false)
+    expect(wrapper.find('.chat-panel > .run-settings').exists()).toBe(true)
+    expect(wrapper.find('.reader-composer').element.nextElementSibling).toBe(wrapper.find('.run-settings').element)
     wrapper.unmount()
   })
 
@@ -440,7 +443,7 @@ describe('ChatPanel long conversation', () => {
     wrapper.unmount()
   })
 
-  it('shows session header, usage and detail layer without fabricating missing usage', async () => {
+  it('keeps session and execution details without usage or cost commentary', async () => {
     vi.spyOn(sessionsApi, 'runs').mockResolvedValue({
       runs: [run({ id: 'r-usage', model: 'test-model', usage: { input_tokens: 12 }, cli_estimated_cost_usd: 0.0123, attachment_ids: ['image-1'] })],
       has_more: false,
@@ -456,9 +459,8 @@ describe('ChatPanel long conversation', () => {
     expect(header).toContain('阅读')
     expect(header).toContain('paper_read')
     expect(header).toContain('已完成')
-    expect(wrapper.find('.usage-summary').text()).toContain('本轮 tokens：输入 12 / 输出 未提供')
-    expect(wrapper.find('.usage-summary').text()).toContain('会话累计 tokens：输入 12 / 输出 未提供')
-    expect(wrapper.find('.usage-summary').text()).toContain('CLI 估算，非实际账单')
+    expect(wrapper.find('.usage-summary').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('费用估算')
     await wrapper.find('.detail-toggle').trigger('click')
     const details = wrapper.find('.session-details').text()
     expect(details).toContain('平台会话 ID')
@@ -482,7 +484,42 @@ describe('ChatPanel long conversation', () => {
     expect(wrapper.find('.tool-group summary').text()).toContain('执行过程 · 1 次工具调用')
     await wrapper.find('.execution-details summary').trigger('click')
     expect(wrapper.find('.execution-details').text()).toContain('test-model')
-    expect(wrapper.find('.execution-details').text()).toContain('CLI 估算，非实际账单')
+    expect(wrapper.find('.execution-details').text()).not.toContain('费用估算')
+    expect(wrapper.find('.execution-details').text()).not.toContain('CLI 估算，非实际账单')
+    wrapper.unmount()
+  })
+})
+
+
+describe('minimized agent composer', () => {
+  it('hides templates, input and bottom settings together while preserving unsent text and attachments', async () => {
+    vi.spyOn(agentApi, 'createRun')
+    const wrapper = await mountPanel()
+    await wrapper.find('textarea').setValue('保留我的草稿')
+    const state=wrapper.vm as unknown as {attachments:Attachment[]}
+    state.attachments.push({id:'image-kept',url:'/image-kept',filename:'preview'} as Attachment)
+    await flushPromises()
+    await wrapper.find('.composer-toggle').trigger('click')
+    expect(wrapper.find('.composer-toggle').attributes('aria-expanded')).toBe('false')
+    expect(wrapper.find('.composer-extras').isVisible()).toBe(false)
+    expect(wrapper.find('.reader-composer').isVisible()).toBe(false)
+    expect(wrapper.find('.run-settings').isVisible()).toBe(false)
+    expect(wrapper.find('.reader-chat').isVisible()).toBe(true)
+    await wrapper.find('.composer-toggle').trigger('click')
+    expect(wrapper.find('.composer-toggle').attributes('aria-expanded')).toBe('true')
+    expect(wrapper.find('.reader-composer').attributes('style')).not.toContain('display: none')
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('保留我的草稿')
+    expect(wrapper.find('.image-attachment img').attributes('src')).toBe('/image-kept')
+    expect(agentApi.createRun).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+  it('reopens the input when reediting a failed message', async () => {
+    vi.mocked(sessionsApi.runs).mockResolvedValue({runs:[run({status:'failed',prompt:'重新编辑此问题'})],has_more:false,next_before:null})
+    const wrapper = await mountPanel()
+    await wrapper.find('.composer-toggle').trigger('click')
+    await wrapper.find('.reedit').trigger('click')
+    expect(wrapper.find('.reader-composer').isVisible()).toBe(true)
+    expect((wrapper.find('textarea').element as HTMLTextAreaElement).value).toBe('重新编辑此问题')
     wrapper.unmount()
   })
 })

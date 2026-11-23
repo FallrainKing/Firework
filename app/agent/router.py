@@ -76,3 +76,16 @@ async def search_library(request: Request, q: str = Query('', max_length=200)):
 @router.post('/runs', status_code=202)
 async def create_run(body: RunCreate, request: Request):
     return await service.create_run(body, request.app.state)
+
+
+@router.get('/providers')
+async def providers(request:Request):
+    import httpx
+    from . import runner_client
+    from ..core.errors import ServiceError
+    try:
+        async with runner_client.client() as client:
+            response=await client.get('/providers',timeout=8)
+        if response.status_code!=200:raise ServiceError(503,'运行环境检测暂不可用，请检查 Runner 版本')
+        return response.json()
+    except (httpx.HTTPError,ValueError):raise ServiceError(503,'运行环境检测暂不可用') from None

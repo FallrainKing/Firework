@@ -50,3 +50,9 @@ async def session_runs(session_id: int, request: Request, before: int | None = N
 @router.patch('/{session_id}')
 async def update(session_id: int, body: SessionPatch, request: Request):
     return service.update_session(request.app.state.db, session_id, body)
+
+
+@router.get('/{session_id}/native')
+async def native_session(session_id:int,request:Request,offset:int=Query(0,ge=0),source:str|None=Query(None,pattern='^[a-f0-9]{32}$'),limit:int=Query(50,ge=1,le=100)):
+    from . import native
+    return await native.view(request.app.state,session_id,offset,source,limit)

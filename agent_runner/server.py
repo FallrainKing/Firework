@@ -208,3 +208,27 @@ async def cancel_run(run_id: str, request: Request):
     if got is None:
         raise HTTPException(404, 'Run not found')
     return got
+
+
+@app.get('/native/sessions/{conversation_id}')
+async def native_session(conversation_id:int,request:Request,offset:int=0,source:str|None=None,limit:int=50):
+    if offset<0 or not 1<=limit<=100 or (source and not __import__('re').fullmatch('[a-f0-9]{32}',source)):
+        raise HTTPException(422,'Invalid transcript cursor')
+    current=await engine_for(request)
+    from .native import transcript
+    primary=request.headers.get('x-research-workspace','legacy')=='legacy'
+    data=await asyncio.to_thread(transcript,current.runtime,conversation_id,offset,source,limit,primary)
+    if primary:
+        from .connections import redact
+        try:env=current._env_loader(current.runtime)
+        except (OSError,ValueError):raise HTTPException(503,'无法核验凭据脱敏') from None
+        for key in ('ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','CLAUDE_CODE_OAUTH_TOKEN'):
+            data=redact(data,env.get(key))
+    return data
+
+
+@app.get('/providers')
+async def providers(request:Request):
+    await engine_for(request)
+    from .native import provider_status
+    return {'providers':[await provider_status()]}

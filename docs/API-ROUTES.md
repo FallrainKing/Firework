@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **183** 条 HTTP 方法/路径；业务迁移0023、身份schema3、Runner协议9。
+生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **185** 条 HTTP 方法/路径；业务迁移0023、身份schema3、Runner协议10。
 
 浏览器私有接口需登录，写请求需CSRF；外部API Bearer、Zotero设备与内部工具令牌互不替代。字段见 [API](API.md)、[Runner配置](RUNNER-CONFIGURATION.md)、[Skills](SKILLS.md)。不含未来设计接口或静态下载。
 
@@ -13,6 +13,7 @@
 | DELETE | `/api/zotero/devices/{ident}` |
 | GET | `/api/admin/accounts` |
 | GET | `/api/agent/library` |
+| GET | `/api/agent/providers` |
 | GET | `/api/agent/runs` |
 | GET | `/api/agent/runs/{run_id}` |
 | GET | `/api/agent/runs/{run_id}/events` |
@@ -67,6 +68,7 @@
 | GET | `/api/sessions/categories` |
 | GET | `/api/sessions/templates` |
 | GET | `/api/sessions/{session_id}` |
+| GET | `/api/sessions/{session_id}/native` |
 | GET | `/api/sessions/{session_id}/runs` |
 | GET | `/api/skills` |
 | GET | `/api/skills/available` |

@@ -10,6 +10,7 @@ import { workbenchApi } from '@/api/workbench'
 import { uid32 } from '@/api/client'
 import { useWorkbenchStore } from '@/stores/workbench'
 import type { Attachment, Run, SelectionContext, Session, Template } from '@/api/types'
+import NativeSessionPanel from './NativeSessionPanel.vue'
 import RunConnectionControl from './RunConnectionControl.vue'
 import type {ConnectionRef} from '@/api/runnerConnections'
 import RunBudgetControl from './RunBudgetControl.vue'
@@ -23,6 +24,7 @@ const wb = useWorkbenchStore()
 
 
 
+const nativeOpen=ref(false)
 const runs = ref<Run[]>([])
 const question = ref('')
 const selectedProfile=ref<ProfileRef|null>(null)
@@ -735,12 +737,15 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </template>
     </div>
     <nav class="conversation-modes" aria-label="会话显示方式">
-      <button type="button" :aria-pressed="!resultsOnly" @click="resultsOnly = false">完整会话</button>
-      <button type="button" :aria-pressed="resultsOnly" @click="resultsOnly = true">阅读结果</button>
+      <button type="button" :aria-pressed="!nativeOpen && !resultsOnly" @click="nativeOpen=false;resultsOnly = false">完整会话</button>
+      <button type="button" :aria-pressed="!nativeOpen && resultsOnly" @click="nativeOpen=false;resultsOnly = true">阅读结果</button>
+      <button type="button" :aria-pressed="nativeOpen" :disabled="!currentSession" @click="nativeOpen=!nativeOpen">原生记录</button>
       <button type="button" class="latest-message" @click="jumpToBottom">↓ 最新</button>
     </nav>
     <div class="conversation-view">
     <div ref="chatBox" class="reader-chat" role="region" aria-label="智能体回答与会话记录" tabindex="0" @scroll.passive="handleScroll" @load.capture="followLatest()">
+    <NativeSessionPanel v-if="nativeOpen && currentSession" :session-id="currentSession.id" @continue="composerMinimized=false; nextTick(focusInput)" />
+    <section v-show="!nativeOpen" class="managed-history">
     <section v-if="detailsOpen" class="session-details" aria-label="会话详情">
       <dl>
         <div><dt>平台会话 ID</dt><dd>{{ currentSession?.id ?? '未提供' }}</dd></div>
@@ -818,6 +823,7 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
           </dl>
         </details>
       </article>
+    </section>
     </div>
     <button v-if="newContent" class="new-content" type="button" @click="jumpToBottom">新内容，回到底部</button>
     </div>

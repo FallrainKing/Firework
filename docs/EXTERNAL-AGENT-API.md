@@ -129,3 +129,8 @@ CLI 增加 frontier-topics/create-frontier-topic/frontier-reports/frontier-repor
 ## 研究产物和知识扩展
 
 新增产物修订、候选知识、审核后召回、研究文件附件和Run事件接口，范围分别为artifacts:read/write、knowledge:read/write、runs:read。外部客户端不能发布知识。JSON写操作保持幂等键和64KiB限制；仅multipart研究附件允许30MiB。详细字段与流程见 [研究平台接口](RESEARCH-PLATFORM.md#接口)。
+
+
+## 2026-11-23 阅读与本机 MCP 增量
+
+本轮实际实现、接口、配置步骤与验证边界统一见 [R1–R5交付说明](READING-CONTEXT-DELIVERY.md)。本机MCP配置样例见 [MCP使用说明](../plugins/agent-skill/firework-paper-ops/references/mcp.md)。本轮不修改宿主Claude全局配置，不自动安装本机MCP，不自动重复执行本机研究。

@@ -87,9 +87,12 @@ def edit_annotation(db: sqlite3.Connection, ident: str, body: AnnotationPatch) -
     return annotation_view(repo.find_annotation(db, ident))
 
 
-def get_state(db: sqlite3.Connection, sid: int, pid: int) -> dict:
+def get_state(db: sqlite3.Connection, sid: int, pid: int,file_version=None) -> dict:
     linked(db, sid, pid)
     version=db.execute('SELECT v.file_hash FROM papers p JOIN document_versions v ON v.id=p.default_version_id WHERE p.id=?',(pid,)).fetchone()
+    if file_version:
+        if not db.execute('SELECT 1 FROM document_versions v JOIN paper_documents d ON d.id=v.document_id WHERE d.paper_id=? AND v.file_hash=?',(pid,file_version)).fetchone():raise ServiceError(404,'原文版本不存在')
+        version=(file_version,)
     row=db.execute('SELECT * FROM version_reader_states WHERE conversation_id=? AND paper_id=? AND file_version=?',(sid,pid,version[0])).fetchone() if version else repo.find_state(db,sid,pid)
     return dict(row) if row else {'page': 1, 'zoom': 'fit', 'tab': 'outline'}
 
@@ -97,7 +100,13 @@ def get_state(db: sqlite3.Connection, sid: int, pid: int) -> dict:
 async def save_state(db: sqlite3.Connection, settings, paper_id: int, body: Position) -> dict:
     linked(db, body.conversation_id, paper_id)
     try:
-        doc = await asyncio.to_thread(pages.document_info, settings, paper(db, paper_id))
+        row=paper(db,paper_id)
+        if body.file_version:
+            from ..documents import service as documents
+            v=db.execute('SELECT v.id FROM document_versions v JOIN paper_documents d ON d.id=v.document_id WHERE d.paper_id=? AND v.file_hash=?',(paper_id,body.file_version)).fetchone()
+            if v:
+                version=documents.version(db,paper_id,v[0]);row=dict(row)|{'pdf_path':str(documents.asset_path(settings,version['storage_key']))}
+        doc = await asyncio.to_thread(pages.document_info, settings, row)
     except ValueError as e:
         raise ServiceError(400, str(e))
     if body.file_version and body.file_version!=doc['file_version']:raise ServiceError(409,'保存位置时文件版本已变化，请刷新')
@@ -115,7 +124,8 @@ def translations(db: sqlite3.Connection, paper_id: int) -> dict:
     paper(db, paper_id)
     rows = repo.list_translations(db, paper_id)
     runs = agent_service.runs_by_ids(db, [r['run_id'] for r in rows])
-    return {'translations': [{**dict(r), **runs[r['run_id']]} for r in rows]}
+    external=[dict(r)|{'rects':json.loads(r['rects_json']),'run_id':None,'conversation_id':None,'error':None,'origin':'external'} for r in db.execute('SELECT * FROM reader_external_translations WHERE paper_id=? AND deleted=0 ORDER BY created_at DESC',(paper_id,))]
+    return {'translations': [{**dict(r), **runs[r['run_id']], 'rects':json.loads(r['anchor_json']).get('rects',[])} for r in rows]+external}
 
 
 async def translate(db: sqlite3.Connection, settings, body: Translation, state) -> dict:
@@ -144,11 +154,16 @@ async def translate(db: sqlite3.Connection, settings, body: Translation, state) 
     run = await create_run(RunCreate(conversation_id=body.conversation_id, prompt='请把本次选中的原文准确翻译成简体中文，只输出译文，保留专业术语、数字与公式。', contexts=[context], purpose='translate'), state)
     ident = old['id'] if old else uuid.uuid4().hex
     repo.upsert_translation(db, ident, body.paper_id, body.conversation_id, body.page, body.file_version, body.quote, digest, run['id'])
+    db.execute('UPDATE reader_translations SET anchor_json=? WHERE id=?',(json.dumps({'rects':body.rects}),ident))
     db.commit()
     return {'id': ident, 'run_id': run['id'], 'status': run['status'], 'cached': False}
 
 
 def set_translation_visibility(db: sqlite3.Connection, ident: str, body: TranslationVisibility) -> dict:
+    external=db.execute('SELECT 1 FROM reader_external_translations WHERE id=?',(ident,)).fetchone()
+    if external:
+        with db:db.execute('UPDATE reader_external_translations SET deleted=? WHERE id=?',(int(body.deleted),ident))
+        return {'id':ident,'deleted':body.deleted}
     if not repo.translation_exists(db, ident):
         raise ServiceError(404, '翻译记录不存在')
     repo.set_translation_deleted(db, ident, body.deleted)

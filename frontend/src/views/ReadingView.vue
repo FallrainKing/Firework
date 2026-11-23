@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import {useRoute} from 'vue-router'
+import {computed} from 'vue'
+const route=useRoute()
+const versionId=computed(()=>route?.query.version?String(route.query.version):undefined)
 import ReaderPane from './ReaderPane.vue'
 
 // KeepAlive max=3 替代旧 iframe 池：LRU 缓存阅读面板，
@@ -17,7 +21,8 @@ const emit = defineEmits<{
     <KeepAlive :max="3">
       <ReaderPane
         v-if="paperId !== null"
-        :key="paperId"
+        :key="`${paperId}:${versionId||'default'}`"
+        :version-id="versionId"
         :paper-id="paperId"
         :session-id="sessionId"
         @open-paper="(pid, sid) => emit('open-paper', pid, sid)"

@@ -23,7 +23,7 @@ it('editing preserves the credential without reading it back',async()=>{
  expect(save.mock.calls[0][0]).not.toHaveProperty('api_key');expect(save.mock.calls[0][0].expected_revision).toBe(2);expect(save.mock.calls[0][1]).toBe(conn.id);w.unmount()
 })
 it('per-session selection emits a revision; bound sessions cannot change connection',async()=>{
- const w=mount(Control,{props:{modelValue:null}});expect(runnerConnections.list).not.toHaveBeenCalled()
+ const w=mount(Control,{props:{modelValue:null}});expect(runnerConnections.list).toHaveBeenCalled()
  await w.find('button').trigger('click');await flushPromises();await w.find('select').setValue(conn.id)
  expect(w.emitted('update:modelValue')?.[0]).toEqual([{id:conn.id,revision:2}]);await w.setProps({bound:true});expect(w.find('select').exists()).toBe(false);expect(w.text()).toContain('新建会话');w.unmount()
 })

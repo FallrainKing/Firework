@@ -10,6 +10,7 @@ export interface SessionUsage {
 }
 
 export interface Session {
+  connection_binding?:{name?:string;model?:string;mode?:string;revision?:number}|null
   execution_mode?: 'managed' | 'terminal'
   parent_session_id?: number | null
   entry_context?: string | null
@@ -245,6 +246,7 @@ export interface RecentRead {
 }
 
 export interface ReaderDoc {
+  document_version_id?:string|null
   paper_id: number
   title: string
   file_version: string
@@ -293,6 +295,7 @@ export interface Position {
 }
 
 export interface TranslationRecord {
+  rects?:number[][]
   id: string
   paper_id: number
   conversation_id: number

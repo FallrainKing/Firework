@@ -18,6 +18,7 @@ export interface EngineLike {
   load(info: ReaderDoc, position?: { page?: number; zoom?: string }): Promise<void>
   layout(): void
   jump(page: number, flash?: boolean): void
+  locate?(context:SelectionContext):Promise<void>
   setAnnotations(items: Annotation[]): void
   currentPage: number
   zoom: string
@@ -26,6 +27,7 @@ export interface EngineLike {
 }
 
 interface Deps {
+  documentVersion?:string
   paperId: number
   engine: EngineLike
   toast: (message: string) => void
@@ -100,7 +102,7 @@ export function useReaderOrchestrator(deps: Deps) {
       if (epoch !== activation) return
       if (!next.paper_ids.includes(paperId)) throw new Error('所选会话未关联当前论文')
       session.value = next
-      const position = await readerApi.getState(paperId, id)
+      const position = await readerApi.getState(paperId, id,deps.documentVersion?doc.value?.file_version:undefined)
       if (epoch !== activation) return
       sidebarTab.value = position.tab
       engine.zoom = position.zoom
@@ -136,7 +138,7 @@ export function useReaderOrchestrator(deps: Deps) {
     try {
       profile.value = await papersApi.get(paperId)
       try {
-        doc.value = await readerApi.document(paperId)
+        doc.value = deps.documentVersion?await readerApi.document(paperId,deps.documentVersion):await readerApi.document(paperId)
       } catch (e) {
         missingPdf.value = true
         loadError.value = e instanceof Error ? e.message : '无法读取论文'
@@ -159,16 +161,19 @@ export function useReaderOrchestrator(deps: Deps) {
     }
   }
 
-  function jump(context: SelectionContext) {
-    if (context.paper_id === paperId && context.file_version && doc.value && context.file_version !== doc.value.file_version) {
-      toast('引用来自旧 PDF 版本，请先核对文件后定位。')
-      return
-    }
-    if (context.paper_id && context.paper_id !== paperId) {
-      deps.onOpenPaper?.(context.paper_id, session.value?.id)
-      return
-    }
-    engine.jump(context.page, true)
+  async function jump(context: SelectionContext) {
+    try {
+      const source=await readerApi.locate(context)
+      if(source.file_version!==doc.value?.file_version){
+        if(source.original_url)window.open(source.original_url,'_blank','noopener')
+        else toast('原文版本不可用')
+        return
+      }
+      if(source.paper_id!==paperId){deps.onOpenPaper?.(source.paper_id,session.value?.id);return}
+      if(source.status!=='located'&&source.quote)toast(source.status==='ambiguous'?'原文有多处匹配，已跳至来源页':'未找到精确位置，已跳至来源页')
+      if(engine.locate)await engine.locate(source)
+      else engine.jump(source.page,true)
+    } catch(e){toast(e instanceof Error?e.message:'原文定位失败')}
   }
 
   async function selectionAction(action: string, ctx: SelectionContext, color?: string) {

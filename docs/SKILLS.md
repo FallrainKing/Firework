@@ -102,3 +102,8 @@ skill_resource 只读取允许的资源范围，不启动包内命令。需要�
 ## 双执行路径的后续设计
 
 Skill由用户维护，执行地点可选：上传至Firework技能库并交给服务器智能体运行；或在本机由本机智能体运行后，经Firework MCP同步成果。现有ZIP管理和REST接口继续保留；MCP完整成果同步仍为待实现设计。契约、权限及验收见 [双路径执行与结果同步](READING-CONTEXT-CONFIGURATION-PLAN.md#7-双路径执行与结果同步用户确认)。
+
+
+## 2026-11-23 阅读与本机 MCP 增量
+
+本轮实际实现、接口、配置步骤与验证边界统一见 [R1–R5交付说明](READING-CONTEXT-DELIVERY.md)。本机MCP配置样例见 [MCP使用说明](../plugins/agent-skill/firework-paper-ops/references/mcp.md)。本轮不修改宿主Claude全局配置，不自动安装本机MCP，不自动重复执行本机研究。

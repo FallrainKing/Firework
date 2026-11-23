@@ -181,6 +181,8 @@ def create_app(*, authentication: bool = True) -> FastAPI:
     app.include_router(imports_router)
     app.include_router(imports_internal)
     app.include_router(workbench_router)
+    from .workbench.contexts import router as contexts_router
+    app.include_router(contexts_router)
     app.include_router(schedules_router)
 
     @app.get("/health")

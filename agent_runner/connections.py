@@ -38,6 +38,8 @@ def environment(runtime,snap,secret):
     config.mkdir(parents=True,exist_ok=True,mode=0o700)
     env.update(CLAUDE_CONFIG_DIR=str(config),CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC='1',MAX_THINKING_TOKENS='0',
                ANTHROPIC_BASE_URL=snap['base_url'],ANTHROPIC_MODEL=snap['model'])
+    for tier in ('SONNET','OPUS','HAIKU','FABLE'):env['ANTHROPIC_DEFAULT_'+tier+'_MODEL']=snap['model']
+    env['CLAUDE_CODE_SUBAGENT_MODEL']=snap['model']
     env['ANTHROPIC_API_KEY' if snap['auth_type']=='api_key' else 'ANTHROPIC_AUTH_TOKEN']=secret
     return env
 

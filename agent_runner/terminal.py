@@ -69,7 +69,7 @@ def container_args(folder,name,sid,model,token,resume):
         '--env','HOME=/state','--env','CLAUDE_CONFIG_DIR=/state','--env','TERM=xterm-256color',
         '--env','DISABLE_AUTOUPDATER=1','--env','CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1',
         '--env','ANTHROPIC_BASE_URL=http://127.0.0.1:8999','--env',f'ANTHROPIC_API_KEY={token}',
-        '--env',f'ANTHROPIC_MODEL={model}','--env',f'FIREWORK_SESSION_ID={sid}','--env',f'FIREWORK_RESUME={int(resume)}',IMAGE]
+        '--env',f'ANTHROPIC_MODEL={model}',*sum((['--env',f'ANTHROPIC_DEFAULT_{tier}_MODEL={model}'] for tier in ('SONNET','OPUS','HAIKU','FABLE')),[]),'--env',f'CLAUDE_CODE_SUBAGENT_MODEL={model}','--env',f'FIREWORK_SESSION_ID={sid}','--env',f'FIREWORK_RESUME={int(resume)}',IMAGE]
 
 
 class TerminalManager:

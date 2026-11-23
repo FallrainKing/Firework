@@ -231,3 +231,32 @@ def test_running_tasks_prevent_default_switch_and_switch_blocks_new_runs(documen
     r=c.post('/api/agent/runs',json={'conversation_id':sid,'prompt':'Race','request_key':'race'})
     assert r.status_code==409
     assert db.execute('SELECT count(*) FROM agent_runs').fetchone()[0]==1
+
+
+def test_reader_loads_historical_pdf_and_keeps_positions_per_version(documents):
+    c,s,sid,ctx=documents
+    old=listing(c)['default_version_id'];new=upload(c,pdf('A different PDF')).json()['version_id']
+    assert c.post(f'/api/library/papers/1/document-versions/{new}/default',json={'confirmed':True,'expected_version_id':old}).status_code==200
+    historical=c.get('/api/reader/papers/1',params={'version_id':old}).json()
+    assert historical['file_version']==ctx['file_version'] and historical['document_version_id']==old
+    assert c.get(historical['pdf_url']).content==(s.data_dir/'papers/1.pdf').read_bytes()
+    r=c.put('/api/reader/papers/1/state',json={'conversation_id':sid,'file_version':ctx['file_version'],'page':1,'zoom':'1.25','tab':'notes'})
+    assert r.status_code==200,r.text
+    assert c.get('/api/reader/papers/1/state',params={'conversation_id':sid,'file_version':ctx['file_version']}).json()['zoom']=='1.25'
+    assert c.get('/api/reader/papers/1/state',params={'conversation_id':sid}).json()['zoom']=='fit'
+    assert c.get('/api/reader/papers/2',params={'version_id':old}).status_code==404
+
+
+@pytest.mark.parametrize('rotation',[0,90,180,270])
+def test_anchor_resolves_rotated_text_and_reports_ambiguity(documents,rotation):
+    c,s,sid,ctx=documents
+    vid=upload(c,pdf('Unique source quote',rotation=rotation)).json()['version_id']
+    digest=service.version(c.app.state.db,1,vid)['file_hash']
+    r=c.post('/api/reader/anchors/locate',json={'paper_id':1,'file_version':digest,'page':1,'quote':'Unique source quote','rects':[]})
+    assert r.status_code==200,r.text
+    a=r.json();assert a['status']=='located' and a['document_version_id']==vid
+    assert all(0<=n<=1 for rect in a['rects'] for n in rect)
+    assert c.post('/api/reader/anchors/locate',json={'paper_id':1,'file_version':digest,'page':2,'quote':'Unique source quote'}).status_code==422
+    raw=pdf('Repeat phrase Repeat phrase');v2=upload(c,raw).json()['version_id'];h2=service.version(c.app.state.db,1,v2)['file_hash']
+    ambiguous=c.post('/api/reader/anchors/locate',json={'paper_id':1,'file_version':h2,'page':1,'quote':'Repeat phrase'}).json()
+    assert ambiguous['status']=='ambiguous' and ambiguous['rects']==[]

@@ -2,8 +2,9 @@ import { api } from './client'
 import type { Annotation, AnnotationCreate, Position, ReaderDoc, SelectionContext, TranslationRecord } from './types'
 
 export const readerApi = {
-  document(paperId: number): Promise<ReaderDoc> {
-    return api(`/api/reader/papers/${paperId}`)
+  locate:(body:SelectionContext)=>api<SelectionContext&{status:string;original_url?:string}>('/api/reader/anchors/locate',{body}),
+  document(paperId: number,versionId?:string): Promise<ReaderDoc> {
+    return api(`/api/reader/papers/${paperId}${versionId?'?version_id='+encodeURIComponent(versionId):''}`)
   },
   pageText(paperId: number, page: number): Promise<{ page: number; text: string; file_version: string }> {
     return api(`/api/reader/papers/${paperId}/pages/${page}`)
@@ -17,8 +18,8 @@ export const readerApi = {
   patchAnnotation(id: string, body: { content?: string; color?: string; deleted?: boolean }): Promise<Annotation> {
     return api(`/api/reader/annotations/${id}`, { method: 'PATCH', body })
   },
-  getState(paperId: number, conversationId: number): Promise<Position> {
-    return api(`/api/reader/papers/${paperId}/state?conversation_id=${conversationId}`)
+  getState(paperId: number, conversationId: number,fileVersion?:string): Promise<Position> {
+    return api(`/api/reader/papers/${paperId}/state?conversation_id=${conversationId}${fileVersion?'&file_version='+fileVersion:''}`)
   },
   saveState(paperId: number, body: Position): Promise<Position> {
     return api(`/api/reader/papers/${paperId}/state`, { method: 'PUT', body })

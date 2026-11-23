@@ -1,6 +1,6 @@
 # Firework 文档
 
-更新：2026-11-23。代码版本以 Git 为准，业务迁移 **0023**、身份 schema **3**、Runner 协议 **10**。
+更新：2026-11-23。代码版本以 Git 为准，业务迁移 **0026**、身份 schema **3**、Runner 协议 **12**。
 
 ## 从这里开始
 
@@ -50,3 +50,5 @@
 
 
 后续修复设计：[阅读交互、供应商配置与页面上下文MCP](READING-CONTEXT-CONFIGURATION-PLAN.md)，包含R1–R5实施及验收。当前仅设计，未发布功能。
+
+- [阅读、模型配置与本机MCP交付](READING-CONTEXT-DELIVERY.md)：实际接口、双路径工作流与边界。

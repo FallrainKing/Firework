@@ -95,12 +95,14 @@ describe('reader orchestrator', () => {
     expect(watched).toHaveLength(0)
   })
 
-  it('jump refuses stale file version', async () => {
+  it('jump opens the original version instead of using stale coordinates', async () => {
     const { engine, orch, toasts } = setup()
     await orch.boot()
-    orch.jump({ paper_id: 1, page: 2, file_version: 'old', quote: '', rects: [] })
+    vi.spyOn(readerApi,'locate').mockResolvedValue({paper_id:1,page:2,file_version:'old',quote:'',rects:[],status:'page_only',original_url:'/old.pdf#page=2'})
+    const open=vi.spyOn(window,'open').mockReturnValue(null)
+    await orch.jump({ paper_id: 1, page: 2, file_version: 'old', quote: '', rects: [] })
     expect(engine.jump).not.toHaveBeenCalled()
-    expect(toasts.some(t => t.includes('旧 PDF 版本'))).toBe(true)
+    expect(open).toHaveBeenCalledWith('/old.pdf#page=2','_blank','noopener')
   })
 
   it('highlight creates annotation and refreshes', async () => {

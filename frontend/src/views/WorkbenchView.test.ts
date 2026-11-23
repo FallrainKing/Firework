@@ -42,7 +42,7 @@ describe('reading full-text boundary', () => {
     expect(wb.activePaperId).toBeNull()
     expect(wb.tabs).toEqual([{ paper_id: 19, session_id: 5 }])
     expect(wrapper.findComponent({ name: 'WelcomeView' }).exists()).toBe(true)
-    expect(replaceRoute).toHaveBeenCalledWith({ path: '/' })
+    expect(replaceRoute).toHaveBeenCalledWith({ path: '/home' })
     wrapper.unmount()
   })
   it('metadata-only paper shows PDF import and never mounts its agent reader', async () => {

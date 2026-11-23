@@ -273,3 +273,43 @@ async def download_asset(ident:str,request:Request):
     scope_filter(request,'artifacts:read')
     row,path=research_files.resolve(request.app.state.db,request.app.state.settings,ident);scoped(request,'artifacts:read',[row['paper_id']])
     return FileResponse(path,media_type='application/octet-stream',filename=row['filename'],headers={'X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'; sandbox"})
+
+
+from ..workbench import contexts
+@router.get('/contexts')
+def active_contexts(request:Request):return contexts.listing(request)
+@router.get('/contexts/{ident}')
+def active_context(ident:str,request:Request,expected_revision:int|None=None):return contexts.get(request,ident,expected_revision)
+@router.get('/contexts/{ident}/resource')
+def current_resource(ident:str,request:Request,expected_revision:int):
+    ctx=contexts.get(request,ident,expected_revision);resource=ctx['resource']
+    if resource.get('paper_id'):
+        auth.require(request,'papers:read',resource['paper_id'])
+        data=papers.paper_detail(request.app.state.db,resource['paper_id'])
+        return {'context':ctx,'paper':data}
+    if resource.get('report_id'):
+        return {'context':ctx,'report':frontier_report(resource['report_id'],request)}
+    return {'context':ctx}
+
+from ..research.submissions import Submission
+@router.post('/research-submissions',status_code=201)
+def submit_research(body:Submission,request:Request,idempotency_key:str|None=Header(None)):
+    scoped(request,'artifacts:write',body.artifact.paper_ids)
+    for annotation in body.annotations:auth.require(request,'annotations:write',annotation.paper_id)
+    if body.translation:auth.require(request,'annotations:write',body.translation.paper_id)
+    from ..research.submissions import save
+    return mutate(request,body,idempotency_key,lambda db:save(db,request.app.state.settings,body,request.state.external_token['id']))
+
+@router.get('/research-submissions/{client_job_id}')
+def submission_receipt(client_job_id:str,request:Request):
+    scope_filter(request,'artifacts:read')
+    row=request.app.state.db.execute('SELECT receipt_json FROM external_submissions WHERE token_id=? AND client_job_id=?',(request.state.external_token['id'],client_job_id)).fetchone()
+    if not row:raise ServiceError(404,'本机任务尚无回执')
+    receipt=json.loads(row[0]);item=research.artifact_view(request.app.state.db,receipt['artifact_id']);scoped(request,'artifacts:read',item['paper_ids']);return receipt
+
+@router.get('/selections/{ident}')
+def shared_selection(ident:str,request:Request):
+    if 'context:selection' not in json.loads(request.state.external_token['scopes_json']):raise ServiceError(403,'缺少选区授权')
+    row=request.app.state.db.execute('SELECT * FROM context_selections WHERE id=? AND expires_at>?',(ident,__import__('time').time())).fetchone()
+    if not row:raise ServiceError(404,'分享已过期或不存在')
+    contexts.get(request,row['context_id']);anchor=json.loads(row['anchor_json']);auth.require(request,'papers:read',anchor['paper_id']);return {'id':ident,'anchor':anchor,'expires_at':row['expires_at']}

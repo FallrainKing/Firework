@@ -10,6 +10,7 @@ export function usePaperGuide(doc:Ref<ReaderDoc|null>,onPublished:()=>Promise<vo
  function stopPoll(){if(timer)clearInterval(timer);timer=null}
  async function refresh(){const d=doc.value;if(!d)return;const e=++epoch
   try{const next=await guidesApi.current(d.paper_id);if(stopped||e!==epoch||doc.value?.file_version!==d.file_version)return
+   if(next.guide&&next.guide.file_version!==d.file_version){next.guide=null;next.task=null;next.older_versions=Math.max(1,next.older_versions)}
    const old=state.value.guide?.id;state.value=next;error.value=''
    if(next.guide?.id!==old){await onPublished()}
    if(running.value&&!timer)timer=setInterval(()=>void refresh(),2500)

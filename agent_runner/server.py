@@ -287,3 +287,36 @@ async def terminal_resize(ident:int,body:TerminalResize,request:Request):
 @app.post('/terminals/{ident}/stop')
 async def terminal_stop(ident:int,body:TerminalControl,request:Request):
     return await (await engine_for(request)).terminals.stop(ident,body.generation,controller_id=body.controller_id)
+
+class ConnectionProbe(BaseModel):
+    id:str=Field(pattern='^[a-f0-9]{32}$')
+    kind:str=Field(pattern='^(network|model)$')
+    connection_snapshot:ConnectionSnapshot
+    connection_secret:SecretStr=Field(exclude=True,repr=False)
+
+probe_tasks={}
+probe_cancelled=set()
+@app.post('/connection-tests')
+async def connection_probe(body:ConnectionProbe,request:Request):
+    from .connection_probe import probe
+    from .connections import check_current
+    current=await engine_for(request);snapshot=body.connection_snapshot.model_dump()
+    try:check_current(current.runtime,snapshot)
+    except ValueError:raise HTTPException(409,'连接修订已变化') from None
+    key=(str(current.runtime),body.id)
+    if key in probe_cancelled:return {'status':'cancelled','model_called':False}
+    if key in probe_tasks:raise HTTPException(409,'测试已经存在')
+    if sum(1 for k in probe_tasks if k[0]==key[0])>=2:raise HTTPException(429,'最多同时测试两个连接')
+    task=asyncio.create_task(asyncio.wait_for(probe(snapshot,body.connection_secret.get_secret_value(),body.kind),30));probe_tasks[key]=task
+    try:return await task
+    except asyncio.CancelledError:return {'status':'cancelled','model_called':body.kind=='model'}
+    except asyncio.TimeoutError:return {'status':'failed','reason':'timeout','model_called':body.kind=='model'}
+    finally:probe_tasks.pop(key,None)
+
+@app.post('/connection-tests/{ident}/cancel')
+async def cancel_probe(ident:str,request:Request):
+    current=await engine_for(request);key=(str(current.runtime),ident)
+    if len(probe_cancelled)>1000:probe_cancelled.clear()
+    probe_cancelled.add(key);task=probe_tasks.get(key)
+    if task:task.cancel()
+    return {'status':'cancelled'}

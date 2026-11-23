@@ -13,7 +13,7 @@ Firework brings your paper library, PDF reader, and research conversations into 
 - [Implementation status](docs/STATUS.md): current scope and verification limits.
 - [Project audit](docs/PROJECT-AUDIT.md) (Chinese): documentation map, requirement coverage, and unfinished architecture work.
 
-The current baseline uses business migrations through **0022**, identity schema **3**, Runner protocol **8**, and Zotero plugin **0.1.4**.
+The current baseline uses business migrations through **0026**, identity schema **3**, Runner protocol **12**, and Zotero plugin **0.1.4**.
 
 ## Features
 
@@ -27,10 +27,10 @@ The current baseline uses business migrations through **0022**, identity schema 
 - **Extensible Skills:** Upload Skill ZIP packages, validate and install them, manage categories and versions, and enable or disable capabilities. Templates and structured outputs connect Skills to the interface.
 - **Richer agent input:** Combine editable templates, selected paper passages, and image attachments. Image interpretation requires a vision-capable agent or model.
 - **Manual Zotero exchange:** Pair a local Zotero 10 client, exchange selected papers, collection paths, tags, and immutable PDF files, and retry transfers without research-model calls. Imported PDFs become readable without waiting for embeddings; full-text indexing is an explicit action. Native annotation sync and automatic Connector ingestion are planned. See the [setup guide](docs/usage.md#9-zotero-手动双向交换).
-- **Personal model connections:** Configure an Anthropic Messages-compatible API, encrypted credentials, model name, declared vision/context capabilities, and a research role in the Web UI. Sessions bind a connection revision; custom runs do not inherit host Claude credentials. Per-account and per-run budgets are configurable. Capability checks are configuration-only and do not invoke a model.
+- **Personal model connections:** Configure an Anthropic Messages-compatible API, encrypted credentials, model name, declared vision/context capabilities, and a research role in the Web UI. Sessions bind a connection revision; custom runs do not inherit host Claude credentials. Per-account and per-run budgets are configurable. Provider presets, network-only checks, and explicitly confirmed minimal streaming model tests are available. Vision and long-context support remain declared capabilities until separately verified.
 - **Account isolation:** Separate each account's research database, files, private Skills, vector collection, and agent workspace. Public registration is currently closed, and the default release permits only the primary administrator to log in.
 
-Firework is under active development. Unified knowledge entries, cross-task long-term memory, OCR-based reading guides, and a complete six-stage deep-reading workflow are planned rather than complete. See the [implementation status](docs/STATUS.md) and [roadmap](docs/ROADMAP.md).
+Firework is under active development. Versioned research artifacts and reviewed knowledge candidates are available; semantic long-term memory, OCR-based reading guides, and a complete six-stage deep-reading workflow remain future work. See the [implementation status](docs/STATUS.md) and [roadmap](docs/ROADMAP.md).
 
 ## How it works
 

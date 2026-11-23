@@ -7,7 +7,7 @@ import {uid32} from '@/api/client'
 import {renderMarkdown} from '@/shared/markdown'
 import type {PaperGuideController} from '@/reader/usePaperGuide'
 import type {SelectionContext} from '@/api/types'
-const props=defineProps<{controller:PaperGuideController;paperId:number;fileVersion:string;jump:(ctx:SelectionContext)=>void;refreshAnnotations:()=>Promise<void>}>()
+const props=defineProps<{mode?:'summary'|'annotations';controller:PaperGuideController;paperId:number;fileVersion:string;jump:(ctx:SelectionContext)=>void;refreshAnnotations:()=>Promise<void>}>()
 const historyOpen=ref(false)
 const guide=computed(()=>props.controller.state.value.guide),busy=ref(false),message=ref(''),filter=ref('all')
 const labels:Record<string,string>={problem:'问题',contribution:'贡献',method:'方法',definition:'定义',formula:'公式',figure:'图表',experiment:'实验',limitation:'边界'}
@@ -26,17 +26,17 @@ function exportGuide(){if(!guide.value?.result)return;const g=guide.value;const 
 <section ref="panel" class="paper-guide-panel" aria-label="论文导读与智能批注">
  <button type="button" @click="historyOpen=true">历史导读</button>
  <GuideHistory v-if="historyOpen" :paper-id="paperId" :file-version="fileVersion" :jump="jump" @close="historyOpen=false" />
- <p v-if="!guide" class="muted">可在右侧输入框选择“自动批注”，确认后调用 Skill，生成总结、阅读路线和重点解释。打开论文不会自动生成。</p>
+ <p v-if="!guide&&mode!=='annotations'" class="muted">可在批注页触发智能批注，概要和阅读路线将在这里展示。</p>
  <p v-if="controller.running.value" role="status">导读与批注生成中，可继续阅读原文。</p>
  <p v-if="controller.error.value" class="error">{{controller.error.value}}</p>
  <template v-if="guide?.result">
-  <div class="guide-overview"><strong>{{guide.status==='partial'?'部分材料导读':'论文导读'}}</strong><p>已提供物理页：{{guide.coverage.provided_pages?.join('、')||'未提供'}}{{guide.coverage.truncated?' · 文本已截断':''}}。本次没有图像/代码分析。</p><label><input v-model="controller.showAI.value" type="checkbox">显示 AI 批注图层</label><div><button @click="exportGuide">导出 MD</button><button @click="controller.refresh">刷新</button></div></div>
+  <template v-if="mode!=='annotations'"><div class="guide-overview"><strong>{{guide.status==='partial'?'部分材料导读':'论文导读'}}</strong><p>已提供物理页：{{guide.coverage.provided_pages?.join('、')||'未提供'}}{{guide.coverage.truncated?' · 文本已截断':''}}。本次没有图像/代码分析。</p><label><input v-model="controller.showAI.value" type="checkbox">显示 AI 批注图层</label><div><button @click="exportGuide">导出 MD</button><button @click="controller.refresh">刷新</button></div></div>
   <section v-for="(label,key) in {problem_md:'研究问题',approach_md:'核心思路',contributions_md:'贡献',limitations_md:'范围与边界'}" :key="key"><h3>{{label}}</h3><div class="markdown-content" v-html="renderMarkdown(guide.result.summary[key])"></div></section>
   <h3>建议阅读路线</h3><ol class="guide-route"><li v-for="r in guide.result.reading_route" :key="r.key"><strong>{{r.title}}</strong><div class="markdown-content" v-html="renderMarkdown(r.goal_md)"></div><button v-if="guide.items.find(i=>r.item_keys.includes(i.item.key))" @click="locate(guide.items.find(i=>r.item_keys.includes(i.item.key))!)">跳到原文</button></li></ol>
-  <h3>重点与解释</h3><select v-model="filter" aria-label="按批注类型筛选"><option value="all">所有类型</option><option v-for="(label,key) in labels" :key="key" :value="key">{{label}}</option></select>
+  </template><template v-if="mode==='annotations'"><h3>重点与解释</h3><select v-model="filter" aria-label="按批注类型筛选"><option value="all">所有类型</option><option v-for="(label,key) in labels" :key="key" :value="key">{{label}}</option></select>
   <article v-for="i in items" :key="i.id" :data-guide-item="i.id" class="guide-item" :class="{focused:controller.focusItem.value===i.id}"><div class="guide-tags">AI · {{labels[i.item.category]}} · {{priorities[i.item.priority]}}</div><h4>{{i.item.title}}</h4><small>{{claims[i.item.claim_type]}} · {{i.location_status==='verified'?'原文定位已核验':i.location_status==='mixed'?'部分引文已高亮，另有页级证据':'仅页级定位，未画精确高亮'}}</small><div class="markdown-content" v-html="renderMarkdown(i.item.why_important_md)"></div><details :open="controller.focusItem.value===i.id"><summary>解释与来源</summary><div class="markdown-content" v-html="renderMarkdown(i.item.explanation_md)"></div><blockquote v-for="(a,j) in i.anchors.filter(a=>a.status==='verified')" :key="j">{{a.quote}}<br>物理页 {{a.page}}</blockquote><p v-for="u in i.item.uncertainties" :key="u" class="muted">未确定：{{u}}</p><ul><li v-for="q in i.item.follow_up_questions" :key="q">{{q}}</li></ul></details><div class="guide-item-actions"><button @click="locate(i)">原文</button><button :disabled="busy" @click="adopt(i)">采纳为我的批注</button><button :disabled="busy" @click="hideItem(i)">{{i.annotations.every(a=>!!a.deleted)?'恢复标记':'移除标记'}}</button></div></article>
-  <p v-for="u in guide.result.unknown_fields" :key="u.path" class="muted">材料缺口：{{u.reason}}</p>
-  <p class="muted">费用估算：{{guide.cost===null?'未提供':'$'+guide.cost.toFixed(4)}}，非核实账单。</p>
+  </template><p v-for="u in guide.result.unknown_fields" :key="u.path" class="muted">材料缺口：{{u.reason}}</p>
+
  </template>
  <p v-if="controller.state.value.older_versions" class="muted">存在旧 PDF 版本的导读，未叠加到当前原文。</p><p v-if="message" role="status">{{message}}</p>
 </section>

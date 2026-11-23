@@ -106,10 +106,16 @@ function openImport(paperId?: number) {
 
 const route = useRoute()
 const router = useRouter()
+
+let applyingRoute=false
+async function applyResourceRoute(){if(!wb.loaded)return;applyingRoute=true;try{const r=route;const deep=parseDeepLink(r);if(deep){openPaper(deep.paperId,deep.sessionId??undefined);wb.setView('read')}else if(r.path==='/home'||r.query.home==='1')goHome();else if(r.path.startsWith('/frontier'))wb.setView('frontier');else if(r.path.startsWith('/compare')){wb.setView('compare');if(r.params.sessionId)librarySession.value=Number(r.params.sessionId)}else if(['/library','/schedules','/skills'].includes(r.path))wb.setView(r.path.slice(1) as 'library'|'schedules'|'skills')}finally{await Promise.resolve();applyingRoute=false}}
+watch(()=>route.fullPath,()=>{void applyResourceRoute()})
+watch(()=>[wb.view,wb.activePaperId,activeSessionId()],()=>{if(!wb.loaded||applyingRoute)return;let path='/home';let query:Record<string,string>={};if(wb.view==='read'&&wb.activePaperId){path='/reader/'+wb.activePaperId;const sid=activeSessionId();if(sid)query.session=String(sid);if(route.params.paperId===String(wb.activePaperId))query={...route.query as Record<string,string>,...query}}else if(wb.view!=='read'){path='/'+wb.view;if(wb.view==='frontier'&&route.path.startsWith('/frontier'))return}if(route.path!==path)void router.push({path,query})})
+
 function enterHome() {
   goHome()
   // Consume the navigation intent so a later refresh can restore a newly opened paper.
-  void router.replace({ path: '/' })
+  void router.replace({ path: '/home' })
 }
 watch(() => route.query.home, home => { if (home === '1' && wb.loaded) enterHome() })
 
@@ -121,6 +127,7 @@ function openSessionInLibrary(sessionId: number) {
 onMounted(async () => {
   try {
     await Promise.all([wb.load(), lib.refresh()])
+    await applyResourceRoute()
     const deep = parseDeepLink(route)
     if (route.query.home === '1') enterHome()
     else if (deep) {

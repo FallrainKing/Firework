@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import {useRoute,useRouter} from 'vue-router'
+import {shareSelection} from '@/shared/pageContext'
 import { nextTick, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, watch } from 'vue'
 import { PDFReader } from '@/reader/pdf-engine'
 import { useReaderOrchestrator } from '@/reader/useReaderOrchestrator'
@@ -12,7 +14,8 @@ import TaskDialog from '@/components/TaskDialog.vue'
 import GuideActions from '@/components/reader/GuideActions.vue'
 import { usePaperGuide } from '@/reader/usePaperGuide'
 
-const props = defineProps<{ paperId: number; sessionId?: number | null }>()
+const route=useRoute()??{params:{},query:{},path:'',fullPath:''} as any,router=useRouter()??{push:async()=>{},replace:async()=>{}} as any
+const props = defineProps<{ paperId: number; sessionId?: number | null;versionId?:string }>()
 const emit = defineEmits<{
   'open-paper': [paperId: number, sessionId?: number]
   'open-import': [paperId: number]
@@ -40,14 +43,19 @@ const mobileToolsOpen = ref(false)
 const color = ref('#f5d76e')
 const mode = ref('select')
 
+let pageRouteTimer:ReturnType<typeof setTimeout>|null=null
+function publishReading(){if(Number(route.params.paperId)!==props.paperId||!orch.doc.value)return;const doc=orch.doc.value;window.dispatchEvent(new CustomEvent('firework-reader-context',{detail:{paper_id:props.paperId,file_hash:doc.file_version,document_version_id:doc.document_version_id||undefined,session_id:orch.session.value?.id,page:pageInput.value,panel:orch.sidebarTab.value}}));if(pageRouteTimer)clearTimeout(pageRouteTimer);pageRouteTimer=setTimeout(()=>{if(Number(route.params.paperId)===props.paperId)void router.replace({query:{...route.query,page:String(pageInput.value),panel:orch.sidebarTab.value}})},350)}
+async function shareCurrentSelection(){if(!selected.value)return;try{const r=await shareSelection({paper_id:props.paperId,file_version:selected.value.file_version,page:selected.value.page,quote:selected.value.quote,rects:selected.value.rects});toast('选区已共享5分钟：'+r.id.slice(0,8))}catch(e){toast(String(e))}}
 let engine: PDFReader | null = null
 const layout = useReaderLayout()
 const orch = useReaderOrchestrator({
   paperId: props.paperId,
+  documentVersion:props.versionId,
   engine: {
     load: (info, pos) => engine!.load(info, pos),
     layout: () => engine!.layout(),
     jump: (p, f) => engine!.jump(p, f),
+    locate: ctx=>engine!.locate(ctx),
     setAnnotations: items => engine!.setAnnotations(items.filter(a=>a.origin!=='ai'||guide.showAI.value)),
     get currentPage() { return engine?.currentPage ?? 1 },
     set currentPage(v: number) { if (engine) engine.currentPage = v },
@@ -65,6 +73,7 @@ const orch = useReaderOrchestrator({
 const readingBusy=ref(false)
 const guide=usePaperGuide(orch.doc,()=>orch.refreshAnnotations(),toast)
 function openGuide(){orch.setTab('guide');orch.savePosition();if(layout.layout.value.left_hidden)layout.toggle('left');if(narrow.value)layout.setMobile('left')}
+watch(orch.sidebarTab,()=>publishReading())
 watch(guide.showAI,()=>{void orch.refreshAnnotations()})
 async function startReading(prompt:string){
   if(readingBusy.value||!orch.doc.value)return
@@ -128,24 +137,30 @@ onMounted(async () => {
   window.addEventListener('firework-document-default', defaultChanged)
   await nextTick()
   engine = new PDFReader(scrollEl.value!, pagesEl.value!)
-  engine.addEventListener('page', e => { pageInput.value = (e as CustomEvent).detail; orch.savePosition() })
+  engine.addEventListener('page', e => { pageInput.value = (e as CustomEvent).detail; orch.savePosition();publishReading() })
   engine.addEventListener('zoom', () => orch.savePosition())
   engine.addEventListener('selection', onSelection)
   engine.addEventListener('ink', e => orch.saveInk((e as CustomEvent).detail))
-  engine.addEventListener('guide-annotation',e=>{guide.focusItem.value=(e as CustomEvent).detail;openGuide()})
+  engine.addEventListener('guide-annotation',e=>{guide.focusItem.value=(e as CustomEvent).detail;orch.setTab('notes')})
+  engine.addEventListener('annotation',e=>{orch.setTab('notes');(sidebarRef.value as any)?.editNote?.((e as CustomEvent).detail)})
   engine.addEventListener('erase', e => orch.eraseAnnotation((e as CustomEvent).detail))
   const bridge = (chatRef.value as unknown as { bridge?: Parameters<typeof orch.registerChat>[0] })?.bridge
   if (bridge) orch.registerChat(bridge)
   await orch.boot(props.sessionId ?? null)
+  if(route.query.page)engine.jump(Number(route.query.page))
+  if(route.query.panel&&['guide','outline','notes','highlights','translations','info'].includes(String(route.query.panel)))orch.setTab(String(route.query.panel) as never)
   pageInput.value = engine.currentPage
+  publishReading()
   await refreshSessions(orch.session.value?.id)
 })
 
+watch(()=>route.query.page,value=>{if(engine&&Number(route.params.paperId)===props.paperId&&value&&Number(value)!==engine.currentPage)engine.jump(Number(value))})
 watch(() => props.sessionId, sid => { if (sid && sid !== orch.session.value?.id) void orch.activate(sid) })
 
 onActivated(() => { if (engine?.pdf) { void nextTick(() => engine?.layout()) } })
 onDeactivated(() => { selected.value = null; void flush() })
 onBeforeUnmount(() => {
+  if(pageRouteTimer)clearTimeout(pageRouteTimer)
   window.removeEventListener('resize', onResize)
   window.removeEventListener('firework-document-default', defaultChanged)
   void flush()
@@ -215,7 +230,7 @@ defineExpose({ flush, orchestrator: orch })
           <div v-if="selected" class="selection-actions" :style="popupStyle" @pointerdown.prevent>
             <button data-selection="explain" @click="runAction('explain')">解释</button>
             <button data-selection="translate" @click="runAction('translate')">翻译</button>
-            <button data-selection="highlight" @click="runAction('highlight')">高亮</button>
+            <button @click="shareCurrentSelection">共享选区给本机</button><button data-selection="highlight" @click="runAction('highlight')">高亮</button>
             <button data-selection="note" @click="runAction('note')">批注</button>
             <button data-selection="chat" @click="runAction('chat')">加入对话</button>
           </div>

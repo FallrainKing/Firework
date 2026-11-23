@@ -891,9 +891,10 @@ watch(() => props.session, s => { if (s) void load(s) }, { immediate: true })
       </div>
       <div class="composer-footer"><span class="muted">{{ question.length }}/3000 · 图片 {{ attachments.length }}/3 · 引用 {{ contexts.length }}/3</span><button class="primary" type="submit" :disabled="!canSend || !question.trim()">{{ uploading ? '上传中…' : busy ? '处理中…' : '发送 ↑' }}</button></div>
     </form>
+    <RunConnectionControl v-show="!composerMinimized" v-model="selectedConnection" :session-id="currentSession?.id" :binding="{name:currentSession?.connection_binding?.name || (currentSession?.connection_binding?.mode==='legacy'?'管理员现有连接':'账号默认连接'),model:currentSession?.connection_binding?.model || latestRun?.model || undefined}" :disabled="busy || uploading || !!selectedProfile" :bound="!!(runs.length || currentSession?.native_ready)" />
       <details v-show="!composerMinimized" class="run-settings"><summary>模型与任务额度</summary>
     <RunProfileControl v-model="selectedProfile" :skill="currentSession?.skill" :disabled="busy || uploading" :bound="!!(runs.length || currentSession?.native_ready)" />
-    <RunConnectionControl v-model="selectedConnection" :disabled="busy || uploading || !!selectedProfile" :bound="!!(runs.length || currentSession?.native_ready)" />
+
     <RunBudgetControl v-model="selectedBudget" :skill="currentSession?.skill" :disabled="busy || uploading || !!selectedProfile" />
       </details>
     <p v-if="toast" class="chat-toast" role="status">{{ toast }}</p>

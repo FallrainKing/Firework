@@ -86,6 +86,7 @@ def capture_run(db,settings,run_id):
     if not r or not r['answer']:return
     ids=[x[0] for x in db.execute('SELECT paper_id FROM conversation_papers WHERE conversation_id=?',(r['conversation_id'],))]
     skill=r['skill'];kind='comparison' if skill=='paper_compare' else 'review' if skill=='paper_review' else 'reading'
+    if r['purpose'] in ('translate','explain'):kind='note'
     body=ArtifactWrite(title=r['prompt'][:160],kind=kind,markdown=r['answer'][:100000],paper_ids=ids,status='complete' if r['status']=='succeeded' and len(r['answer'])<=100000 else 'partial',source_run_id=run_id,producer=skill+':'+str(r['skill_version_id'] or 'unknown'))
     return artifact_save(db,settings,body,origin='agent',source_key=source)
 

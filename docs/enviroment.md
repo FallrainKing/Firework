@@ -1,6 +1,6 @@
 # 环境、部署与排障
 
-更新：2026-11-23。当前业务迁移 0025、身份 schema 3、Runner 协议 **11**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
+更新：2026-11-23。当前业务迁移 0026、身份 schema 3、Runner 协议 **12**。文件名保留既有 `enviroment.md` 约定。这里只记录非敏感配置和操作，不保存密钥、登录凭据或配置转储。
 
 ## 1. 当前实例与部署边界
 
@@ -11,12 +11,12 @@
 | 部署分支 | release/frontier-workbench-20261119，跟踪 origin/main |
 | 应用 | Compose app，容器端口 8000，宿主端口 8600 |
 | 公网 | `https://paper.matchesai.vip/#/`，HTTPS 反向代理及应用网页登录 |
-| Runner | 用户级 research-agent-runner，私有 Unix Socket，当前协议 10、默认并发 2 |
+| Runner | 用户级 research-agent-runner，私有 Unix Socket，当前协议 12、默认并发 2 |
 | 数据 | 项目 data/，主业务库 app.db，身份库 auth/accounts.db |
 | 向量与缓存 | Compose qdrant、data/qdrant、data/hf |
 | Zotero | 插件 0.1.4，声明兼容 10.0.6–10.x |
 
-2026-11-22 只读核对服务器仓库提交为 `4abeb36`，app/qdrant/backup 运行，qdrant healthy、Runner active；该检查不代替完整业务冒烟。当前代码要求 Runner 协议 10。模型以所选连接或每个 Run 实际记录为准；legacy 最近状态为 glm-5.3[1M]，不能据此假定所有账号使用同一模型或已经实测 1M。
+2026-11-22 只读核对服务器仓库提交为 `4abeb36`，app/qdrant/backup 运行，qdrant healthy、Runner active；该检查不代替完整业务冒烟。该条为历史核对；当前代码要求 Runner 协议 12。模型以所选连接或每个 Run 实际记录为准；legacy 最近状态为 glm-5.3[1M]，不能据此假定所有账号使用同一模型或已经实测 1M。
 
 2026-11-22 首批增量已部署到 `dc7ff6e`（迁移 0020）；发布前完成成套备份，保留旧镜像 `firework-before-collection-lifecycle:20261122`。新增分类/历史导读/策略接口及浏览器核验通过，无新研究模型任务。后续文档提交不需要重建镜像。
 
@@ -130,3 +130,8 @@ node --test plugins/zotero/tests/plugin.test.cjs
 原生镜像：`firework-native-runner:2.1.322`；CLI二进制固定为`/home/f/.local/share/claude/versions/2.1.322`。Runner需设置`FIREWORK_NATIVE_ENABLED=1`、`FIREWORK_NATIVE_CLI_SHA256`和`RESEARCH_CLAUDE_BINARY`。校验值由部署时对真实二进制计算，不使用浮动符号链接；与实际文件不符则终端关闭。独立状态位于各账号`agent/terminals/{session_id}`，附件位于`research-files`。模型调用仍由用户明确输入触发。详见 [联合部署与边界](RESEARCH-PLATFORM.md)。
 
 发布记录：2026-11-23，应用代码`df4fcc7`已上线。Web/Runner协议11一致，迁移0025已生效。发布前所有账号在途任务为0，已完成备份；回退镜像`firework-before-research-platform:20261123`保留。原生镜像通过Runner专用systemd配置固定实际镜像ID和CLI SHA-256；未修改宿主Claude设置。线上零模型冒烟、新接口及匿名401、外键校验通过；Chrome已核对终端预检和研究知识管理页面。完整后端348通过、5项环境跳过，前端264通过。
+
+
+## 2026-11-23 阅读与本机 MCP 增量
+
+本轮实际实现、接口、配置步骤与验证边界统一见 [R1–R5交付说明](READING-CONTEXT-DELIVERY.md)。本机MCP配置样例见 [MCP使用说明](../plugins/agent-skill/firework-paper-ops/references/mcp.md)。本轮不修改宿主Claude全局配置，不自动安装本机MCP，不自动重复执行本机研究。

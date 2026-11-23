@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import {useRoute,useRouter} from 'vue-router'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import LibraryGrid from './manage/LibraryGrid.vue'
 import SessionsManager from './manage/SessionsManager.vue'
@@ -22,7 +23,9 @@ async function lifecycleUpdated() {
   if (category.value && !collections.value.some(c => String(c.id) === category.value)) category.value = ''
   libraryRevision.value++
 }
-const category = ref('')
+const route=useRoute(),router=useRouter()
+const category = ref(route?.query.collection?String(route.query.collection):'')
+watch(()=>route?.query.collection,value=>{category.value=value?String(value):''})
 const reading = ref<'' | 'unread' | 'reading' | 'read'>('')
 const projects = ref<Array<Record<string, any>>>([])
 const projectError = ref('')
@@ -35,7 +38,7 @@ const tree = computed(() => collectionTree(collections.value,collapsed.value))
 function toggle(id:number){const next=new Set(collapsed.value);next.has(id)?next.delete(id):next.add(id);collapsed.value=next}
 async function chooseParent(id:number){categoryParent.value=String(id);categoryName.value='';await nextTick();categoryInput.value?.focus()}
 async function collectionUpdated(){await loadCollections();emit('library-updated')}
-watch(category,value=>{categoryParent.value=collections.value.some(c=>String(c.id)===value)?value:''})
+watch(category,value=>{if(route&&router&&route.path==='/library'&&String(route.query.collection||'')!==value)void router.push({path:'/library',query:value?{collection:value}:{}});categoryParent.value=collections.value.some(c=>String(c.id)===value)?value:''})
 async function loadCollections() { try { collections.value = (await papersApi.collections()).collections } catch (e) { projectError.value = e instanceof Error ? e.message : '分类载入失败' } }
 async function loadProjects() { try { projects.value = (await frontierApi.projects(category.value ? Number(category.value) : undefined)).projects; projectError.value = '' } catch(e) { projectError.value = e instanceof Error ? e.message : '项目载入失败' } }
 async function addCategory() { if (!categoryName.value.trim()||categoryBusy.value) return;categoryBusy.value=true; projectError.value='';try { const parent=categoryParent.value?Number(categoryParent.value):null;const c = await papersApi.createCollection(categoryName.value,parent);let ancestor:number|null=parent;const seen=new Set<number>();while(ancestor&&!seen.has(ancestor)){seen.add(ancestor);collapsed.value.delete(ancestor);ancestor=collections.value.find(n=>n.id===ancestor)?.parent_id??null}await collectionUpdated(); category.value = String(c.id); categoryName.value = '' } catch(e) { projectError.value = e instanceof Error ? e.message : '分类保存失败' }finally{categoryBusy.value=false} }

@@ -50,6 +50,8 @@ def call(method,path,body=None,key=None):
     except error.HTTPError as exc:
         # Print only allowlisted machine codes, never server/proxy detail text.
         messages={
+            'context_changed':'The page has changed; read its new revision or explicitly work on the pinned resource.',
+            'context_stale':'The window is offline or stale; do not treat it as the current page.',
             'idempotency_conflict':'This key belongs to a different method/path/body. Do not bypass it with a new key. Reconcile the original operation.',
             'metadata_conflict':'Read the current paper version, merge intended changes, then submit a new operation with a new key.',
             'annotation_conflict':'Read the annotation (including deleted records), merge changes against its current ETag, then use a new key.',

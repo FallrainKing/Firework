@@ -432,7 +432,7 @@ describe('ChatPanel long conversation', () => {
     expect(wrapper.find('.composer-tools .composer-toggle').exists()).toBe(true)
     expect(wrapper.find('.composer-toggle-bar').exists()).toBe(false)
     expect(wrapper.find('.agent-state').exists()).toBe(false)
-    expect(wrapper.find('.reader-composer').element.nextElementSibling).toBe(wrapper.find('.run-settings').element)
+    expect(wrapper.find('.reader-composer').element.nextElementSibling).toBe(wrapper.find('.run-connection').element)
     wrapper.unmount()
   })
 

@@ -254,6 +254,23 @@ export class PDFReader extends EventTarget {
     if (flash) { holder.classList.add('flash'); setTimeout(() => holder.classList.remove('flash'), 1600) }
   }
 
+  async locate(context:{page:number;rects:number[][]}) {
+    const generation=this.generation
+    this.jump(context.page)
+    const holder=this.holders?.[context.page-1]
+    if(!holder)return
+    for(let i=0;i<100&&holder.dataset.state!=='ready';i++){
+      if(this.generation!==generation)return
+      await new Promise(resolve=>setTimeout(resolve,40))
+    }
+    if(this.generation!==generation)return
+    const boxes=context.rects||[]
+    if(!boxes.length){this.jump(context.page,true);return}
+    const top=holder.getBoundingClientRect().top-this.root.getBoundingClientRect().top+this.root.scrollTop+boxes[0]![1]!*holder.clientHeight-70
+    this.root.scrollTo({top})
+    for(const r of boxes){const marker=document.createElement('div');Object.assign(marker.style,{position:'absolute',left:`${r[0]!*100}%`,top:`${r[1]!*100}%`,width:`${r[2]!*100}%`,height:`${r[3]!*100}%`,background:'#f59e0b66',outline:'2px solid #d97706',pointerEvents:'none',zIndex:'10'});holder.append(marker);setTimeout(()=>marker.remove(),2200)}
+  }
+
   setZoom(value: string) { this.zoom = value; this.layout() }
 
   setMode(mode: string) {
@@ -290,6 +307,7 @@ export class PDFReader extends EventTarget {
       marker.addEventListener('keydown',e=>{if((e as KeyboardEvent).key==='Enter'){e.preventDefault();activate()}})
       overlay.append(marker);markerIndex++
     }
+    overlay.querySelectorAll('[data-annotation-id]').forEach(marker=>{(marker as SVGElement).style.pointerEvents='auto';marker.addEventListener('click',event=>{if(this.mode!=='select')return;const a=this.annotations.find(a=>a.id===marker.getAttribute('data-annotation-id'));if(a&&a.origin!=='ai'){event.stopPropagation();this.emit('annotation',a)}})})
     holder.append(overlay)
     this.modeOn(holder)
   }

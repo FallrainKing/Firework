@@ -4,6 +4,7 @@ export interface FrontierTopic {id:number;title:string;revision:number;config:Fr
 export interface FrontierItem {id:string|number;entity_id?:number;topic_id?:number;kind?:string;metadata:Record<string,any>;decision:string;revision:number;in_library:boolean;paper_id:number|null;project_id:number|null;change_type?:string;reason?:string;similar_paper_ids?:number[]}
 export interface FrontierRun {origin?:string;id:string;topic_id:number;topic_title?:string;status:string;report_id?:number;version?:number;is_read?:boolean;report_md:string;counts:Record<string,number>;items:FrontierItem[];coverage:Array<{source:string;status:string;truncated:boolean;error?:string;retrieved:number;total:number}>;error:string|null;created_at:string;finished_at:string|null;conversation_id:number;cost:number|null;usage:Record<string,number>}
 export const frontierApi={
+ report:(id:string)=>api<FrontierRun>(`/api/frontier/runs/${id}`),
  topics:()=>api<{topics:FrontierTopic[]}>('/api/frontier/topics'),
  create:(body:{title:string;config:FrontierConfig})=>api<FrontierTopic>('/api/frontier/topics',{body}),
  update:(id:number,body:{title:string;config:FrontierConfig;revision:number})=>api<FrontierTopic>(`/api/frontier/topics/${id}`,{method:'PATCH',body}),

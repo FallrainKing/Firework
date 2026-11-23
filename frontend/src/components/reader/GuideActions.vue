@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import {computed,ref} from 'vue'
 import type {PaperGuideController} from '@/reader/usePaperGuide'
-const props=withDefaults(defineProps<{controller:PaperGuideController;ready:boolean;pageCount:number;readingBusy?:boolean;menuOpen?:boolean}>(),{menuOpen:true})
+const props=withDefaults(defineProps<{controller:PaperGuideController;ready:boolean;pageCount:number;readingBusy?:boolean;menuOpen?:boolean;annotationsOnly?:boolean}>(),{menuOpen:true})
 const emit=defineEmits<{'read':[prompt:string];'show-guide':[];'selected':[]}>()
 const choice=ref<'annotate'|'read'|null>(null),goal=ref('理解论文重点、建议阅读顺序及重要内容的解释'),skillId=ref('paper_guide'),maxItems=ref(6),maxPages=ref(6)
 const selected=computed(()=>props.controller.skills.value.find(x=>x.id===skillId.value))
@@ -10,7 +10,7 @@ async function confirm(){if(choice.value==='read'){emit('read',goal.value.trim()
 </script>
 <template>
 <section v-if="menuOpen||choice||controller.running.value||controller.error.value||controller.state.value.task?.error" class="guide-actions" aria-label="论文阅读任务">
- <template v-if="menuOpen"><h3>阅读任务 <small>确认后执行</small></h3><div class="guide-suggestions"><button type="button" :disabled="!ready||controller.busy.value||controller.running.value" @click="select('annotate')">自动批注</button><button type="button" :disabled="!ready||readingBusy" @click="select('read')">阅读论文</button><button v-if="controller.state.value.guide" type="button" @click="emit('show-guide');emit('selected')">查看导读</button></div></template>
+ <template v-if="menuOpen"><h3>阅读任务 <small>确认后执行</small></h3><div class="guide-suggestions"><button type="button" :disabled="!ready||controller.busy.value||controller.running.value" @click="select('annotate')">自动批注</button><button v-if="!annotationsOnly" type="button" :disabled="!ready||readingBusy" @click="select('read')">阅读论文</button><button v-if="controller.state.value.guide&&!annotationsOnly" type="button" @click="emit('show-guide');emit('selected')">查看导读</button></div></template>
  <p v-if="controller.running.value" role="status">批注 Skill 正在执行，打开或刷新不会重复触发。<button type="button" :disabled="controller.busy.value" @click="controller.cancel">停止</button></p>
  <div v-if="choice" class="guide-confirm">
   <strong>{{choice==='annotate'?'生成导读与原文批注':'开始论文阅读'}}</strong>

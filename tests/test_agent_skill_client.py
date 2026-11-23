@@ -40,7 +40,7 @@ def test_archive_is_deterministic_and_contains_only_source(tmp_path):
     spec=importlib.util.spec_from_file_location('skill_build',ROOT/'scripts/build_agent_skill.py');m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m)
     a=m.build(tmp_path/'a.zip');b=m.build(tmp_path/'b.zip');assert a.read_bytes()==b.read_bytes()
     import zipfile
-    with zipfile.ZipFile(a) as z:assert set(z.namelist())=={'firework-paper-ops/SKILL.md','firework-paper-ops/scripts/firework.py','firework-paper-ops/references/api.md','firework-paper-ops/references/frontier.md'}
+    with zipfile.ZipFile(a) as z:assert set(z.namelist())=={'firework-paper-ops/SKILL.md','firework-paper-ops/scripts/firework.py','firework-paper-ops/references/api.md','firework-paper-ops/references/frontier.md','firework-paper-ops/references/mcp.md','firework-paper-ops/scripts/firework_mcp.py'}
 
 
 def test_client_conflict_codes_are_safe_and_specific(monkeypatch):

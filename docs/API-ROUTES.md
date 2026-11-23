@@ -1,6 +1,6 @@
 # 当前注册路由清单
 
-生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **226** 条 HTTP 方法/路径；业务迁移0025、身份schema3、Runner协议11。
+生成核对：2026-11-23。从 `app.main.create_app().openapi()` 提取，共 **242** 条 HTTP 方法/路径；业务迁移0026、身份schema3、Runner协议12。
 
 浏览器私有接口需登录，写请求需CSRF；外部API Bearer、Zotero设备与内部工具令牌互不替代。字段见 [API](API.md)、[Runner配置](RUNNER-CONFIGURATION.md)、[Skills](SKILLS.md)。不含未来设计接口或静态下载。
 
@@ -26,6 +26,9 @@
 | GET | `/api/external/v1/artifacts/{ident}` |
 | GET | `/api/external/v1/capabilities` |
 | GET | `/api/external/v1/collections` |
+| GET | `/api/external/v1/contexts` |
+| GET | `/api/external/v1/contexts/{ident}` |
+| GET | `/api/external/v1/contexts/{ident}/resource` |
 | GET | `/api/external/v1/files/{ident}` |
 | GET | `/api/external/v1/frontier/reports` |
 | GET | `/api/external/v1/frontier/reports/{ident}` |
@@ -38,7 +41,9 @@
 | GET | `/api/external/v1/papers/{pid}/document` |
 | GET | `/api/external/v1/papers/{pid}/file` |
 | GET | `/api/external/v1/papers/{pid}/pages/{page}` |
+| GET | `/api/external/v1/research-submissions/{client_job_id}` |
 | GET | `/api/external/v1/runs/{ident}/timeline` |
+| GET | `/api/external/v1/selections/{ident}` |
 | GET | `/api/frontier/candidates` |
 | GET | `/api/frontier/capabilities` |
 | GET | `/api/frontier/projects` |
@@ -61,6 +66,8 @@
 | GET | `/api/me/preferences` |
 | GET | `/api/me/runner/budgets` |
 | GET | `/api/me/runner/connections` |
+| GET | `/api/me/runner/connections/presets` |
+| GET | `/api/me/runner/connections/tests/{tid}` |
 | GET | `/api/me/runner/mcp` |
 | GET | `/api/me/runner/models` |
 | GET | `/api/me/runner/profiles` |
@@ -151,6 +158,7 @@
 | POST | `/api/external/v1/knowledge/candidates` |
 | POST | `/api/external/v1/papers` |
 | POST | `/api/external/v1/papers/{pid}/annotations` |
+| POST | `/api/external/v1/research-submissions` |
 | POST | `/api/frontier/decisions/batch` |
 | POST | `/api/frontier/runs/{ident}/cancel` |
 | POST | `/api/frontier/runs/{ident}/discussion` |
@@ -181,9 +189,14 @@
 | POST | `/api/me/runner/budgets/preflight` |
 | POST | `/api/me/runner/connections` |
 | POST | `/api/me/runner/connections/preflight` |
+| POST | `/api/me/runner/connections/tests/{tid}/cancel` |
+| POST | `/api/me/runner/connections/{ident}/models` |
+| POST | `/api/me/runner/connections/{ident}/tests` |
 | POST | `/api/me/runner/profiles` |
 | POST | `/api/me/runner/profiles/preflight` |
+| POST | `/api/reader/anchors/locate` |
 | POST | `/api/reader/annotations` |
+| POST | `/api/reader/annotations/{ident}/adopt` |
 | POST | `/api/reader/guide-items/{ident}/adopt` |
 | POST | `/api/reader/guide-runs/{ident}/cancel` |
 | POST | `/api/reader/papers/{pid}/guide-runs` |
@@ -212,6 +225,8 @@
 | POST | `/api/skills/{skill_id}/enable` |
 | POST | `/api/skills/{skill_id}/publish` |
 | POST | `/api/skills/{skill_id}/validate-run` |
+| POST | `/api/workbench/contexts` |
+| POST | `/api/workbench/contexts/{ident}/selections` |
 | POST | `/api/workbench/images` |
 | POST | `/api/workbench/schedules` |
 | POST | `/api/workbench/schedules/{ident}/run` |
@@ -230,5 +245,6 @@
 | PUT | `/api/me/runner/connections/default` |
 | PUT | `/api/reader/papers/{paper_id}/state` |
 | PUT | `/api/skills/{skill_id}/placements` |
+| PUT | `/api/workbench/contexts/{ident}` |
 | PUT | `/api/workbench/drafts/{sid}/{pid}` |
 | PUT | `/api/workbench/states/{ident}` |

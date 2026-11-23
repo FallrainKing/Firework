@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useWorkbenchStore } from '@/stores/workbench'
 import { useThemeStore } from '@/shared/theme/store'
 import { meApi, type Profile } from '@/api/me'
 import StateFeedback from './StateFeedback.vue'
+import {pageContext,toggleContextSharing} from '@/shared/pageContext'
+import {useDismissible} from '@/shared/ui/useDismissible'
 import { useRouter } from 'vue-router'
 import { logout, authState } from '@/auth/session'
 const router=useRouter()
@@ -11,6 +13,9 @@ const router=useRouter()
 const wb = useWorkbenchStore()
 const theme = useThemeStore()
 const userMenuOpen = ref(false)
+const menuRoot=ref<HTMLElement|null>(null),menuButton=ref<HTMLElement|null>(null)
+useDismissible(menuRoot,userMenuOpen,menuButton)
+watch(()=>router.currentRoute.value.fullPath,()=>{userMenuOpen.value=false})
 const profile = ref<Profile | null>(null)
 const profileLoading = ref(false)
 const profileError = ref('')
@@ -53,9 +58,9 @@ onMounted(() => { void loadProfile() })
       >{{ v.label }}</button>
     </nav>
     <span class="connection" role="status">{{ wb.loaded ? '工作区已载入' : '载入中…' }}</span>
-    <div class="user-menu">
+    <div ref="menuRoot" class="user-menu">
       <button class="theme-toggle" :aria-label="theme.mode === 'light' ? '切换深色主题' : '切换浅色主题'" @click="theme.toggle()">◐</button>
-      <button class="user-button" :aria-expanded="userMenuOpen" aria-haspopup="menu" @click="userMenuOpen = !userMenuOpen">
+      <button ref="menuButton" class="user-button" :aria-expanded="userMenuOpen" aria-haspopup="menu" @click="userMenuOpen = !userMenuOpen">
         <img v-if="profile?.avatar_url" :src="profile.avatar_url" alt="" class="user-avatar">
         <span v-else class="user-avatar user-avatar-fallback" aria-hidden="true">{{ (profile?.display_name ?? '本').slice(0, 1) }}</span>
         <span class="user-name">{{ profile?.display_name ?? '本地用户' }}</span>
@@ -74,7 +79,7 @@ onMounted(() => { void loadProfile() })
         </div>
         <span class="account-mode">{{authState?.account?.username}} · {{authState?.account?.role==='admin'?'管理员':'独立账号'}}</span>
         <button v-if="authState?.account?.role==='admin'" type="button" role="menuitem" @click="router.push('/accounts');userMenuOpen=false">账号管理</button>
-        <button type="button" role="menuitem" @click="router.push('/research');userMenuOpen=false">研究产物与知识库</button>
+        <button type="button" role="menuitem" @click="toggleContextSharing">{{pageContext.shared?'停止共享当前页面给 MCP':'共享当前页面给本机智能体'}}</button><small v-if="pageContext.shared">窗口 {{pageContext.id.slice(0,8)}} · {{pageContext.error?'同步失败':'已共享'}}</small><button type="button" role="menuitem" @click="router.push('/research');userMenuOpen=false">研究产物与知识库</button>
         <button type="button" role="menuitem" @click="router.push('/integrations/zotero');userMenuOpen=false">Zotero 集成</button>
         <button type="button" role="menuitem" @click="router.push('/settings/runner/connections');userMenuOpen=false">模型连接</button>
         <button type="button" role="menuitem" @click="wb.setView('skills'); userMenuOpen = false">技能库</button>

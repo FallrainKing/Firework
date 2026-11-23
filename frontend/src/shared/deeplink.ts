@@ -7,6 +7,6 @@ export interface DeepLink {
 export function parseDeepLink(route: { params: Record<string, unknown>; query: Record<string, unknown> }): DeepLink | null {
   const pid = Number(route.params.paperId ?? route.query.paper_id)
   if (!Number.isInteger(pid) || pid <= 0) return null
-  const sid = Number(route.query.session_id)
+  const sid = Number(route.query.session ?? route.query.session_id)
   return { paperId: pid, sessionId: Number.isInteger(sid) && sid > 0 ? sid : null }
 }

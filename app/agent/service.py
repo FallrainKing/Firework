@@ -49,6 +49,8 @@ def init_agent_state(app):
     repo.fail_orphan_imports(db)
     db.commit()
     app.state.agent_jobs = set()
+    db.execute("UPDATE connection_tests SET status='interrupted',finished_at=CURRENT_TIMESTAMP WHERE status='running'")
+    db.commit()
     # This MVP deployment runs one web worker. Interrupted runs are marked
     # explicitly; never auto-retry a possibly billed model request.
     app.state.interrupted_run_ids = [r['id'] for r in db.execute("SELECT id FROM agent_runs WHERE status IN ('queued','running')").fetchall()]
@@ -81,6 +83,16 @@ async def close_agent_state(app):
     db = app.state.db
     active = [r['id'] for r in db.execute("SELECT id FROM agent_runs WHERE status IN ('queued','running')").fetchall()]
     await _cancel_runner_jobs(db, active)
+    probes=db.execute("SELECT id FROM connection_tests WHERE status='running'").fetchall()
+    if probes:
+        try:
+            async with runner_client.client() as client:
+                for probe in probes:await client.post(f'/connection-tests/{probe[0]}/cancel',timeout=3)
+        except Exception:pass
+        db.execute("UPDATE connection_tests SET status='interrupted',finished_at=CURRENT_TIMESTAMP WHERE status='running'");db.commit()
+    tests=list(getattr(app.state,'connection_test_tasks',set()))
+    for task in tests:task.cancel()
+    if tests:await asyncio.gather(*tests,return_exceptions=True)
     jobs = list(app.state.agent_jobs)
     for job in jobs:
         job.cancel()

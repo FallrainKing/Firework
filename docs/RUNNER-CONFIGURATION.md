@@ -105,3 +105,8 @@ Web：`/#/settings/runner/profiles`，导航同时提供模型连接、额度和
 - 任务详情显示方案名称/修订及有效工具，便于排查。既有会话不自动采用新方案。
 
 模型目录中的视觉、1M 上下文仍属用户声明，未发起能力测试；外部 MCP 服务、独立运行检查器及完整费用账本继续作为后续工作。外部论文接入见 [外部 API 与 Skill](EXTERNAL-AGENT-API.md)。
+
+
+## 2026-11-23 阅读与本机 MCP 增量
+
+本轮实际实现、接口、配置步骤与验证边界统一见 [R1–R5交付说明](READING-CONTEXT-DELIVERY.md)。本机MCP配置样例见 [MCP使用说明](../plugins/agent-skill/firework-paper-ops/references/mcp.md)。本轮不修改宿主Claude全局配置，不自动安装本机MCP，不自动重复执行本机研究。

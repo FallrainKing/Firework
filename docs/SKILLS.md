@@ -97,3 +97,8 @@ skill_resource 只读取允许的资源范围，不启动包内命令。需要�
 编辑内置技能的指令会创建独立副本；“保存显示名与使用范围”用于原技能的展示配置。资源路径仅支持 references/ 或 templates/ 下的文本，不支持脚本执行。大资源无法完整载入时拒绝在线编辑，改用下载、编辑、重新上传。
 
 草稿 API：POST /api/skills/drafts、GET/PATCH /api/skills/{skill_id}/draft、POST /api/skills/{skill_id}/publish。功能范围：GET /api/skills/surfaces、GET /api/skills/available?surface=reader_chat、GET/PUT /api/skills/{skill_id}/placements。写请求需当前账号 Cookie 和 CSRF，修订过期返回409；历史版本保持不可变。
+
+
+## 双执行路径的后续设计
+
+Skill由用户维护，执行地点可选：上传至Firework技能库并交给服务器智能体运行；或在本机由本机智能体运行后，经Firework MCP同步成果。现有ZIP管理和REST接口继续保留；MCP完整成果同步仍为待实现设计。契约、权限及验收见 [双路径执行与结果同步](READING-CONTEXT-CONFIGURATION-PLAN.md#7-双路径执行与结果同步用户确认)。

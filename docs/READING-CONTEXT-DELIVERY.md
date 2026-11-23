@@ -61,3 +61,8 @@ ResearchSubmission包含schema_version、client_job_id、artifact、annotations�
 
 
 浏览器补充修复：初始化读取持久位置时暂停地址回写，明确深链页码/辅助栏先于旧状态应用；显式会话不可用时显示错误，不静默绑定其他会话。补充2项回归，最终前端269通过。
+
+
+发布核对：代码 `e3d27c2` 与浏览器修复 `1f59edd` 已推送 main 并部署。应用迁移0026、Runner协议12、242条HTTP路由、7项预设、含MCP的6文件Skill ZIP、匿名401、上下文更新、数据库外键及公网health通过；没有新增外部令牌或服务器模型任务。Chrome已核对菜单关闭、返回首页、供应商预设和测试入口、统一批注、底部连接条；明确链接 `/#/reader/17?session=49&page=2&panel=notes` 刷新后仍为第2页与批注页。
+
+发布前备份记录：服务器 `/tmp/firework-reading-context-backup.log`；旧应用镜像 `firework-before-reading-context:20261123`。原生CLI容器镜像及宿主全局配置未改变。此次未实际调用付费模型，视觉/1M与各真实供应商效果不在验收结论内。

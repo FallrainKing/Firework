@@ -135,3 +135,6 @@ node --test plugins/zotero/tests/plugin.test.cjs
 ## 2026-11-23 阅读与本机 MCP 增量
 
 本轮实际实现、接口、配置步骤与验证边界统一见 [R1–R5交付说明](READING-CONTEXT-DELIVERY.md)。本机MCP配置样例见 [MCP使用说明](../plugins/agent-skill/firework-paper-ops/references/mcp.md)。本轮不修改宿主Claude全局配置，不自动安装本机MCP，不自动重复执行本机研究。
+
+
+本轮发布：代码 `1f59edd`（含 `e3d27c2`），app已重新构建，Runner已升级协议12；迁移0026。统一备份日志 `/tmp/firework-reading-context-backup.log`、回退镜像 `firework-before-reading-context:20261123`。公网health、授权/匿名接口、Skill MCP包、数据库外键及Chrome页面核对通过，未产生新的研究模型调用。
